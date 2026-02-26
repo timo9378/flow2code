@@ -8,7 +8,7 @@
 import type { SourceFile, CodeBlockWriter } from "ts-morph";
 import type { FlowNode } from "../../ir/types";
 import { TriggerType } from "../../ir/types";
-import type { PlatformAdapter, PlatformContext } from "./types";
+import type { PlatformAdapter, PlatformContext, TriggerInitContext } from "./types";
 import type {
   HttpWebhookParams,
   CronJobParams,
@@ -100,6 +100,65 @@ export class NextjsPlatform implements PlatformAdapter {
 
   getImplicitDependencies(): string[] {
     return []; // next is a peer dependency
+  }
+
+  generateTriggerInit(
+    writer: CodeBlockWriter,
+    trigger: FlowNode,
+    context: TriggerInitContext
+  ): void {
+    const varName = context.symbolTable.getVarName(trigger.id);
+
+    switch (trigger.nodeType) {
+      case TriggerType.HTTP_WEBHOOK: {
+        const params = trigger.params as HttpWebhookParams;
+        const isGetOrDelete = ["GET", "DELETE"].includes(params.method);
+
+        if (isGetOrDelete) {
+          writer.writeLine("const searchParams = req.nextUrl.searchParams;");
+          writer.writeLine(
+            "const query = Object.fromEntries(searchParams.entries());"
+          );
+          writer.writeLine(`const ${varName} = { query, url: req.url };`);
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        } else if (
+          params.parseBody &&
+          ["POST", "PUT", "PATCH"].includes(params.method)
+        ) {
+          writer.writeLine("let body: any;");
+          writer.write("try ").block(() => {
+            writer.writeLine("body = await req.json();");
+          });
+          writer.write(" catch ").block(() => {
+            writer.writeLine(
+              'return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });'
+            );
+          });
+          writer.writeLine(`const ${varName} = { body, url: req.url };`);
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        } else {
+          writer.writeLine(`const ${varName} = { url: req.url };`);
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        }
+        break;
+      }
+      case TriggerType.CRON_JOB: {
+        writer.writeLine(
+          `const ${varName} = { triggeredAt: new Date().toISOString() };`
+        );
+        writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        break;
+      }
+      case TriggerType.MANUAL: {
+        const params = trigger.params as ManualTriggerParams;
+        if (params.args.length > 0) {
+          const argsObj = params.args.map((a) => a.name).join(", ");
+          writer.writeLine(`const ${varName} = { ${argsObj} };`);
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        }
+        break;
+      }
+    }
   }
 
   // ── Private ──

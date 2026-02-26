@@ -2,7 +2,7 @@
  * Platform Adapters - 註冊與匯出
  */
 
-export type { PlatformAdapter, PlatformContext, PlatformName } from "./types";
+export type { PlatformAdapter, PlatformContext, PlatformName, TriggerInitContext } from "./types";
 export {
   registerPlatform,
   getPlatform,

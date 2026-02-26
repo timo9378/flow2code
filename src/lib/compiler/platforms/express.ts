@@ -8,7 +8,7 @@
 import type { SourceFile, CodeBlockWriter } from "ts-morph";
 import type { FlowNode } from "../../ir/types";
 import { TriggerType } from "../../ir/types";
-import type { PlatformAdapter, PlatformContext } from "./types";
+import type { PlatformAdapter, PlatformContext, TriggerInitContext } from "./types";
 import type {
   HttpWebhookParams,
   CronJobParams,
@@ -92,6 +92,62 @@ export class ExpressPlatform implements PlatformAdapter {
 
   getImplicitDependencies(): string[] {
     return ["express", "@types/express"];
+  }
+
+  generateTriggerInit(
+    writer: CodeBlockWriter,
+    trigger: FlowNode,
+    context: TriggerInitContext
+  ): void {
+    const varName = context.symbolTable.getVarName(trigger.id);
+
+    switch (trigger.nodeType) {
+      case TriggerType.HTTP_WEBHOOK: {
+        const params = trigger.params as HttpWebhookParams;
+        const isGetOrDelete = ["GET", "DELETE"].includes(params.method);
+
+        if (isGetOrDelete) {
+          writer.writeLine(
+            "const query = req.query as Record<string, string>;"
+          );
+          writer.writeLine(
+            `const ${varName} = { query, url: req.originalUrl };`
+          );
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        } else if (
+          params.parseBody &&
+          ["POST", "PUT", "PATCH"].includes(params.method)
+        ) {
+          writer.writeLine("const body = req.body;");
+          writer.writeLine(
+            `const ${varName} = { body, url: req.originalUrl };`
+          );
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        } else {
+          writer.writeLine(
+            `const ${varName} = { url: req.originalUrl };`
+          );
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        }
+        break;
+      }
+      case TriggerType.CRON_JOB: {
+        writer.writeLine(
+          `const ${varName} = { triggeredAt: new Date().toISOString() };`
+        );
+        writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        break;
+      }
+      case TriggerType.MANUAL: {
+        const params = trigger.params as ManualTriggerParams;
+        if (params.args.length > 0) {
+          const argsObj = params.args.map((a) => a.name).join(", ");
+          writer.writeLine(`const ${varName} = { ${argsObj} };`);
+          writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
+        }
+        break;
+      }
+    }
   }
 
   // ── Private ──

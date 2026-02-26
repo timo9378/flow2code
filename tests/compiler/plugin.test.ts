@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { compile } from "@/lib/compiler/compiler";
-import { registerPlugin, getPlugin, clearPlugins } from "@/lib/compiler/plugins/types";
+import { registerPlugin, getPlugin, clearPlugins, createPluginRegistry } from "@/lib/compiler/plugins/types";
 import { builtinPlugins } from "@/lib/compiler/plugins/builtin";
 import { createSimpleGetFlow } from "../fixtures";
 import type { FlowIR } from "@/lib/ir/types";
@@ -14,8 +14,9 @@ import { NodeCategory, TriggerType, OutputType } from "@/lib/ir/types";
 
 describe("Plugin System", () => {
   it("所有內建節點類型應有對應 Plugin", () => {
-    // 確保內建 plugin 已註冊（compile 會自動註冊）
-    compile(createSimpleGetFlow());
+    // 使用 per-instance registry 驗證所有內建 plugin
+    const registry = createPluginRegistry();
+    registry.registerAll(builtinPlugins);
 
     const expectedTypes = [
       "http_webhook",
@@ -35,7 +36,7 @@ describe("Plugin System", () => {
     ];
 
     for (const nodeType of expectedTypes) {
-      expect(getPlugin(nodeType)).toBeDefined();
+      expect(registry.get(nodeType)).toBeDefined();
     }
   });
 

@@ -280,7 +280,9 @@ function resolveInputRef(
   context: ExpressionContext
 ): string {
   if (!context.currentNodeId) {
-    return `{ error: "No current node context for $input" }`;
+    throw new Error(
+      `Expression parser error: No current node context for $input reference`
+    );
   }
 
   const incoming = context.ir.edges.filter(
@@ -306,7 +308,9 @@ function resolveInputRef(
     return `flowState['${srcId}']${path}`;
   }
 
-  return '{ error: "No input connected" }';
+  throw new Error(
+    `Expression parser error: Node "${context.currentNodeId}" has no input connected`
+  );
 }
 
 function resolveTriggerRef(

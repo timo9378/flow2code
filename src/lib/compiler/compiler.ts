@@ -44,23 +44,12 @@ import {
 import {
   type NodePlugin,
   type PluginContext,
-  getPlugin,
-  hasPlugin,
-  registerPlugins,
-  getAllPlugins,
+  type PluginRegistry,
+  createPluginRegistry,
 } from "./plugins/index";
 import { builtinPlugins } from "./plugins/builtin";
 import { inferFlowStateTypes } from "./type-inference";
 import { buildSymbolTable, type SymbolTable } from "./symbol-table";
-
-// ── 初始化內建 Plugins（只執行一次） ──
-let _builtinRegistered = false;
-function ensureBuiltinPlugins(): void {
-  if (!_builtinRegistered) {
-    registerPlugins(builtinPlugins);
-    _builtinRegistered = true;
-  }
-}
 
 // ============================================================
 // 編譯結果
@@ -132,6 +121,8 @@ interface CompilerContext {
   symbolTableExclusions: Set<NodeId>;
   /** 執行時追蹤：已在區塊內生成的節點 ID（防止重複生成） */
   generatedBlockNodeIds: Set<NodeId>;
+  /** 此次編譯使用的 Plugin Registry（per-instance，避免全域汙染） */
+  pluginRegistry: PluginRegistry;
 }
 
 /**
@@ -155,11 +146,11 @@ const ORM_PACKAGE_MAP: Record<string, string[]> = {
 // ============================================================
 
 export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
-  ensureBuiltinPlugins();
-
-  // 註冊額外 Plugins
+  // 建立 per-instance plugin registry（避免全域狀態汙染）
+  const pluginRegistry = createPluginRegistry();
+  pluginRegistry.registerAll(builtinPlugins);
   if (options?.plugins) {
-    registerPlugins(options.plugins);
+    pluginRegistry.registerAll(options.plugins);
   }
 
   // 1. 驗證 IR
@@ -204,6 +195,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     dagMode: false,
     symbolTableExclusions: new Set(),
     generatedBlockNodeIds: new Set(),
+    pluginRegistry,
   };
 
   // 偵測並發機會：若執行計畫有任何並發步驟，啟用 DAG 排程
@@ -326,89 +318,17 @@ function generateFunctionBody(
   writer.writeLine("const flowState: Partial<FlowState> = {};");
   writer.blankLine();
 
-  // ── 觸發器初始化（使用命名變數） ──
-  generateTriggerInit(writer, trigger, context);
+  // ── 觸發器初始化（委託給 Platform Adapter） ──
+  context.platform.generateTriggerInit(writer, trigger, {
+    symbolTable: context.symbolTable,
+  });
   writer.blankLine();
 
   // ── 按拓撲排序生成後續節點 ──
   generateNodeChain(writer, trigger.id, context);
 }
 
-/**
- * 根據觸發器類型初始化 flowState（使用命名變數）
- */
-function generateTriggerInit(
-  writer: CodeBlockWriter,
-  trigger: FlowNode,
-  context: CompilerContext
-): void {
-  const varName = context.symbolTable.getVarName(trigger.id);
-
-  switch (trigger.nodeType) {
-    case TriggerType.HTTP_WEBHOOK: {
-      const params = trigger.params as HttpWebhookParams;
-      const isGetOrDelete = ["GET", "DELETE"].includes(params.method);
-
-      if (isGetOrDelete) {
-        writer.writeLine("const searchParams = req.nextUrl.searchParams;");
-        writer.writeLine(
-          "const query = Object.fromEntries(searchParams.entries());"
-        );
-        writer.writeLine(
-          `const ${varName} = { query, url: req.url };`
-        );
-        writer.writeLine(
-          `flowState['${trigger.id}'] = ${varName};`
-        );
-      } else if (
-        params.parseBody &&
-        ["POST", "PUT", "PATCH"].includes(params.method)
-      ) {
-        writer.writeLine("let body: any;");
-        writer.write("try ").block(() => {
-          writer.writeLine("body = await req.json();");
-        });
-        writer.write(" catch ").block(() => {
-          writer.writeLine(
-            'return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });'
-          );
-        });
-        writer.writeLine(
-          `const ${varName} = { body, url: req.url };`
-        );
-        writer.writeLine(
-          `flowState['${trigger.id}'] = ${varName};`
-        );
-      } else {
-        writer.writeLine(
-          `const ${varName} = { url: req.url };`
-        );
-        writer.writeLine(
-          `flowState['${trigger.id}'] = ${varName};`
-        );
-      }
-      break;
-    }
-    case TriggerType.CRON_JOB: {
-      writer.writeLine(
-        `const ${varName} = { triggeredAt: new Date().toISOString() };`
-      );
-      writer.writeLine(
-        `flowState['${trigger.id}'] = ${varName};`
-      );
-      break;
-    }
-    case TriggerType.MANUAL: {
-      const params = trigger.params as ManualTriggerParams;
-      if (params.args.length > 0) {
-        const argsObj = params.args.map((a) => a.name).join(", ");
-        writer.writeLine(`const ${varName} = { ${argsObj} };`);
-        writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
-      }
-      break;
-    }
-  }
-}
+// generateTriggerInit 已移至各 Platform Adapter 實作
 
 // ============================================================
 // ============================================================
@@ -806,7 +726,7 @@ function generateNodeBody(
   node: FlowNode,
   context: CompilerContext
 ): void {
-  const plugin = getPlugin(node.nodeType);
+  const plugin = context.pluginRegistry.get(node.nodeType);
 
   if (plugin) {
     const pluginCtx = createPluginContext(context);
@@ -906,7 +826,7 @@ function resolveEnvVars(url: string, context: CompilerContext): string {
 function collectRequiredPackages(ir: FlowIR, context: CompilerContext): void {
   for (const node of ir.nodes) {
     // 從 Plugin 取得依賴
-    const plugin = getPlugin(node.nodeType);
+    const plugin = context.pluginRegistry.get(node.nodeType);
     if (plugin?.getRequiredPackages) {
       const packages = plugin.getRequiredPackages(node);
       packages.forEach((pkg: string) => context.requiredPackages.add(pkg));

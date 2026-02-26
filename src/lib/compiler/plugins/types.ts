@@ -80,52 +80,79 @@ export interface NodePlugin {
 }
 
 // ============================================================
-// Plugin Registry
+// Plugin Registry（支援全域 + per-instance 兩種模式）
 // ============================================================
 
-const pluginRegistry = new Map<string, NodePlugin>();
+/**
+ * Plugin Registry 實例。
+ * 每個 `compile()` 呼叫可建立獨立的 registry，避免全域狀態汙染。
+ */
+export interface PluginRegistry {
+  register(plugin: NodePlugin): void;
+  registerAll(plugins: NodePlugin[]): void;
+  get(nodeType: string): NodePlugin | undefined;
+  has(nodeType: string): boolean;
+  getAll(): Map<string, NodePlugin>;
+  clear(): void;
+}
 
 /**
- * 註冊一個節點 Plugin
+ * 建立一個全新的 Plugin Registry 實例
+ */
+export function createPluginRegistry(): PluginRegistry {
+  const map = new Map<string, NodePlugin>();
+  return {
+    register(plugin) { map.set(plugin.nodeType, plugin); },
+    registerAll(plugins) { for (const p of plugins) map.set(p.nodeType, p); },
+    get(nodeType) { return map.get(nodeType); },
+    has(nodeType) { return map.has(nodeType); },
+    getAll() { return new Map(map); },
+    clear() { map.clear(); },
+  };
+}
+
+// ── 全域 registry（向後相容，供外部 registerPlugin 使用） ──
+const globalRegistry = createPluginRegistry();
+
+/**
+ * 註冊一個節點 Plugin（全域）
  * 如果已存在同名 Plugin，會覆蓋（允許開發者替換內建 Plugin）
  */
 export function registerPlugin(plugin: NodePlugin): void {
-  pluginRegistry.set(plugin.nodeType, plugin);
+  globalRegistry.register(plugin);
 }
 
 /**
- * 批次註冊多個 Plugin
+ * 批次註冊多個 Plugin（全域）
  */
 export function registerPlugins(plugins: NodePlugin[]): void {
-  for (const plugin of plugins) {
-    registerPlugin(plugin);
-  }
+  globalRegistry.registerAll(plugins);
 }
 
 /**
- * 取得指定節點類型的 Plugin
+ * 取得指定節點類型的 Plugin（全域）
  */
 export function getPlugin(nodeType: string): NodePlugin | undefined {
-  return pluginRegistry.get(nodeType);
+  return globalRegistry.get(nodeType);
 }
 
 /**
- * 取得所有已註冊的 Plugin
+ * 取得所有已註冊的 Plugin（全域）
  */
 export function getAllPlugins(): Map<string, NodePlugin> {
-  return new Map(pluginRegistry);
+  return globalRegistry.getAll();
 }
 
 /**
- * 清除所有已註冊的 Plugin（用於測試）
+ * 清除所有已註冊的 Plugin（全域，用於測試）
  */
 export function clearPlugins(): void {
-  pluginRegistry.clear();
+  globalRegistry.clear();
 }
 
 /**
- * 檢查是否已註冊特定節點類型
+ * 檢查是否已註冊特定節點類型（全域）
  */
 export function hasPlugin(nodeType: string): boolean {
-  return pluginRegistry.has(nodeType);
+  return globalRegistry.has(nodeType);
 }

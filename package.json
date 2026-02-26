@@ -25,7 +25,8 @@
       "import": "./dist/server.js"
     },
     "./compiler": {
-      "import": "./dist/server.js"
+      "import": "./dist/compiler.js",
+      "types": "./dist/compiler.d.ts"
     }
   },
   "files": [

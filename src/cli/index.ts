@@ -15,6 +15,7 @@ import { join, dirname, resolve, extname } from "node:path";
 import { watch } from "chokidar";
 import { compile, traceLineToNode } from "../lib/compiler/compiler";
 import type { SourceMap } from "../lib/compiler/compiler";
+import type { PlatformName } from "../lib/compiler/platforms/types";
 import { validateFlowIR } from "../lib/ir/validator";
 import { splitToFileSystem, mergeFromFileSystem } from "../lib/storage/split-storage";
 import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib/compiler/env-validator";
@@ -36,9 +37,10 @@ program
   .command("compile <file>")
   .description("編譯單一 .flow.json 檔案為 TypeScript")
   .option("-o, --output <path>", "指定輸出路徑（覆蓋自動偵測）")
+  .option("--platform <name>", "目標平台: nextjs | express | cloudflare", "nextjs")
   .option("--dry-run", "僅顯示生成的代碼，不寫入檔案")
   .option("--source-map", "生成 Source Map 映射檔 (.flow.map.json)")
-  .action((file: string, options: { output?: string; dryRun?: boolean; sourceMap?: boolean }) => {
+  .action((file: string, options: { output?: string; platform?: string; dryRun?: boolean; sourceMap?: boolean }) => {
     const filePath = resolve(file);
 
     if (!existsSync(filePath)) {
@@ -68,7 +70,7 @@ program
     }
 
     // 編譯
-    const result = compile(ir);
+    const result = compile(ir, { platform: (options.platform ?? "nextjs") as PlatformName });
     if (!result.success) {
       console.error("❌ 編譯失敗:");
       result.errors?.forEach((e) => console.error(`  ${e}`));

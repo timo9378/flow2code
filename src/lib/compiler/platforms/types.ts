@@ -13,6 +13,7 @@
 
 import type { SourceFile, CodeBlockWriter } from "ts-morph";
 import type { FlowNode, NodeId, FlowIR } from "../../ir/types";
+import type { SymbolTable } from "../symbol-table";
 
 // ============================================================
 // Platform Adapter 介面
@@ -59,6 +60,16 @@ export interface PlatformAdapter {
   generateErrorResponse(writer: CodeBlockWriter): void;
 
   /**
+   * 根據觸發器類型生成初始化代碼（解析 request body/query 等）
+   * 每個平台使用自己的 HTTP API（Next.js / Express / Cloudflare Workers）。
+   */
+  generateTriggerInit(
+    writer: CodeBlockWriter,
+    trigger: FlowNode,
+    context: TriggerInitContext
+  ): void;
+
+  /**
    * 取得輸出檔案路徑
    */
   getOutputFilePath(trigger: FlowNode): string;
@@ -78,6 +89,10 @@ export interface PlatformContext {
   nodeMap: Map<NodeId, FlowNode>;
   envVars: Set<string>;
   imports: Map<string, Set<string>>;
+}
+
+export interface TriggerInitContext {
+  symbolTable: SymbolTable;
 }
 
 // ============================================================

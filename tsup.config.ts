@@ -45,4 +45,20 @@ export default defineConfig([
       "@xyflow/react",
     ],
   },
+  // Headless Compiler bundle (純編譯器，不包含 UI/Server)
+  {
+    entry: { compiler: "src/lib/index.ts" },
+    format: ["esm"],
+    target: "node20",
+    platform: "node",
+    outDir: "dist",
+    splitting: false,
+    sourcemap: true,
+    dts: true,
+    clean: false,
+    external: [
+      "ts-morph",
+      "yaml",
+    ],
+  },
 ]);
