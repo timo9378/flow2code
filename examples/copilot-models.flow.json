@@ -1,0 +1,69 @@
+{
+  "version": "1.0.0",
+  "meta": {
+    "name": "Copilot Models List",
+    "description": "GET /api/models → 列出 copilot-api 可用模型",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z"
+  },
+  "nodes": [
+    {
+      "id": "trigger_models",
+      "nodeType": "http_webhook",
+      "category": "trigger",
+      "label": "GET /api/models",
+      "params": {
+        "method": "GET",
+        "routePath": "/api/models",
+        "parseBody": false
+      },
+      "inputs": [],
+      "outputs": [
+        { "id": "request", "label": "Request", "dataType": "object" }
+      ]
+    },
+    {
+      "id": "fetch_models",
+      "nodeType": "fetch_api",
+      "category": "action",
+      "label": "Fetch Available Models",
+      "params": {
+        "url": "${COPILOT_API_URL}/v1/models",
+        "method": "GET",
+        "parseJson": true
+      },
+      "inputs": [{ "id": "input", "label": "Input", "dataType": "any", "required": false }],
+      "outputs": [
+        { "id": "data", "label": "Data", "dataType": "any" }
+      ]
+    },
+    {
+      "id": "return_models",
+      "nodeType": "return_response",
+      "category": "output",
+      "label": "Return Models",
+      "params": {
+        "statusCode": 200,
+        "bodyExpression": "{{$input}}"
+      },
+      "inputs": [{ "id": "data", "label": "Data", "dataType": "any", "required": true }],
+      "outputs": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "sourceNodeId": "trigger_models",
+      "sourcePortId": "request",
+      "targetNodeId": "fetch_models",
+      "targetPortId": "input"
+    },
+    {
+      "id": "e2",
+      "sourceNodeId": "fetch_models",
+      "sourcePortId": "data",
+      "targetNodeId": "return_models",
+      "targetPortId": "data"
+    }
+  ]
+}

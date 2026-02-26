@@ -1,0 +1,98 @@
+{
+  "version": "1.0.0",
+  "meta": {
+    "name": "Copilot Usage Stats",
+    "description": "GET /api/usage → 取得 Copilot 使用量與配額",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z"
+  },
+  "nodes": [
+    {
+      "id": "trigger_usage",
+      "nodeType": "http_webhook",
+      "category": "trigger",
+      "label": "GET /api/usage",
+      "params": {
+        "method": "GET",
+        "routePath": "/api/usage",
+        "parseBody": false
+      },
+      "inputs": [],
+      "outputs": [
+        { "id": "request", "label": "Request", "dataType": "object" }
+      ]
+    },
+    {
+      "id": "fetch_usage",
+      "nodeType": "fetch_api",
+      "category": "action",
+      "label": "Fetch Usage Stats",
+      "params": {
+        "url": "${COPILOT_API_URL}/usage",
+        "method": "GET",
+        "parseJson": true
+      },
+      "inputs": [{ "id": "input", "label": "Input", "dataType": "any", "required": false }],
+      "outputs": [
+        { "id": "data", "label": "Data", "dataType": "any" }
+      ]
+    },
+    {
+      "id": "fetch_token",
+      "nodeType": "fetch_api",
+      "category": "action",
+      "label": "Fetch Current Token",
+      "params": {
+        "url": "${COPILOT_API_URL}/token",
+        "method": "GET",
+        "parseJson": true
+      },
+      "inputs": [{ "id": "input", "label": "Input", "dataType": "any", "required": false }],
+      "outputs": [
+        { "id": "data", "label": "Data", "dataType": "any" }
+      ]
+    },
+    {
+      "id": "return_usage",
+      "nodeType": "return_response",
+      "category": "output",
+      "label": "Return Combined Stats",
+      "params": {
+        "statusCode": 200,
+        "bodyExpression": "{ usage: flowState['fetch_usage'], token: flowState['fetch_token'] }"
+      },
+      "inputs": [{ "id": "data", "label": "Data", "dataType": "any", "required": true }],
+      "outputs": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "sourceNodeId": "trigger_usage",
+      "sourcePortId": "request",
+      "targetNodeId": "fetch_usage",
+      "targetPortId": "input"
+    },
+    {
+      "id": "e2",
+      "sourceNodeId": "trigger_usage",
+      "sourcePortId": "request",
+      "targetNodeId": "fetch_token",
+      "targetPortId": "input"
+    },
+    {
+      "id": "e3",
+      "sourceNodeId": "fetch_usage",
+      "sourcePortId": "data",
+      "targetNodeId": "return_usage",
+      "targetPortId": "data"
+    },
+    {
+      "id": "e4",
+      "sourceNodeId": "fetch_token",
+      "sourcePortId": "data",
+      "targetNodeId": "return_usage",
+      "targetPortId": "data"
+    }
+  ]
+}

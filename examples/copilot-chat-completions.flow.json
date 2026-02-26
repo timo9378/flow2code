@@ -1,0 +1,115 @@
+{
+  "version": "1.0.0",
+  "meta": {
+    "name": "Copilot Chat Completions Proxy",
+    "description": "POST /api/chat/completions → 轉發至 copilot-api，支援 streaming",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "updatedAt": "2025-01-01T00:00:00Z"
+  },
+  "nodes": [
+    {
+      "id": "trigger_chat",
+      "nodeType": "http_webhook",
+      "category": "trigger",
+      "label": "POST /api/chat/completions",
+      "params": {
+        "method": "POST",
+        "routePath": "/api/chat/completions",
+        "parseBody": true
+      },
+      "inputs": [],
+      "outputs": [
+        { "id": "request", "label": "Request", "dataType": "object" },
+        { "id": "body", "label": "Body", "dataType": "object" }
+      ]
+    },
+    {
+      "id": "validate_body",
+      "nodeType": "if_else",
+      "category": "logic",
+      "label": "Check Required Fields",
+      "params": {
+        "condition": "flowState['trigger_chat'].body.model && flowState['trigger_chat'].body.messages"
+      },
+      "inputs": [{ "id": "input", "label": "Input", "dataType": "any", "required": true }],
+      "outputs": [
+        { "id": "true", "label": "Valid", "dataType": "any" },
+        { "id": "false", "label": "Invalid", "dataType": "any" }
+      ]
+    },
+    {
+      "id": "error_response",
+      "nodeType": "return_response",
+      "category": "output",
+      "label": "Validation Error",
+      "params": {
+        "statusCode": 400,
+        "bodyExpression": "{ error: \"Missing required fields: model, messages\" }"
+      },
+      "inputs": [{ "id": "data", "label": "Data", "dataType": "any", "required": true }],
+      "outputs": []
+    },
+    {
+      "id": "fetch_completions",
+      "nodeType": "fetch_api",
+      "category": "action",
+      "label": "Call Copilot API",
+      "params": {
+        "url": "${COPILOT_API_URL}/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "flowState['trigger_chat'].body",
+        "parseJson": true
+      },
+      "inputs": [{ "id": "input", "label": "Input", "dataType": "any", "required": true }],
+      "outputs": [
+        { "id": "response", "label": "Response", "dataType": "object" },
+        { "id": "data", "label": "Data", "dataType": "any" }
+      ]
+    },
+    {
+      "id": "return_data",
+      "nodeType": "return_response",
+      "category": "output",
+      "label": "Return Chat Response",
+      "params": {
+        "statusCode": 200,
+        "bodyExpression": "{{$input}}"
+      },
+      "inputs": [{ "id": "data", "label": "Data", "dataType": "any", "required": true }],
+      "outputs": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "sourceNodeId": "trigger_chat",
+      "sourcePortId": "body",
+      "targetNodeId": "validate_body",
+      "targetPortId": "input"
+    },
+    {
+      "id": "e2",
+      "sourceNodeId": "validate_body",
+      "sourcePortId": "false",
+      "targetNodeId": "error_response",
+      "targetPortId": "data"
+    },
+    {
+      "id": "e3",
+      "sourceNodeId": "validate_body",
+      "sourcePortId": "true",
+      "targetNodeId": "fetch_completions",
+      "targetPortId": "input"
+    },
+    {
+      "id": "e4",
+      "sourceNodeId": "fetch_completions",
+      "sourcePortId": "data",
+      "targetNodeId": "return_data",
+      "targetPortId": "data"
+    }
+  ]
+}

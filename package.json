@@ -1,0 +1,54 @@
+{
+  "name": "flow2code",
+  "version": "0.1.0",
+  "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "compile": "node --loader ts-node/esm src/cli/index.ts compile",
+    "watch": "node --loader ts-node/esm src/cli/index.ts watch"
+  },
+  "bin": {
+    "flow2code": "./src/cli/index.ts"
+  },
+  "keywords": [
+    "flow",
+    "visual-programming",
+    "ast",
+    "compiler",
+    "typescript",
+    "next.js"
+  ],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0",
+  "dependencies": {
+    "@xyflow/react": "^12.10.1",
+    "chokidar": "^5.0.0",
+    "commander": "^14.0.3",
+    "next": "^16.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "ts-morph": "^27.0.2",
+    "yaml": "^2.8.2",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/node": "^25.3.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "eslint": "^10.0.2",
+    "postcss": "^8.5.6",
+    "prettier": "^3.8.1",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

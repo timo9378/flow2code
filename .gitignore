@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+
+# production
+build/
+dist/
+
+# env files
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# generated
+src/generated/
+*.flow.map.json
+
+# debug
+npm-debug.log*
+pnpm-debug.log*
+test.md
+research.md
+keypoint.md
