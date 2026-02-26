@@ -125,14 +125,14 @@ describe("Symbol Table", () => {
       expect(result.code).toContain("const callExternalApi");
     });
 
-    it("並發節點應有命名變數別名", () => {
+    it("並發節點應使用 DAG 模式（per-node promise）", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
-      // 應有兩個並發節點的命名變數
-      expect(result.code).toContain("const fetchUsers");
-      expect(result.code).toContain("const fetchPosts");
+      // DAG 模式下，並發節點使用 promise 變數而非命名別名
+      expect(result.code).toContain("const p_fetch_1");
+      expect(result.code).toContain("const p_fetch_2");
     });
 
     it("${} 表達式應使用命名變數而非 flowState", () => {

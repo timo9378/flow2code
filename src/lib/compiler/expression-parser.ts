@@ -53,6 +53,12 @@ export interface ExpressionContext {
    * 解析為 scopeVar['nodeId'] 而非 flowState['nodeId']
    */
   scopeStack?: ScopeEntry[];
+  /**
+   * Block-scoped node IDs：這些節點是在子區塊（if/else、try/catch、for-loop 內部）
+   * 生成的，其 Symbol Table 別名不在外層作用域中可見。
+   * 表達式解析必須 fallback 到 flowState['nodeId']。
+   */
+  blockScopedNodeIds?: Set<NodeId>;
 }
 
 interface ParsedToken {
@@ -257,6 +263,11 @@ function resolveReference(
     }
   }
 
+  // ── Block-scoped 節點：強制 fallback 到 flowState（其 Symbol Table 別名不在作用域內） ──
+  if (context.blockScopedNodeIds?.has(base)) {
+    return `flowState['${base}']${path}`;
+  }
+
   // ── 一般參照：若有 Symbol Table 則使用命名變數，否則 fallback flowState ──
   if (context.symbolTable?.hasVar(base)) {
     return `${context.symbolTable.getVarName(base)}${path}`;
@@ -284,10 +295,15 @@ function resolveInputRef(
     }) || incoming[0];
 
   if (dataSource) {
-    if (context.symbolTable?.hasVar(dataSource.sourceNodeId)) {
-      return `${context.symbolTable.getVarName(dataSource.sourceNodeId)}${path}`;
+    const srcId = dataSource.sourceNodeId;
+    // Block-scoped 節點必須 fallback 到 flowState
+    if (context.blockScopedNodeIds?.has(srcId)) {
+      return `flowState['${srcId}']${path}`;
     }
-    return `flowState['${dataSource.sourceNodeId}']${path}`;
+    if (context.symbolTable?.hasVar(srcId)) {
+      return `${context.symbolTable.getVarName(srcId)}${path}`;
+    }
+    return `flowState['${srcId}']${path}`;
   }
 
   return '{ error: "No input connected" }';

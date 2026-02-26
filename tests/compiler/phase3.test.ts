@@ -316,14 +316,14 @@ describe("Scope Stack", () => {
   });
 
   describe("forLoopPlugin scope isolation", () => {
-    it("for-loop 子節點的表達式應解析到 _loopScope", () => {
+    it("for-loop 子節點的表達式應解析到動態作用域變數", () => {
       const ir = createForLoopWithChildFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
 
-      // 子節點 fetch_inner 的 body `{{loop_1}}` 應解析到 _loopScope
-      expect(result.code).toContain("_loopScope['loop_1']");
+      // 子節點 fetch_inner 的 body `{{loop_1}}` 應解析到動態命名的作用域變數
+      expect(result.code).toContain("_scope_loop_1['loop_1']");
     });
 
     it("for-loop 外部引用應走 flowState", () => {
@@ -333,18 +333,18 @@ describe("Scope Stack", () => {
       expect(result.success).toBe(true);
 
       // response_1 在 loop 外部引用 {{loop_1}}，應走 flowState
-      // 因為 response_1 是在拓撲排序後生成，不在 loop body 內
       expect(result.code).toContain("flowState['loop_1']");
     });
   });
 
   describe("tryCatchPlugin scope isolation", () => {
-    it("try-catch 子節點推入 _tryScope", () => {
+    it("try-catch 子節點推入動態命名的 try scope", () => {
       const ir = createTryCatchWithChildFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
-      expect(result.code).toContain("_tryScope");
+      // 動態 scope 變數名稱（含節點 ID）
+      expect(result.code).toContain("_scope_try_1_try");
     });
   });
 });
@@ -472,7 +472,8 @@ describe("Call Subflow", () => {
     const result = compile(ir);
 
     expect(result.success).toBe(true);
-    expect(result.code).toContain('import("./email-flow")');
+    // 靜態 import 在檔案頂端（而非 runtime await import）
+    expect(result.code).not.toContain('import("./email-flow")');
     expect(result.code).toContain("sendEmail");
     expect(result.code).toContain("flowState['subflow_1']");
   });

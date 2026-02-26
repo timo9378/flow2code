@@ -240,6 +240,14 @@ const callSubflowPlugin: NodePlugin = {
   generate(node, writer, context) {
     const params = node.params as CallSubflowParams;
 
+    // 靜態引入：註冊到檔案頂端的 import 區塊
+    const existing = context.imports.get(params.flowPath);
+    if (existing) {
+      existing.add(params.functionName);
+    } else {
+      context.imports.set(params.flowPath, new Set([params.functionName]));
+    }
+
     // 解析輸入映射表達式
     const args = Object.entries(params.inputMapping)
       .map(([key, expr]) => {
@@ -248,9 +256,6 @@ const callSubflowPlugin: NodePlugin = {
       })
       .join(", ");
 
-    writer.writeLine(
-      `const { ${params.functionName} } = await import("${params.flowPath}");`
-    );
     writer.writeLine(
       `flowState['${node.id}'] = await ${params.functionName}({ ${args} });`
     );
@@ -318,6 +323,9 @@ const forLoopPlugin: NodePlugin = {
     );
     const sanitizedId = node.id.replace(/[^a-zA-Z0-9_]/g, "_");
 
+    // 動態作用域變數名稱：避免巢狀迴圈的 const 遮蔽問題
+    const scopeVar = `_scope_${sanitizedId}`;
+
     // 使用作用域隔離，防止迴圈內變數污染全域 flowState
     writer.writeLine(`const ${sanitizedId}_results: unknown[] = [];`);
 
@@ -332,18 +340,18 @@ const forLoopPlugin: NodePlugin = {
     }
 
     writer.block(() => {
-      // 建立迴圈內的局部 scope
+      // 建立迴圈內的局部 scope（變數名稱唯一，不會遮蔽外層）
       writer.writeLine(
-        `const _loopScope: Record<string, unknown> = {};`
+        `const ${scopeVar}: Record<string, unknown> = {};`
       );
 
       // 將迴圈迭代項注入 scope
       writer.writeLine(
-        `_loopScope['${node.id}'] = ${params.itemVariable};`
+        `${scopeVar}['${node.id}'] = ${params.itemVariable};`
       );
 
-      // 推入作用域：子節點對 node.id 的引用會解析到 _loopScope
-      context.pushScope(node.id, '_loopScope');
+      // 推入作用域：子節點對 node.id 的引用會解析到 scopeVar
+      context.pushScope(node.id, scopeVar);
 
       // 生成迴圈體內子節點
       const childEdges = context.ir.edges.filter(
@@ -381,14 +389,17 @@ const tryCatchPlugin: NodePlugin = {
       (e) => e.sourceNodeId === node.id && e.sourcePortId === "error"
     );
 
+    const tryScopeVar = `_scope_${node.id.replace(/[^a-zA-Z0-9_]/g, "_")}_try`;
+    const catchScopeVar = `_scope_${node.id.replace(/[^a-zA-Z0-9_]/g, "_")}_catch`;
+
     writer.write("try ").block(() => {
-      // 建立 try 區塊的局部 scope
+      // 建立 try 區塊的局部 scope（變數名稱唯一）
       writer.writeLine(
-        `const _tryScope: Record<string, unknown> = {};`
+        `const ${tryScopeVar}: Record<string, unknown> = {};`
       );
 
-      // 推入作用域：子節點對 node.id 的引用會解析到 _tryScope
-      context.pushScope(node.id, '_tryScope');
+      // 推入作用域：子節點對 node.id 的引用會解析到 tryScopeVar
+      context.pushScope(node.id, tryScopeVar);
 
       for (const edge of successEdges) {
         const childNode = context.nodeMap.get(edge.targetNodeId);
@@ -407,16 +418,16 @@ const tryCatchPlugin: NodePlugin = {
       writer.writeLine(
         `console.error("Error in ${node.label}:", ${params.errorVariable});`
       );
-      // 建立 catch 區塊的局部 scope
+      // 建立 catch 區塊的局部 scope（變數名稱唯一）
       writer.writeLine(
-        `const _catchScope: Record<string, unknown> = {};`
+        `const ${catchScopeVar}: Record<string, unknown> = {};`
       );
       writer.writeLine(
         `flowState['${node.id}'] = { success: false, error: ${params.errorVariable} };`
       );
 
-      // 推入作用域：子節點對 node.id 的引用會解析到 _catchScope
-      context.pushScope(node.id, '_catchScope');
+      // 推入作用域：子節點對 node.id 的引用會解析到 catchScopeVar
+      context.pushScope(node.id, catchScopeVar);
 
       for (const edge of errorEdges) {
         const childNode = context.nodeMap.get(edge.targetNodeId);

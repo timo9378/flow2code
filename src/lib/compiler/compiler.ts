@@ -122,6 +122,12 @@ interface CompilerContext {
   symbolTable: SymbolTable;
   /** Scope Stack：追蹤目前所處的局部作用域（for-loop / try-catch 等） */
   scopeStack: ScopeEntry[];
+  /** 在子區塊（if/else、for-loop body、try/catch）內生成的節點 ID */
+  childBlockNodeIds: Set<NodeId>;
+  /** 是否啟用 DAG 並發排程（取代階層式 Promise.all） */
+  dagMode: boolean;
+  /** 不應使用 Symbol Table 別名的節點 ID（子區塊 + DAG promise 內節點） */
+  symbolTableExclusions: Set<NodeId>;
 }
 
 /**
@@ -190,10 +196,25 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     platform,
     symbolTable,
     scopeStack: [],
+    childBlockNodeIds: new Set(),
+    dagMode: false,
+    symbolTableExclusions: new Set(),
   };
 
-  // 4. 取得觸發器節點
+  // 偵測並發機會：若執行計畫有任何並發步驟，啟用 DAG 排程
   const trigger = ir.nodes.find((n) => n.category === NodeCategory.TRIGGER)!;
+  const hasConcurrency = plan.steps.some(
+    (s) => s.concurrent && s.nodeIds.filter((id) => id !== trigger.id).length > 1
+  );
+  if (hasConcurrency) {
+    context.dagMode = true;
+    // DAG 模式下，所有非 trigger 節點的 Symbol Table 別名不在外層可見
+    for (const node of ir.nodes) {
+      if (node.category !== NodeCategory.TRIGGER) {
+        context.symbolTableExclusions.add(node.id);
+      }
+    }
+  }
 
   // 5. 使用 ts-morph 建構 AST
   const project = new Project({ useInMemoryFileSystem: true });
@@ -377,7 +398,8 @@ function generateTriggerInit(
 }
 
 // ============================================================
-// 節點鏈生成器
+// ============================================================
+// 節點鏈生成器（調度器）
 // ============================================================
 
 function generateNodeChain(
@@ -385,22 +407,149 @@ function generateNodeChain(
   triggerId: NodeId,
   context: CompilerContext
 ): void {
+  if (context.dagMode) {
+    generateNodeChainDAG(writer, triggerId, context);
+  } else {
+    generateNodeChainSequential(writer, triggerId, context);
+  }
+}
+
+// ============================================================
+// 循序模式（無並發機會時使用）
+// ============================================================
+
+function generateNodeChainSequential(
+  writer: CodeBlockWriter,
+  triggerId: NodeId,
+  context: CompilerContext
+): void {
   const { plan, nodeMap } = context;
 
   for (const step of plan.steps) {
-    const nonTriggerNodes = step.nodeIds.filter((id) => id !== triggerId);
-    if (nonTriggerNodes.length === 0) continue;
+    // 過濾 trigger 和已在子區塊生成的節點
+    const activeNodes = step.nodeIds.filter(
+      (id) => id !== triggerId && !context.childBlockNodeIds.has(id)
+    );
+    if (activeNodes.length === 0) continue;
 
-    if (step.concurrent && nonTriggerNodes.length > 1) {
-      generateConcurrentNodes(writer, nonTriggerNodes, context);
+    if (step.concurrent && activeNodes.length > 1) {
+      generateConcurrentNodes(writer, activeNodes, context);
     } else {
-      for (const nodeId of nonTriggerNodes) {
+      for (const nodeId of activeNodes) {
         const node = nodeMap.get(nodeId);
         if (!node) continue;
         generateSingleNode(writer, node, context);
         writer.blankLine();
       }
     }
+  }
+}
+
+// ============================================================
+// DAG 並發模式（per-node promise，只 await 直接上游）
+// ============================================================
+
+/**
+ * 將子區塊節點的依賴解析到其宿主 DAG 節點。
+ * 例如 if_else → [true: fetch_child]，下游依賴 fetch_child 時
+ * 實際應 await if_else 的 promise。
+ */
+function resolveToDAGNodes(
+  depId: NodeId,
+  triggerId: NodeId,
+  context: CompilerContext,
+  visited: Set<NodeId> = new Set()
+): NodeId[] {
+  if (visited.has(depId) || depId === triggerId) return [];
+  visited.add(depId);
+
+  // 如果 dep 不是子區塊節點，它就是 DAG 節點（有自己的 promise）
+  if (!context.childBlockNodeIds.has(depId)) return [depId];
+
+  // 子區塊節點：往上游遞迴找到宿主 DAG 節點
+  const parentDeps = context.plan.dependencies.get(depId) ?? new Set();
+  const result: NodeId[] = [];
+  for (const pd of parentDeps) {
+    result.push(...resolveToDAGNodes(pd, triggerId, context, visited));
+  }
+  return result;
+}
+
+function generateNodeChainDAG(
+  writer: CodeBlockWriter,
+  triggerId: NodeId,
+  context: CompilerContext
+): void {
+  const { plan, nodeMap } = context;
+
+  // 按拓撲序收集所有非 trigger 節點
+  const allNodeIds = plan.sortedNodeIds.filter((id) => id !== triggerId);
+
+  // 分離 output 節點（它們含 return，不能包在 promise 裡）
+  const outputNodeIds: NodeId[] = [];
+  const dagNodeIds: NodeId[] = [];
+
+  for (const id of allNodeIds) {
+    // 子區塊節點跳過（由父節點 plugin 內部生成）
+    if (context.childBlockNodeIds.has(id)) continue;
+    const node = nodeMap.get(id);
+    if (!node) continue;
+    if (node.category === NodeCategory.OUTPUT) {
+      outputNodeIds.push(id);
+    } else {
+      dagNodeIds.push(id);
+    }
+  }
+
+  if (dagNodeIds.length > 0) {
+    writer.writeLine("// --- DAG Concurrent Execution ---");
+    writer.blankLine();
+  }
+
+  // 為每個 worker 節點生成 promise IIFE
+  for (const nodeId of dagNodeIds) {
+    const node = nodeMap.get(nodeId)!;
+
+    // 解析直接上游依賴（子區塊 dep 會被映射到其宿主 DAG 節點）
+    const rawDeps = [...(plan.dependencies.get(nodeId) ?? [])];
+    const resolvedDeps = new Set<NodeId>();
+    for (const depId of rawDeps) {
+      for (const dagDep of resolveToDAGNodes(depId, triggerId, context)) {
+        resolvedDeps.add(dagDep);
+      }
+    }
+    // 排除自己（防止自環）
+    resolvedDeps.delete(nodeId);
+
+    const promiseVar = `p_${sanitizeId(nodeId)}`;
+    writer.write(`const ${promiseVar} = (async () => `).block(() => {
+      // await 所有直接上游 promise
+      for (const depId of resolvedDeps) {
+        writer.writeLine(`await p_${sanitizeId(depId)};`);
+      }
+      writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+      generateNodeBody(writer, node, context);
+    });
+    writer.writeLine(`)();`);
+    writer.blankLine();
+  }
+
+  // Output 節點：循序 await 上游 promise，然後執行（含 return）
+  for (const nodeId of outputNodeIds) {
+    const node = nodeMap.get(nodeId)!;
+    const rawDeps = [...(plan.dependencies.get(nodeId) ?? [])];
+    const resolvedDeps = new Set<NodeId>();
+    for (const depId of rawDeps) {
+      for (const dagDep of resolveToDAGNodes(depId, triggerId, context)) {
+        resolvedDeps.add(dagDep);
+      }
+    }
+
+    for (const depId of resolvedDeps) {
+      writer.writeLine(`await p_${sanitizeId(depId)};`);
+    }
+    writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+    generateNodeBody(writer, node, context);
   }
 }
 
@@ -414,11 +563,24 @@ function generateConcurrentNodes(
   context: CompilerContext
 ): void {
   const { nodeMap } = context;
+  // 過濾已在子區塊生成的節點
+  const activeNodeIds = nodeIds.filter((id) => !context.childBlockNodeIds.has(id));
+  if (activeNodeIds.length === 0) return;
+
+  // 只剩一個節點時無需 Promise.all
+  if (activeNodeIds.length === 1) {
+    const node = nodeMap.get(activeNodeIds[0]);
+    if (node) {
+      generateSingleNode(writer, node, context);
+      writer.blankLine();
+    }
+    return;
+  }
 
   writer.writeLine("// --- Concurrent Execution ---");
 
   const taskNames: string[] = [];
-  for (const nodeId of nodeIds) {
+  for (const nodeId of activeNodeIds) {
     const node = nodeMap.get(nodeId);
     if (!node) continue;
     const taskName = `task_${sanitizeId(nodeId)}`;
@@ -434,12 +596,12 @@ function generateConcurrentNodes(
     `const [${taskNames.map((_, i) => `r${i}`).join(", ")}] = await Promise.all([${taskNames.map((t) => `${t}()`).join(", ")}]);`
   );
 
-  nodeIds.forEach((nodeId, i) => {
+  activeNodeIds.forEach((nodeId, i) => {
     writer.writeLine(`flowState['${nodeId}'] = r${i};`);
   });
 
   // 生成命名變數別名
-  nodeIds.forEach((nodeId) => {
+  activeNodeIds.forEach((nodeId) => {
     const varName = context.symbolTable.getVarName(nodeId);
     writer.writeLine(`const ${varName} = flowState['${nodeId}'];`);
   });
@@ -508,6 +670,10 @@ function createPluginContext(
         scopeStack: context.scopeStack.length > 0
           ? [...context.scopeStack]
           : undefined,
+        // 合併子區塊 + DAG 排除清單
+        blockScopedNodeIds: context.symbolTableExclusions.size > 0
+          ? context.symbolTableExclusions
+          : undefined,
         currentNodeId,
       };
       return parseExpression(expr, exprContext);
@@ -518,6 +684,9 @@ function createPluginContext(
     },
 
     generateChildNode(writer: CodeBlockWriter, node: FlowNode): void {
+      // 標記此節點為「子區塊生成」，避免在頂層重複生成 + 避免 Symbol Table 別名洩漏
+      context.childBlockNodeIds.add(node.id);
+      context.symbolTableExclusions.add(node.id);
       generateNodeBody(writer, node, context);
     },
 

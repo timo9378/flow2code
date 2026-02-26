@@ -127,7 +127,7 @@ describe("AST Compiler", () => {
     });
   });
 
-  describe("並發執行 (Promise.all)", () => {
+  describe("並發執行 (DAG Scheduling)", () => {
     it("應成功編譯並發流程", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
@@ -135,20 +135,22 @@ describe("AST Compiler", () => {
       expect(result.success).toBe(true);
     });
 
-    it("生成的代碼應包含 Promise.all", () => {
+    it("生成的代碼應使用 per-node promise (DAG 模式)", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
 
-      expect(result.code).toContain("Promise.all");
+      // DAG 模式：每個節點是獨立的 promise IIFE
+      expect(result.code).toContain("const p_");
+      expect(result.code).toContain("(async () =>");
     });
 
-    it("生成的代碼應有兩個並發 task", () => {
+    it("生成的代碼應有兩個並發 promise", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
 
-      // 應有 task 函式定義
-      expect(result.code).toContain("const task_");
-      expect(result.code).toContain("async ()");
+      // 應有兩個 promise 變數
+      expect(result.code).toContain("const p_fetch_1");
+      expect(result.code).toContain("const p_fetch_2");
     });
   });
 
