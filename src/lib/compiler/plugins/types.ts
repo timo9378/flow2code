@@ -38,6 +38,8 @@ export interface PluginContext {
   resolveEnvVars: (url: string) => string;
   /** 生成子節點代碼（用於 if/else, try/catch 等分支節點） */
   generateChildNode: (writer: CodeBlockWriter, node: FlowNode) => void;
+  /** 取得節點的人類可讀變數名稱（由 Symbol Table 提供） */
+  getVarName: (nodeId: NodeId) => string;
 }
 
 export interface NodePlugin {

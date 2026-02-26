@@ -31,3 +31,20 @@ export { parseExpression, ExpressionParseError } from "./expression-parser";
 
 // ── Type Inference ──
 export { inferFlowStateTypes } from "./type-inference";
+
+// ── Symbol Table ──
+export {
+  buildSymbolTable,
+  labelToVarName,
+  type SymbolTable,
+} from "./symbol-table";
+
+// ── Environment Variable Validation ──
+export {
+  collectEnvVars,
+  validateEnvVars,
+  parseEnvFile,
+  formatEnvValidationReport,
+  type EnvValidationResult,
+  type EnvVarUsage,
+} from "./env-validator";

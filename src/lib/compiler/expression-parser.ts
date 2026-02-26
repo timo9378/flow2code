@@ -21,6 +21,7 @@
 
 import type { FlowIR, FlowNode, NodeId } from "../ir/types";
 import { NodeCategory } from "../ir/types";
+import type { SymbolTable } from "./symbol-table";
 
 // ============================================================
 // Parser Types
@@ -33,6 +34,8 @@ export interface ExpressionContext {
   nodeMap: Map<NodeId, FlowNode>;
   /** 當前節點 ID（用於解析 $input） */
   currentNodeId?: NodeId;
+  /** Symbol Table：啟用後表達式會使用命名變數取代 flowState['nodeId'] */
+  symbolTable?: SymbolTable;
 }
 
 interface ParsedToken {
@@ -226,7 +229,10 @@ function resolveReference(
     return resolveTriggerRef(path, context);
   }
 
-  // ── 一般參照：{{nodeId}} → flowState.nodeId ──
+  // ── 一般參照：若有 Symbol Table 則使用命名變數，否則 fallback flowState ──
+  if (context.symbolTable?.hasVar(base)) {
+    return `${context.symbolTable.getVarName(base)}${path}`;
+  }
   return `flowState['${base}']${path}`;
 }
 
@@ -250,6 +256,9 @@ function resolveInputRef(
     }) || incoming[0];
 
   if (dataSource) {
+    if (context.symbolTable?.hasVar(dataSource.sourceNodeId)) {
+      return `${context.symbolTable.getVarName(dataSource.sourceNodeId)}${path}`;
+    }
     return `flowState['${dataSource.sourceNodeId}']${path}`;
   }
 
@@ -264,6 +273,9 @@ function resolveTriggerRef(
     (n) => n.category === NodeCategory.TRIGGER
   );
   if (trigger) {
+    if (context.symbolTable?.hasVar(trigger.id)) {
+      return `${context.symbolTable.getVarName(trigger.id)}${path}`;
+    }
     return `flowState['${trigger.id}']${path}`;
   }
   return "undefined";

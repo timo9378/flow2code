@@ -49,6 +49,7 @@ import {
 } from "./plugins/index";
 import { builtinPlugins } from "./plugins/builtin";
 import { inferFlowStateTypes } from "./type-inference";
+import { buildSymbolTable, type SymbolTable } from "./symbol-table";
 
 // ── 初始化內建 Plugins（只執行一次） ──
 let _builtinRegistered = false;
@@ -118,6 +119,7 @@ interface CompilerContext {
   sourceMapEntries: Map<NodeId, { startLine: number; endLine: number }>;
   currentLine: number;
   platform: PlatformAdapter;
+  symbolTable: SymbolTable;
 }
 
 /**
@@ -172,6 +174,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
   const platformName = options?.platform ?? "nextjs";
   const platform = getPlatform(platformName);
+  const symbolTable = buildSymbolTable(ir);
 
   const context: CompilerContext = {
     ir,
@@ -183,6 +186,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     sourceMapEntries: new Map(),
     currentLine: 1,
     platform,
+    symbolTable,
   };
 
   // 4. 取得觸發器節點
@@ -285,7 +289,7 @@ function generateFunctionBody(
   writer.writeLine("const flowState = {} as FlowState;");
   writer.blankLine();
 
-  // ── 觸發器初始化 ──
+  // ── 觸發器初始化（使用命名變數） ──
   generateTriggerInit(writer, trigger, context);
   writer.blankLine();
 
@@ -294,13 +298,15 @@ function generateFunctionBody(
 }
 
 /**
- * 根據觸發器類型初始化 flowState
+ * 根據觸發器類型初始化 flowState（使用命名變數）
  */
 function generateTriggerInit(
   writer: CodeBlockWriter,
   trigger: FlowNode,
-  _context: CompilerContext
+  context: CompilerContext
 ): void {
+  const varName = context.symbolTable.getVarName(trigger.id);
+
   switch (trigger.nodeType) {
     case TriggerType.HTTP_WEBHOOK: {
       const params = trigger.params as HttpWebhookParams;
@@ -312,7 +318,10 @@ function generateTriggerInit(
           "const query = Object.fromEntries(searchParams.entries());"
         );
         writer.writeLine(
-          `flowState['${trigger.id}'] = { query, url: req.url };`
+          `const ${varName} = { query, url: req.url };`
+        );
+        writer.writeLine(
+          `flowState['${trigger.id}'] = ${varName};`
         );
       } else if (
         params.parseBody &&
@@ -328,18 +337,27 @@ function generateTriggerInit(
           );
         });
         writer.writeLine(
-          `flowState['${trigger.id}'] = { body, url: req.url };`
+          `const ${varName} = { body, url: req.url };`
+        );
+        writer.writeLine(
+          `flowState['${trigger.id}'] = ${varName};`
         );
       } else {
         writer.writeLine(
-          `flowState['${trigger.id}'] = { url: req.url };`
+          `const ${varName} = { url: req.url };`
+        );
+        writer.writeLine(
+          `flowState['${trigger.id}'] = ${varName};`
         );
       }
       break;
     }
     case TriggerType.CRON_JOB: {
       writer.writeLine(
-        `flowState['${trigger.id}'] = { triggeredAt: new Date().toISOString() };`
+        `const ${varName} = { triggeredAt: new Date().toISOString() };`
+      );
+      writer.writeLine(
+        `flowState['${trigger.id}'] = ${varName};`
       );
       break;
     }
@@ -347,7 +365,8 @@ function generateTriggerInit(
       const params = trigger.params as ManualTriggerParams;
       if (params.args.length > 0) {
         const argsObj = params.args.map((a) => a.name).join(", ");
-        writer.writeLine(`flowState['${trigger.id}'] = { ${argsObj} };`);
+        writer.writeLine(`const ${varName} = { ${argsObj} };`);
+        writer.writeLine(`flowState['${trigger.id}'] = ${varName};`);
       }
       break;
     }
@@ -416,6 +435,12 @@ function generateConcurrentNodes(
     writer.writeLine(`flowState['${nodeId}'] = r${i};`);
   });
 
+  // 生成命名變數別名
+  nodeIds.forEach((nodeId) => {
+    const varName = context.symbolTable.getVarName(nodeId);
+    writer.writeLine(`const ${varName} = flowState['${nodeId}'];`);
+  });
+
   writer.blankLine();
 }
 
@@ -430,6 +455,12 @@ function generateSingleNode(
 ): void {
   writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
   generateNodeBody(writer, node, context);
+
+  // 為非輸出節點生成命名變數別名（Output 節點通常是 return，不需要別名）
+  if (node.category !== NodeCategory.OUTPUT) {
+    const varName = context.symbolTable.getVarName(node.id);
+    writer.writeLine(`const ${varName} = flowState['${node.id}'];`);
+  }
 }
 
 function generateNodeBody(
@@ -458,6 +489,7 @@ function createPluginContext(
   const exprContext: ExpressionContext = {
     ir: context.ir,
     nodeMap: context.nodeMap,
+    symbolTable: context.symbolTable,
   };
 
   return {
@@ -466,6 +498,10 @@ function createPluginContext(
     envVars: context.envVars,
     imports: context.imports,
     requiredPackages: context.requiredPackages,
+
+    getVarName(nodeId: NodeId): string {
+      return context.symbolTable.getVarName(nodeId);
+    },
 
     resolveExpression(expr: string, currentNodeId?: NodeId): string {
       return parseExpression(expr, {

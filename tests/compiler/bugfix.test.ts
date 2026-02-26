@@ -67,9 +67,10 @@ describe("Bug #1: Data Binding（$input 自動參照）", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // $input 應被解析為 fetch_1 的 flowState
-    expect(result.code).toContain("flowState['fetch_1']");
-    expect(result.code).toContain("NextResponse.json(flowState['fetch_1']");
+    // $input 應被解析為 fetch_1 的命名變數（Symbol Table）
+    expect(result.code).toContain("flowState['fetch_1']"); // plugin 仍會寫入 flowState
+    // v3: 表達式使用命名變數而非 flowState
+    expect(result.code).toContain("externalApi");
   });
 
   it("{{$input}} 在只有觸發器連入時，應 fallback 到觸發器", () => {
@@ -144,7 +145,8 @@ describe("Bug #1: Data Binding（$input 自動參照）", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    expect(result.code).toContain("flowState['trigger_1'].body");
+    // v3: {{$trigger.body}} 解析為觸發器的命名變數
+    expect(result.code).toContain("postApiProxy.body");
   });
 });
 

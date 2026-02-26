@@ -17,6 +17,8 @@ import { compile, traceLineToNode } from "../lib/compiler/compiler";
 import type { SourceMap } from "../lib/compiler/compiler";
 import { validateFlowIR } from "../lib/ir/validator";
 import { splitToFileSystem, mergeFromFileSystem } from "../lib/storage/split-storage";
+import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib/compiler/env-validator";
+import { semanticDiff, formatDiff } from "../lib/diff/semantic-diff";
 import type { FlowIR } from "../lib/ir/types";
 
 const program = new Command();
@@ -372,6 +374,90 @@ program
       }
     } catch (err) {
       console.error(`❌ 解析 Source Map 失敗: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+// ============================================================
+// diff 指令 — 語意化差異比較
+// ============================================================
+
+program
+  .command("diff <before> <after>")
+  .description("比較兩個 .flow.json 的語意化差異")
+  .action((beforeFile: string, afterFile: string) => {
+    const beforePath = resolve(beforeFile);
+    const afterPath = resolve(afterFile);
+
+    if (!existsSync(beforePath)) {
+      console.error(`❌ 檔案不存在: ${beforePath}`);
+      process.exit(1);
+    }
+    if (!existsSync(afterPath)) {
+      console.error(`❌ 檔案不存在: ${afterPath}`);
+      process.exit(1);
+    }
+
+    let beforeIR: FlowIR;
+    let afterIR: FlowIR;
+    try {
+      beforeIR = JSON.parse(readFileSync(beforePath, "utf-8")) as FlowIR;
+      afterIR = JSON.parse(readFileSync(afterPath, "utf-8")) as FlowIR;
+    } catch {
+      console.error("❌ JSON 解析失敗");
+      process.exit(1);
+    }
+
+    const summary = semanticDiff(beforeIR, afterIR);
+    console.log(formatDiff(summary));
+  });
+
+// ============================================================
+// env-check 指令 — 環境變數驗證
+// ============================================================
+
+program
+  .command("env-check <file>")
+  .description("驗證 .flow.json 中引用的環境變數是否已宣告")
+  .option("-e, --env <envFile>", "指定 .env 檔案路徑", ".env")
+  .action((file: string, options: { env: string }) => {
+    const filePath = resolve(file);
+    const envPath = resolve(options.env);
+
+    if (!existsSync(filePath)) {
+      console.error(`❌ 檔案不存在: ${filePath}`);
+      process.exit(1);
+    }
+
+    let ir: FlowIR;
+    try {
+      ir = JSON.parse(readFileSync(filePath, "utf-8")) as FlowIR;
+    } catch {
+      console.error("❌ JSON 解析失敗");
+      process.exit(1);
+    }
+
+    // 嘗試載入 .env 檔案
+    let declaredVars: string[] = [];
+    if (existsSync(envPath)) {
+      const envContent = readFileSync(envPath, "utf-8");
+      declaredVars = parseEnvFile(envContent);
+    } else {
+      // 也嘗試 .env.example
+      const examplePath = resolve(".env.example");
+      if (existsSync(examplePath)) {
+        const envContent = readFileSync(examplePath, "utf-8");
+        declaredVars = parseEnvFile(envContent);
+        console.log(`ℹ️  未找到 ${options.env}，使用 .env.example 作為參考\n`);
+      } else {
+        console.log(`⚠️  未找到 .env 或 .env.example，將報告所有使用的環境變數\n`);
+      }
+    }
+
+    const result = validateEnvVars(ir, declaredVars);
+    console.log(formatEnvValidationReport(result));
+
+    if (!result.valid) {
       process.exit(1);
     }
   });

@@ -14,7 +14,9 @@ import {
   type FlowEdge,
   type NodeId,
   NodeCategory,
+  CURRENT_IR_VERSION,
 } from "./types";
+import { needsMigration, migrateIR, MigrationError } from "./migrations/index";
 
 export interface ValidationError {
   code: string;
@@ -26,20 +28,56 @@ export interface ValidationError {
 export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
+  /** 若 IR 經過版本遷移，記錄遷移路徑 */
+  migrated?: boolean;
+  migratedIR?: FlowIR;
+  migrationLog?: string[];
 }
 
 /**
  * 驗證 FlowIR 文件的結構正確性
+ * 若版本不符，會自動嘗試遷移後再驗證
  */
 export function validateFlowIR(ir: FlowIR): ValidationResult {
   const errors: ValidationError[] = [];
   const nodeMap = new Map<NodeId, FlowNode>(ir.nodes.map((n) => [n.id, n]));
 
-  // 1. 檢查版本號
-  if (ir.version !== "1.0.0") {
+  // 1. 版本處理：自動遷移
+  let workingIR = ir;
+  let migrated = false;
+  let migrationLog: string[] | undefined;
+
+  if (needsMigration(ir.version)) {
+    try {
+      const result = migrateIR(
+        { version: ir.version, meta: ir.meta, nodes: ir.nodes as unknown[], edges: ir.edges as unknown[] },
+        CURRENT_IR_VERSION
+      );
+      if (result.migrated) {
+        workingIR = result.ir as unknown as FlowIR;
+        migrated = true;
+        migrationLog = result.applied;
+      }
+    } catch (err) {
+      if (err instanceof MigrationError) {
+        errors.push({
+          code: "MIGRATION_FAILED",
+          message: `IR 版本遷移失敗: ${err.message}`,
+        });
+      } else {
+        errors.push({
+          code: "INVALID_VERSION",
+          message: `不支援的 IR 版本: ${ir.version}`,
+        });
+      }
+    }
+  }
+
+  // 驗證遷移後（或原始）的版本
+  if (!migrated && workingIR.version !== CURRENT_IR_VERSION) {
     errors.push({
       code: "INVALID_VERSION",
-      message: `不支援的 IR 版本: ${ir.version}`,
+      message: `不支援的 IR 版本: ${workingIR.version}（目前支援: ${CURRENT_IR_VERSION}）`,
     });
   }
 
@@ -117,6 +155,9 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
   return {
     valid: errors.length === 0,
     errors,
+    migrated,
+    migratedIR: migrated ? workingIR : undefined,
+    migrationLog,
   };
 }
 
