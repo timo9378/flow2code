@@ -21,6 +21,7 @@
 
 import type { CodeBlockWriter } from "ts-morph";
 import type { FlowNode, NodeType, NodeId, FlowIR } from "../../ir/types";
+import type { ScopeEntry } from "../expression-parser";
 
 // ============================================================
 // Plugin 介面
@@ -40,6 +41,15 @@ export interface PluginContext {
   generateChildNode: (writer: CodeBlockWriter, node: FlowNode) => void;
   /** 取得節點的人類可讀變數名稱（由 Symbol Table 提供） */
   getVarName: (nodeId: NodeId) => string;
+  /**
+   * 推入一層局部作用域
+   * 在此作用域內，所有對 nodeId 的表達式引用都會解析到 scopeVar
+   */
+  pushScope: (nodeId: NodeId, scopeVar: string) => void;
+  /**
+   * 彈出最內層的局部作用域
+   */
+  popScope: () => void;
 }
 
 export interface NodePlugin {

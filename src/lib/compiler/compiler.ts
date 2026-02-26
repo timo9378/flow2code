@@ -33,7 +33,7 @@ import { validateFlowIR } from "../ir/validator";
 import { topologicalSort, type ExecutionPlan } from "../ir/topological-sort";
 
 // ── 新模組 ──
-import { parseExpression, type ExpressionContext } from "./expression-parser";
+import { parseExpression, type ExpressionContext, type ScopeEntry } from "./expression-parser";
 import {
   type PlatformAdapter,
   type PlatformName,
@@ -120,6 +120,8 @@ interface CompilerContext {
   currentLine: number;
   platform: PlatformAdapter;
   symbolTable: SymbolTable;
+  /** Scope Stack：追蹤目前所處的局部作用域（for-loop / try-catch 等） */
+  scopeStack: ScopeEntry[];
 }
 
 /**
@@ -187,6 +189,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     currentLine: 1,
     platform,
     symbolTable,
+    scopeStack: [],
   };
 
   // 4. 取得觸發器節點
@@ -286,7 +289,7 @@ function generateFunctionBody(
   // ── 型別安全的 flowState 宣告 ──
   const typeInfo = inferFlowStateTypes(ir);
   writer.writeLine(typeInfo.interfaceCode);
-  writer.writeLine("const flowState = {} as FlowState;");
+  writer.writeLine("const flowState: Partial<FlowState> = {};");
   writer.blankLine();
 
   // ── 觸發器初始化（使用命名變數） ──
@@ -486,12 +489,6 @@ function generateNodeBody(
 function createPluginContext(
   context: CompilerContext
 ): PluginContext & { __platformResponse?: PlatformAdapter["generateResponse"] } {
-  const exprContext: ExpressionContext = {
-    ir: context.ir,
-    nodeMap: context.nodeMap,
-    symbolTable: context.symbolTable,
-  };
-
   return {
     ir: context.ir,
     nodeMap: context.nodeMap,
@@ -504,10 +501,16 @@ function createPluginContext(
     },
 
     resolveExpression(expr: string, currentNodeId?: NodeId): string {
-      return parseExpression(expr, {
-        ...exprContext,
+      const exprContext: ExpressionContext = {
+        ir: context.ir,
+        nodeMap: context.nodeMap,
+        symbolTable: context.symbolTable,
+        scopeStack: context.scopeStack.length > 0
+          ? [...context.scopeStack]
+          : undefined,
         currentNodeId,
-      });
+      };
+      return parseExpression(expr, exprContext);
     },
 
     resolveEnvVars(url: string): string {
@@ -516,6 +519,14 @@ function createPluginContext(
 
     generateChildNode(writer: CodeBlockWriter, node: FlowNode): void {
       generateNodeBody(writer, node, context);
+    },
+
+    pushScope(nodeId: NodeId, scopeVar: string): void {
+      context.scopeStack.push({ nodeId, scopeVar });
+    },
+
+    popScope(): void {
+      context.scopeStack.pop();
     },
 
     __platformResponse: context.platform.generateResponse.bind(context.platform),

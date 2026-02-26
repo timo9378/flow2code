@@ -27,7 +27,11 @@ export {
 } from "./plugins/index";
 
 // ── Expression Parser ──
-export { parseExpression, ExpressionParseError } from "./expression-parser";
+export {
+  parseExpression,
+  ExpressionParseError,
+  type ScopeEntry,
+} from "./expression-parser";
 
 // ── Type Inference ──
 export { inferFlowStateTypes } from "./type-inference";

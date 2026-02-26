@@ -39,12 +39,12 @@ export function inferFlowStateTypes(ir: FlowIR): FlowStateTypeInfo {
     nodeTypes.set(node.id, type);
   }
 
-  // 生成 interface 代碼
+  // 生成 interface 代碼（所有欄位為 optional，因為節點按拓撲順序執行，不一定每個都會被賦值）
   const fields = ir.nodes
     .map((node) => {
       const type = nodeTypes.get(node.id) || "unknown";
       const safeId = node.id;
-      return `  '${safeId}': ${type};`;
+      return `  '${safeId}'?: ${type};`;
     })
     .join("\n");
 
@@ -59,7 +59,7 @@ export function inferFlowStateTypes(ir: FlowIR): FlowStateTypeInfo {
  */
 export function generateFlowStateDeclaration(ir: FlowIR): string {
   const typeInfo = inferFlowStateTypes(ir);
-  return `${typeInfo.interfaceCode}\nconst flowState = {} as FlowState;`;
+  return `${typeInfo.interfaceCode}\nconst flowState: Partial<FlowState> = {};`;
 }
 
 // ============================================================

@@ -27,6 +27,17 @@ import type { SymbolTable } from "./symbol-table";
 // Parser Types
 // ============================================================
 
+/**
+ * Scope Entry：描述當前代碼生成所處的作用域
+ * 例如在 for-loop 內，loop 節點的 ID 應解析到 _loopScope 而非 flowState
+ */
+export interface ScopeEntry {
+  /** 此作用域映射的節點 ID */
+  nodeId: NodeId;
+  /** 生成代碼中對應的變數名稱（如 _loopScope） */
+  scopeVar: string;
+}
+
 export interface ExpressionContext {
   /** 當前 IR */
   ir: FlowIR;
@@ -36,6 +47,12 @@ export interface ExpressionContext {
   currentNodeId?: NodeId;
   /** Symbol Table：啟用後表達式會使用命名變數取代 flowState['nodeId'] */
   symbolTable?: SymbolTable;
+  /**
+   * Scope Stack：由外到內的作用域堆疊
+   * 當參照的 base 與某個 scope 的 nodeId 相符時，
+   * 解析為 scopeVar['nodeId'] 而非 flowState['nodeId']
+   */
+  scopeStack?: ScopeEntry[];
 }
 
 interface ParsedToken {
@@ -227,6 +244,17 @@ function resolveReference(
   // ── 特殊變數 $trigger：解析觸發器節點 ──
   if (base === "$trigger") {
     return resolveTriggerRef(path, context);
+  }
+
+  // ── 檢查 Scope Stack：若 base 在某個局部作用域中，優先使用該 scope ──
+  if (context.scopeStack) {
+    // 從內到外搜尋（陣列末尾 = 最內層）
+    for (let i = context.scopeStack.length - 1; i >= 0; i--) {
+      const scope = context.scopeStack[i];
+      if (scope.nodeId === base) {
+        return `${scope.scopeVar}['${base}']${path}`;
+      }
+    }
   }
 
   // ── 一般參照：若有 Symbol Table 則使用命名變數，否則 fallback flowState ──

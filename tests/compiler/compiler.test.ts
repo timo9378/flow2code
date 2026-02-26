@@ -48,10 +48,10 @@ describe("AST Compiler", () => {
 
       // v2: 使用 FlowState interface 取代 Record<string, any>
       expect(result.code).toContain("interface FlowState");
-      expect(result.code).toContain("const flowState = {} as FlowState");
-      // 應包含節點 ID 的型別定義
-      expect(result.code).toContain("'trigger_1':");
-      expect(result.code).toContain("'response_1':");
+      expect(result.code).toContain("const flowState: Partial<FlowState> = {}");
+      // 應包含節點 ID 的型別定義（optional fields）
+      expect(result.code).toContain("'trigger_1'?:");
+      expect(result.code).toContain("'response_1'?:");
     });
 
     it("生成的代碼應包含 NextResponse.json 回傳", () => {

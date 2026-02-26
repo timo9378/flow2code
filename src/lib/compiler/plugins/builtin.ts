@@ -19,6 +19,7 @@ import type {
   SqlQueryParams,
   RedisCacheParams,
   CustomCodeParams,
+  CallSubflowParams,
   IfElseParams,
   ForLoopParams,
   TryCatchParams,
@@ -104,7 +105,11 @@ const fetchApiPlugin: NodePlugin = {
 
       if (params.parseJson) {
         writer.writeLine(`const data = await response.json();`);
-        writer.writeLine(`flowState['${node.id}'] = data;`);
+        writer.writeLine(`flowState['${node.id}'] = {`);
+        writer.writeLine(`  data,`);
+        writer.writeLine(`  status: response.status,`);
+        writer.writeLine(`  headers: Object.fromEntries(response.headers.entries()),`);
+        writer.writeLine(`};`);
       } else {
         writer.writeLine(`flowState['${node.id}'] = response;`);
       }
@@ -121,7 +126,9 @@ const fetchApiPlugin: NodePlugin = {
 
   getOutputType(node) {
     const params = node.params as FetchApiParams;
-    return params.parseJson ? "unknown" : "Response";
+    return params.parseJson
+      ? "{ data: unknown; status: number; headers: Record<string, string> }"
+      : "Response";
   },
 };
 
@@ -227,6 +234,31 @@ const customCodePlugin: NodePlugin = {
   getOutputType: () => "unknown",
 };
 
+const callSubflowPlugin: NodePlugin = {
+  nodeType: ActionType.CALL_SUBFLOW,
+
+  generate(node, writer, context) {
+    const params = node.params as CallSubflowParams;
+
+    // 解析輸入映射表達式
+    const args = Object.entries(params.inputMapping)
+      .map(([key, expr]) => {
+        const resolved = context.resolveExpression(expr, node.id);
+        return `${key}: ${resolved}`;
+      })
+      .join(", ");
+
+    writer.writeLine(
+      `const { ${params.functionName} } = await import("${params.flowPath}");`
+    );
+    writer.writeLine(
+      `flowState['${node.id}'] = await ${params.functionName}({ ${args} });`
+    );
+  },
+
+  getOutputType: () => "unknown",
+};
+
 // ============================================================
 // Logic Plugins
 // ============================================================
@@ -310,6 +342,9 @@ const forLoopPlugin: NodePlugin = {
         `_loopScope['${node.id}'] = ${params.itemVariable};`
       );
 
+      // 推入作用域：子節點對 node.id 的引用會解析到 _loopScope
+      context.pushScope(node.id, '_loopScope');
+
       // 生成迴圈體內子節點
       const childEdges = context.ir.edges.filter(
         (e) => e.sourceNodeId === node.id && e.sourcePortId === "body"
@@ -320,6 +355,9 @@ const forLoopPlugin: NodePlugin = {
           context.generateChildNode(writer, childNode);
         }
       }
+
+      // 彈出作用域
+      context.popScope();
 
       writer.writeLine(`${sanitizedId}_results.push(${params.itemVariable});`);
     });
@@ -348,12 +386,19 @@ const tryCatchPlugin: NodePlugin = {
       writer.writeLine(
         `const _tryScope: Record<string, unknown> = {};`
       );
+
+      // 推入作用域：子節點對 node.id 的引用會解析到 _tryScope
+      context.pushScope(node.id, '_tryScope');
+
       for (const edge of successEdges) {
         const childNode = context.nodeMap.get(edge.targetNodeId);
         if (childNode) {
           context.generateChildNode(writer, childNode);
         }
       }
+
+      context.popScope();
+
       writer.writeLine(
         `flowState['${node.id}'] = { success: true };`
       );
@@ -369,12 +414,18 @@ const tryCatchPlugin: NodePlugin = {
       writer.writeLine(
         `flowState['${node.id}'] = { success: false, error: ${params.errorVariable} };`
       );
+
+      // 推入作用域：子節點對 node.id 的引用會解析到 _catchScope
+      context.pushScope(node.id, '_catchScope');
+
       for (const edge of errorEdges) {
         const childNode = context.nodeMap.get(edge.targetNodeId);
         if (childNode) {
           context.generateChildNode(writer, childNode);
         }
       }
+
+      context.popScope();
     });
   },
 
@@ -492,6 +543,7 @@ export const builtinPlugins: NodePlugin[] = [
   sqlQueryPlugin,
   redisCachePlugin,
   customCodePlugin,
+  callSubflowPlugin,
   // Logic
   ifElsePlugin,
   forLoopPlugin,

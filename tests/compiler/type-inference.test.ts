@@ -22,7 +22,7 @@ describe("Type Inference", () => {
 
     expect(result.success).toBe(true);
     expect(result.code).toContain("interface FlowState");
-    expect(result.code).toContain("const flowState = {} as FlowState");
+    expect(result.code).toContain("const flowState: Partial<FlowState> = {}");
   });
 
   it("不應包含 Record<string, any>", () => {
@@ -49,8 +49,10 @@ describe("Type Inference", () => {
     const ir = createPostWithFetchFlow();
     const typeInfo = inferFlowStateTypes(ir);
 
-    // fetch_1 is parseJson: true → unknown
-    expect(typeInfo.nodeTypes.get("fetch_1")).toBe("unknown");
+    // fetch_1 is parseJson: true → Envelope type
+    expect(typeInfo.nodeTypes.get("fetch_1")).toBe(
+      "{ data: unknown; status: number; headers: Record<string, string> }"
+    );
   });
 
   it("Return Response 節點應推斷為 never", () => {

@@ -104,6 +104,7 @@ export enum ActionType {
   SQL_QUERY = "sql_query",
   REDIS_CACHE = "redis_cache",
   CUSTOM_CODE = "custom_code",
+  CALL_SUBFLOW = "call_subflow",
 }
 
 export enum LogicType {
@@ -194,6 +195,16 @@ export interface CustomCodeParams {
   returnVariable?: string;
 }
 
+/** 子流程呼叫參數 */
+export interface CallSubflowParams {
+  /** 子流程的導入路徑（結合編譯器生成的檔案） */
+  flowPath: string;
+  /** 子流程導出的函數名稱 */
+  functionName: string;
+  /** 輸入參數映射：參數名稱 → 表達式（可使用模板語法） */
+  inputMapping: Record<string, string>;
+}
+
 /** If/Else 邏輯控制參數 */
 export interface IfElseParams {
   /** 條件表達式（TypeScript 表達式字串） */
@@ -263,6 +274,7 @@ export interface NodeParamsMap {
   [ActionType.SQL_QUERY]: SqlQueryParams;
   [ActionType.REDIS_CACHE]: RedisCacheParams;
   [ActionType.CUSTOM_CODE]: CustomCodeParams;
+  [ActionType.CALL_SUBFLOW]: CallSubflowParams;
   // Logic
   [LogicType.IF_ELSE]: IfElseParams;
   [LogicType.FOR_LOOP]: ForLoopParams;
