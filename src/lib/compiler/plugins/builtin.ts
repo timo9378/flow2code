@@ -72,7 +72,7 @@ function inferTypeFromExpression(expr: string): string {
   if (/\.every\s*\(/.test(trimmed)) return "boolean";
   if (/\.has\s*\(/.test(trimmed)) return "boolean";
   if (/^!/.test(trimmed)) return "boolean";
-  if (/===|!==|==|!=|>=|<=|>|<|\&\&|\|\|/.test(trimmed)) return "boolean";
+  if (/===|!==|==|!=|>=|<=|>|<|&&|\|\|/.test(trimmed)) return "boolean";
 
   // String-producing patterns
   if (/\.join\s*\(/.test(trimmed)) return "string";
@@ -356,7 +356,8 @@ const customCodePlugin: NodePlugin = {
       writer.writeLine(`// 請在部署前仔細審閱此段代碼。`);
       // 也記錄到 context warnings（如果有的話）
       if (context && "addWarning" in context) {
-        (context as any).addWarning?.(`[${node.id}] Custom code 使用危險 API: ${warnings.join(", ")}`);
+        const addWarning = (context as { addWarning?: (msg: string) => void }).addWarning;
+        addWarning?.(`[${node.id}] Custom code 使用危險 API: ${warnings.join(", ")}`);
       }
     }
 

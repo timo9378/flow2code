@@ -167,11 +167,11 @@ export async function handleGenerate(body: { prompt?: string }): Promise<ApiResp
     if (!validation.valid) {
       return {
         status: 422,
-        body: { success: false, error: "LLM 生成的 IR 驗證失敗", validationErrors: validation.errors, raw: ir as any },
+        body: { success: false, error: "LLM 生成的 IR 驗證失敗", validationErrors: validation.errors, raw: ir as unknown },
       };
     }
 
-    return { status: 200, body: { success: true, ir: ir as any } };
+    return { status: 200, body: { success: true, ir: ir as unknown } };
   } catch (err) {
     return {
       status: 500,
@@ -202,8 +202,8 @@ export function handleImportOpenAPI(body: { spec?: unknown; filter?: { tags?: st
       status: 200,
       body: {
         success: result.success,
-        flows: filteredFlows as any,
-        summary: result.summary as any,
+        flows: filteredFlows as unknown,
+        summary: result.summary as unknown,
         errors: result.errors,
       },
     };

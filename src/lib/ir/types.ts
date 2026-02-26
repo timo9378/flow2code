@@ -232,8 +232,10 @@ export interface TryCatchParams {
 }
 
 /** Promise.all 並發控制參數 */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type
 export interface PromiseAllParams {
   /** 無額外參數，並發任務由連線的子節點決定 */
+  [key: string]: never;
 }
 
 /** 變數宣告參數 */

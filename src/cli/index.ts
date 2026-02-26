@@ -20,7 +20,7 @@ import { validateFlowIR } from "../lib/ir/validator";
 import { splitToFileSystem, mergeFromFileSystem } from "../lib/storage/split-storage";
 import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib/compiler/env-validator";
 import { semanticDiff, formatDiff } from "../lib/diff/semantic-diff";
-import type { FlowIR } from "../lib/ir/types";
+import type { FlowIR, InputPort, OutputPort } from "../lib/ir/types";
 
 const program = new Command();
 
@@ -214,7 +214,7 @@ program
             routePath: "/api/hello",
             parseBody: false,
           },
-          inputs: [] as any[],
+          inputs: [] as InputPort[],
           outputs: [{ id: "request", label: "Request", dataType: "object" }],
         },
         {
@@ -227,7 +227,7 @@ program
             bodyExpression: '{ message: "Hello from Flow2Code!" }',
           },
           inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
-          outputs: [] as any[],
+          outputs: [] as OutputPort[],
         },
       ],
       edges: [

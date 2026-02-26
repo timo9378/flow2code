@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "🔍 Running pre-push checks: lint + test + build..."
+pnpm lint && pnpm test:run && pnpm build:cli

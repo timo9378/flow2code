@@ -93,7 +93,7 @@ export function buildSymbolTable(ir: FlowIR): SymbolTable {
  */
 export function labelToVarName(label: string): string {
   const cleaned = label
-    .replace(/[\/\-_\.]/g, " ") // 斜線、連字號、底線、點 → 空格
+    .replace(/[/\-_.]/g, " ") // 斜線、連字號、底線、點 → 空格
     .replace(/[^a-zA-Z0-9\s]/g, "") // 移除其他特殊字元
     .trim();
 

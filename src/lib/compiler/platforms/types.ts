@@ -107,6 +107,28 @@ export type PlatformName = BuiltinPlatformName | (string & {});
 
 const platformRegistry = new Map<string, () => PlatformAdapter>();
 
+/**
+ * 註冊自訂平台適配器
+ *
+ * 允許使用者擴充編譯器支援的目標平台（例如 Fastify、Koa 等）。
+ * 工廠函式在每次編譯時懶化呼叫，避免全域狀態污染。
+ *
+ * @param name - 平台名稱，可使用內建名稱或自訂字串
+ * @param factory - 平台適配器工廠函式
+ *
+ * @example
+ * ```ts
+ * import { registerPlatform } from "flow2code";
+ *
+ * registerPlatform("fastify", () => ({
+ *   imports: () => ['import Fastify from "fastify";'],
+ *   routeWrapper: (method, path, body) => `app.${method}("${path}", async (req, reply) => {\n${body}\n});`,
+ *   response: (statusExpr, bodyExpr) => `reply.status(${statusExpr}).send(${bodyExpr});`,
+ *   appSetup: () => 'const app = Fastify();',
+ *   listen: (port) => `app.listen({ port: ${port} });`,
+ * }));
+ * ```
+ */
 export function registerPlatform(
   name: PlatformName,
   factory: () => PlatformAdapter

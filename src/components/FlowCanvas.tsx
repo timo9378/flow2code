@@ -24,6 +24,7 @@ import NodeLibrary from "@/components/panels/NodeLibrary";
 import ConfigPanel from "@/components/panels/ConfigPanel";
 import Toolbar from "@/components/panels/Toolbar";
 import { FlowErrorBoundary } from "@/components/FlowErrorBoundary";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const nodeTypes = {
   flowNode: FlowNodeComponent,
@@ -87,11 +88,15 @@ export default function FlowCanvas() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background">
-      <Toolbar />
+      <ErrorBoundary name="Toolbar">
+        <Toolbar />
+      </ErrorBoundary>
 
       <div className="flex flex-1 overflow-hidden">
         {/* 左側：節點庫 */}
-        <NodeLibrary />
+        <ErrorBoundary name="NodeLibrary">
+          <NodeLibrary />
+        </ErrorBoundary>
 
         {/* 中央：畫布 */}
         <FlowErrorBoundary>
@@ -147,7 +152,9 @@ export default function FlowCanvas() {
         </FlowErrorBoundary>
 
         {/* 右側：配置面板 */}
-        <ConfigPanel />
+        <ErrorBoundary name="ConfigPanel">
+          <ConfigPanel />
+        </ErrorBoundary>
       </div>
     </div>
   );

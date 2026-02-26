@@ -127,6 +127,30 @@ interface CompilerContext {
 // 主編譯函式
 // ============================================================
 
+/**
+ * 將 FlowIR 編譯為 TypeScript 原始碼
+ *
+ * 經過以下階段：
+ * 1. 驗證 IR 結構正確性
+ * 2. 拓撲排序 + 並發偵測
+ * 3. 平台適配（Hono / Express / Bun 等）
+ * 4. 插件化運算子生成
+ * 5. IDE 友善的 Source Map 輸出
+ *
+ * @param ir - FlowIR 輸入文件
+ * @param options - 編譯選項（平台、插件、輸出路徑等）
+ * @returns 編譯結果，包含 code、filePath、sourceMap、dependencies
+ *
+ * @example
+ * ```ts
+ * import { compile } from "flow2code";
+ *
+ * const result = compile(ir, { platform: "hono" });
+ * if (result.success) {
+ *   console.log(result.code);
+ * }
+ * ```
+ */
 export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   // 建立 per-instance plugin registry（避免全域狀態汙染）
   const pluginRegistry = createPluginRegistry();

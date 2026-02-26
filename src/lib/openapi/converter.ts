@@ -12,6 +12,7 @@ import type {
   FlowDataType,
   InputPort,
   OutputPort,
+  NodeType,
 } from "../ir/types";
 import {
   NodeCategory,
@@ -224,7 +225,7 @@ function convertSingleOperation(
     const pathParams = operation.parameters!.filter((p) => p.in === "path");
     const transformNode: FlowNode = {
       id: transformId,
-      nodeType: "transform" as any,
+      nodeType: "transform" as NodeType,
       category: NodeCategory.VARIABLE,
       label: "Extract Path Params",
       params: {
