@@ -18,6 +18,7 @@ import { Project, SourceFile, CodeBlockWriter } from "ts-morph";
 import type {
   FlowIR,
   FlowNode,
+  FlowEdge,
   NodeType,
   NodeId,
   HttpWebhookParams,
@@ -27,6 +28,7 @@ import type {
 import {
   TriggerType,
   ActionType,
+  LogicType,
   NodeCategory,
 } from "../ir/types";
 import { validateFlowIR } from "../ir/validator";
@@ -128,6 +130,8 @@ interface CompilerContext {
   dagMode: boolean;
   /** 不應使用 Symbol Table 別名的節點 ID（子區塊 + DAG promise 內節點） */
   symbolTableExclusions: Set<NodeId>;
+  /** 執行時追蹤：已在區塊內生成的節點 ID（防止重複生成） */
+  generatedBlockNodeIds: Set<NodeId>;
 }
 
 /**
@@ -199,10 +203,19 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     childBlockNodeIds: new Set(),
     dagMode: false,
     symbolTableExclusions: new Set(),
+    generatedBlockNodeIds: new Set(),
   };
 
   // 偵測並發機會：若執行計畫有任何並發步驟，啟用 DAG 排程
   const trigger = ir.nodes.find((n) => n.category === NodeCategory.TRIGGER)!;
+
+  // ── 預先計算控制流子區塊節點（修復 DAG 重複生成 + Control Flow 外洩）──
+  const preComputedBlockNodes = computeControlFlowDescendants(ir, trigger.id);
+  for (const nodeId of preComputedBlockNodes) {
+    context.childBlockNodeIds.add(nodeId);
+    context.symbolTableExclusions.add(nodeId);
+  }
+
   const hasConcurrency = plan.steps.some(
     (s) => s.concurrent && s.nodeIds.filter((id) => id !== trigger.id).length > 1
   );
@@ -402,6 +415,156 @@ function generateTriggerInit(
 // 節點鏈生成器（調度器）
 // ============================================================
 
+// ============================================================
+// 控制流可達性分析（Reachability Analysis）
+// ============================================================
+
+/**
+ * 控制流端口映射：只有來自特定邏輯節點類型的特定端口才算控制流邊。
+ * 避免 "body" 等端口名稱在非控制流節點（如 HTTP Trigger）上被誤判。
+ */
+const CONTROL_FLOW_PORT_MAP: Partial<Record<string, Set<string>>> = {
+  [LogicType.IF_ELSE]: new Set(["true", "false"]),
+  [LogicType.FOR_LOOP]: new Set(["body"]),
+  [LogicType.TRY_CATCH]: new Set(["success", "error"]),
+};
+
+/**
+ * 判斷一條邊是否為控制流邊。
+ * 必須同時滿足：來源節點是控制流節點 AND 端口是該節點的控制流端口。
+ */
+function isControlFlowEdge(
+  edge: FlowEdge,
+  nodeMap: Map<NodeId, FlowNode>
+): boolean {
+  const sourceNode = nodeMap.get(edge.sourceNodeId);
+  if (!sourceNode) return false;
+  const controlPorts = CONTROL_FLOW_PORT_MAP[sourceNode.nodeType];
+  return controlPorts !== undefined && controlPorts.has(edge.sourcePortId);
+}
+
+/**
+ * 預先計算所有「控制流子區塊節點」。
+ *
+ * 核心演算法：
+ *   1. 建立一個「去除控制流邊」的簡化圖（stripped graph）。
+ *   2. 從 trigger 出發做 BFS，找出在簡化圖中可達的節點。
+ *   3. 原始圖中存在、但在簡化圖中不可達的節點，
+ *      就是「只能透過控制流端口到達的節點」——即子區塊節點。
+ *
+ * 這確保了：
+ *   - If/Else 的 true/false 子節點及其下游全部被標記
+ *   - For Loop 的 body 子節點及其下游全部被標記
+ *   - Try/Catch 的 success/error 子節點及其下游全部被標記
+ *   - 若某節點同時有「控制流路徑」與「資料流路徑」可達，則不標記（它屬於頂層）
+ */
+function computeControlFlowDescendants(
+  ir: FlowIR,
+  triggerId: NodeId
+): Set<NodeId> {
+  const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
+
+  // 建立去除控制流邊的鄰接表
+  const strippedSuccessors = new Map<NodeId, Set<NodeId>>();
+  for (const node of ir.nodes) {
+    strippedSuccessors.set(node.id, new Set());
+  }
+  for (const edge of ir.edges) {
+    if (isControlFlowEdge(edge, nodeMap)) continue;
+    strippedSuccessors.get(edge.sourceNodeId)?.add(edge.targetNodeId);
+  }
+
+  // BFS：從 trigger 出發，在簡化圖中找可達節點
+  const reachableWithoutControlFlow = new Set<NodeId>();
+  const queue: NodeId[] = [triggerId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (reachableWithoutControlFlow.has(id)) continue;
+    reachableWithoutControlFlow.add(id);
+    for (const succ of strippedSuccessors.get(id) ?? []) {
+      if (!reachableWithoutControlFlow.has(succ)) {
+        queue.push(succ);
+      }
+    }
+  }
+
+  // 不可達的就是控制流子區塊節點
+  const childBlockNodeIds = new Set<NodeId>();
+  for (const node of ir.nodes) {
+    if (node.id === triggerId) continue;
+    if (!reachableWithoutControlFlow.has(node.id)) {
+      childBlockNodeIds.add(node.id);
+    }
+  }
+
+  return childBlockNodeIds;
+}
+
+/**
+ * 生成區塊內的後續節點鏈（Block Continuation）。
+ *
+ * 當 plugin 呼叫 generateChildNode 生成直接子節點後，
+ * 此函式會在同一個區塊內，按拓撲順序繼續生成所有
+ * 「專屬於此區塊的後代節點」。
+ *
+ * 例如：If_Else →true→ A → B → C
+ * Plugin 生成 A 後，此函式會接著生成 B 和 C。
+ */
+function generateBlockContinuation(
+  writer: CodeBlockWriter,
+  fromNodeId: NodeId,
+  context: CompilerContext
+): void {
+  // 計算從 fromNodeId 可達的所有節點（含間接後代）
+  const reachable = new Set<NodeId>();
+  const bfsQueue: NodeId[] = [fromNodeId];
+  const edgeSuccessors = new Map<NodeId, NodeId[]>();
+
+  for (const edge of context.ir.edges) {
+    if (!edgeSuccessors.has(edge.sourceNodeId)) {
+      edgeSuccessors.set(edge.sourceNodeId, []);
+    }
+    edgeSuccessors.get(edge.sourceNodeId)!.push(edge.targetNodeId);
+  }
+
+  while (bfsQueue.length > 0) {
+    const id = bfsQueue.shift()!;
+    if (reachable.has(id)) continue;
+    reachable.add(id);
+    for (const succ of edgeSuccessors.get(id) ?? []) {
+      if (!reachable.has(succ)) {
+        bfsQueue.push(succ);
+      }
+    }
+  }
+
+  // 按拓撲序生成可達且屬於子區塊的後代節點
+  for (const nodeId of context.plan.sortedNodeIds) {
+    if (nodeId === fromNodeId) continue;
+    if (!reachable.has(nodeId)) continue;
+    if (!context.childBlockNodeIds.has(nodeId)) continue;
+    if (context.generatedBlockNodeIds.has(nodeId)) continue;
+
+    // 確認所有區塊內的依賴都已生成
+    const deps = context.plan.dependencies.get(nodeId) ?? new Set();
+    const allBlockDepsReady = [...deps].every((depId) => {
+      // 非子區塊依賴（頂層節點）視為已就緒
+      if (!context.childBlockNodeIds.has(depId)) return true;
+      return context.generatedBlockNodeIds.has(depId);
+    });
+
+    if (!allBlockDepsReady) continue;
+
+    const node = context.nodeMap.get(nodeId);
+    if (!node) continue;
+
+    context.generatedBlockNodeIds.add(nodeId);
+    context.symbolTableExclusions.add(nodeId);
+    writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+    generateNodeBody(writer, node, context);
+  }
+}
+
 function generateNodeChain(
   writer: CodeBlockWriter,
   triggerId: NodeId,
@@ -531,6 +694,16 @@ function generateNodeChainDAG(
       generateNodeBody(writer, node, context);
     });
     writer.writeLine(`)();`);
+    // 防止 Unhandled Promise Rejection（錯誤仍會透過下游 await 傳播）
+    writer.writeLine(`${promiseVar}.catch(() => {});`);
+    writer.blankLine();
+  }
+
+  // ── Sync Barrier：確保所有 DAG Promise 完成，防止 Serverless 環境提早終止 ──
+  if (dagNodeIds.length > 0) {
+    writer.writeLine("// --- Sync Barrier: await all DAG promises before output ---");
+    const allPromiseVars = dagNodeIds.map((id) => `p_${sanitizeId(id)}`);
+    writer.writeLine(`await Promise.allSettled([${allPromiseVars.join(", ")}]);`);
     writer.blankLine();
   }
 
@@ -687,7 +860,12 @@ function createPluginContext(
       // 標記此節點為「子區塊生成」，避免在頂層重複生成 + 避免 Symbol Table 別名洩漏
       context.childBlockNodeIds.add(node.id);
       context.symbolTableExclusions.add(node.id);
+      context.generatedBlockNodeIds.add(node.id);
+      writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
       generateNodeBody(writer, node, context);
+
+      // 生成此子節點的所有後代延續鏈（修復 Control Flow 外洩問題）
+      generateBlockContinuation(writer, node.id, context);
     },
 
     pushScope(nodeId: NodeId, scopeVar: string): void {

@@ -306,8 +306,9 @@ describe("Symbol Table Block Scoping", () => {
 
     // fetch_user 的程式碼只應出現在 if 區塊內，不應在頂層重複
     const fetchCount = (result.code!.match(/Fetch User/g) || []).length;
-    // 最多 2 次：一次在 comment，一次是 console.error 裡面可能有（但不會有頂層重複）
-    expect(fetchCount).toBeLessThanOrEqual(2);
+    // 最多 3 次：節點標記註解、console.error、可能的 throw error message
+    // 重點是不應有第二組獨立的 fetch 代碼區塊
+    expect(fetchCount).toBeLessThanOrEqual(3);
   });
 
   it("expression-parser: blockScopedNodeIds 應跳過 Symbol Table", () => {
@@ -405,7 +406,9 @@ describe("DAG Concurrent Scheduling", () => {
     const result = compile(ir);
 
     expect(result.success).toBe(true);
-    expect(result.code).not.toContain("Promise.all");
+    // 不應出現舊式 Promise.all（但允許 Promise.allSettled 作為 sync barrier）
+    expect(result.code).not.toMatch(/Promise\.all\s*\(/);
+    expect(result.code).toContain("Promise.allSettled");
   });
 
   it("純循序流程不應啟用 DAG 模式", () => {
