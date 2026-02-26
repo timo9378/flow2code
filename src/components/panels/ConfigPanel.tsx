@@ -8,6 +8,7 @@
 
 import { useFlowStore } from "@/store/flow-store";
 import type { FlowNodeData } from "@/store/flow-store";
+import { useUpstreamTypes } from "@/hooks/use-upstream-types";
 import {
   TriggerType,
   ActionType,
@@ -283,6 +284,7 @@ export default function ConfigPanel() {
   const removeNode = useFlowStore((s) => s.removeNode);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+  const upstreamTypes = useUpstreamTypes(selectedNodeId);
 
   if (!selectedNode) {
     return (
@@ -388,6 +390,35 @@ export default function ConfigPanel() {
               )}
             </CardContent>
           </Card>
+
+          {/* Upstream Types — 即時型別提示 */}
+          {upstreamTypes.hasTypes && (
+            <>
+              <Separator />
+              <Card className="border-border border-cyan-500/20">
+                <CardHeader className="p-3 pb-2">
+                  <CardTitle className="text-xs text-cyan-400 font-semibold uppercase tracking-wider">
+                    flowState 可用欄位
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 space-y-1">
+                  {upstreamTypes.entries.map((entry) => (
+                    <div key={entry.nodeId} className="flex items-center justify-between gap-1">
+                      <code className="text-[10px] text-foreground font-mono truncate">
+                        flowState[&apos;{entry.nodeId}&apos;]
+                      </code>
+                      <Badge variant="outline" className="text-[9px] text-cyan-400 border-cyan-500/30 shrink-0">
+                        {entry.tsType}
+                      </Badge>
+                    </div>
+                  ))}
+                  <p className="text-[9px] text-muted-foreground pt-1">
+                    上游 {upstreamTypes.entries.length} 個節點的輸出型別
+                  </p>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
       </ScrollArea>
     </div>

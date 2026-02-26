@@ -4,19 +4,13 @@
  * 節點庫面板（左側面板）— Koimsurai 風格
  *
  * 可收合的分類節點列表，拖放節點到畫布上。
+ * 節點定義來自 NodeRegistry（動態），支援社區擴展。
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useFlowStore } from "@/store/flow-store";
-import {
-  NodeCategory,
-  TriggerType,
-  ActionType,
-  LogicType,
-  VariableType,
-  OutputType,
-  type NodeType,
-} from "@/lib/ir/types";
+import { type NodeCategory, type NodeType } from "@/lib/ir/types";
+import { nodeRegistry } from "@/lib/node-registry";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -32,68 +26,23 @@ import {
 } from "@/components/ui/collapsible";
 
 interface NodeTemplate {
-  nodeType: NodeType;
+  nodeType: string;
   label: string;
   icon: string;
   category: NodeCategory;
 }
 
-const nodeTemplates: Record<string, { icon: string; color: string; templates: NodeTemplate[] }> = {
-  "觸發器": {
-    icon: "⚡",
-    color: "text-emerald-400",
-    templates: [
-      { nodeType: TriggerType.HTTP_WEBHOOK, label: "HTTP Webhook", icon: "🌐", category: NodeCategory.TRIGGER },
-      { nodeType: TriggerType.CRON_JOB, label: "Cron Job", icon: "⏰", category: NodeCategory.TRIGGER },
-      { nodeType: TriggerType.MANUAL, label: "Manual", icon: "👤", category: NodeCategory.TRIGGER },
-    ],
-  },
-  "執行器": {
-    icon: "🔧",
-    color: "text-blue-400",
-    templates: [
-      { nodeType: ActionType.FETCH_API, label: "Fetch API", icon: "📡", category: NodeCategory.ACTION },
-      { nodeType: ActionType.SQL_QUERY, label: "SQL Query", icon: "🗄️", category: NodeCategory.ACTION },
-      { nodeType: ActionType.REDIS_CACHE, label: "Redis Cache", icon: "💾", category: NodeCategory.ACTION },
-      { nodeType: ActionType.CUSTOM_CODE, label: "Custom Code", icon: "💻", category: NodeCategory.ACTION },
-      { nodeType: ActionType.CALL_SUBFLOW, label: "Call Subflow", icon: "🔗", category: NodeCategory.ACTION },
-    ],
-  },
-  "邏輯控制": {
-    icon: "🔀",
-    color: "text-amber-400",
-    templates: [
-      { nodeType: LogicType.IF_ELSE, label: "If / Else", icon: "🔀", category: NodeCategory.LOGIC },
-      { nodeType: LogicType.FOR_LOOP, label: "For Loop", icon: "🔁", category: NodeCategory.LOGIC },
-      { nodeType: LogicType.TRY_CATCH, label: "Try / Catch", icon: "🛡️", category: NodeCategory.LOGIC },
-      { nodeType: LogicType.PROMISE_ALL, label: "Promise.all", icon: "⚡", category: NodeCategory.LOGIC },
-    ],
-  },
-  "變數": {
-    icon: "📦",
-    color: "text-purple-400",
-    templates: [
-      { nodeType: VariableType.DECLARE, label: "Declare Variable", icon: "📦", category: NodeCategory.VARIABLE },
-      { nodeType: VariableType.TRANSFORM, label: "Transform", icon: "🔄", category: NodeCategory.VARIABLE },
-    ],
-  },
-  "輸出": {
-    icon: "📤",
-    color: "text-rose-400",
-    templates: [
-      { nodeType: OutputType.RETURN_RESPONSE, label: "Return Response", icon: "📤", category: NodeCategory.OUTPUT },
-    ],
-  },
-};
-
 export default function NodeLibrary() {
   const addFlowNode = useFlowStore((s) => s.addFlowNode);
   const [collapsed, setCollapsed] = useState(false);
 
+  // 從 NodeRegistry 動態取得分組節點定義
+  const nodeTemplates = useMemo(() => nodeRegistry.getGroupedDefinitions(), []);
+
   const handleAddNode = (template: NodeTemplate) => {
     const x = 200 + Math.random() * 300;
     const y = 100 + Math.random() * 400;
-    addFlowNode(template.nodeType, template.category, { x, y });
+    addFlowNode(template.nodeType as NodeType, template.category, { x, y });
   };
 
   if (collapsed) {

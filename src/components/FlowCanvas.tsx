@@ -25,6 +25,7 @@ import ConfigPanel from "@/components/panels/ConfigPanel";
 import Toolbar from "@/components/panels/Toolbar";
 import { FlowErrorBoundary } from "@/components/FlowErrorBoundary";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useHighlightFromURL } from "@/hooks/use-highlight-from-url";
 
 const nodeTypes = {
   flowNode: FlowNodeComponent,
@@ -41,6 +42,9 @@ export default function FlowCanvas() {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const undo = useFlowStore((s) => s.undo);
   const redo = useFlowStore((s) => s.redo);
+
+  // ── Deep link 高亮（搭配 Runtime Tracer） ──
+  useHighlightFromURL();
 
   // ── 鍵盤快捷鍵 ──
   useEffect(() => {

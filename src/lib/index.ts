@@ -97,5 +97,24 @@ export { inferFlowStateTypes } from "./compiler/type-inference";
 export { decompile } from "./compiler/decompiler";
 export type { DecompileResult } from "./compiler/decompiler";
 
+// ── Runtime Error Tracer ──
+export {
+  traceError,
+  formatTraceResults,
+  withFlowTrace,
+  installFlowTracer,
+} from "./compiler/runtime-tracer";
+export type { TraceResult, TracerOptions } from "./compiler/runtime-tracer";
+
+// ── Dynamic Node Registry ──
+export { NodeRegistry, nodeRegistry } from "./node-registry";
+export type { NodeDefinition } from "./node-registry";
+
+// ── Storage (Split YAML / Project) ──
+export { splitIR, mergeIR } from "./storage/split-storage";
+export type { SplitFiles } from "./storage/split-storage";
+export { loadFlowProject, saveFlowProject, migrateToSplit, detectFormat } from "./storage/flow-project";
+export type { FlowProjectFormat, SaveOptions, FlowProjectInfo } from "./storage/flow-project";
+
 // ── Diff ──
 export { semanticDiff, formatDiff } from "./diff/semantic-diff";
