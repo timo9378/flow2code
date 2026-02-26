@@ -348,9 +348,3 @@ export interface VariableReference {
   /** 表達式路徑，例如 ".data.users[0].name" */
   path?: string;
 }
-
-/** 變數引用表達式生成器 */
-export function createVariableRef(nodeId: NodeId, path?: string): string {
-  const base = `flowState['${nodeId}']`;
-  return path ? `${base}${path}` : base;
-}

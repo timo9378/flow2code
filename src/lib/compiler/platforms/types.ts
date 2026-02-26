@@ -99,9 +99,13 @@ export interface TriggerInitContext {
 // Platform Registry
 // ============================================================
 
-export type PlatformName = "nextjs" | "express" | "cloudflare" | "generic";
+/**
+ * 內建平台名稱（可擴展：第三方可過 registerPlatform 註冊任意字串）
+ */
+export type BuiltinPlatformName = "nextjs" | "express" | "cloudflare";
+export type PlatformName = BuiltinPlatformName | (string & {});
 
-const platformRegistry = new Map<PlatformName, () => PlatformAdapter>();
+const platformRegistry = new Map<string, () => PlatformAdapter>();
 
 export function registerPlatform(
   name: PlatformName,
@@ -120,6 +124,6 @@ export function getPlatform(name: PlatformName): PlatformAdapter {
   return factory();
 }
 
-export function getAvailablePlatforms(): PlatformName[] {
+export function getAvailablePlatforms(): string[] {
   return [...platformRegistry.keys()];
 }

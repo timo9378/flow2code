@@ -19,7 +19,6 @@ import type {
   FlowIR,
   FlowNode,
   FlowEdge,
-  NodeType,
   NodeId,
   HttpWebhookParams,
   CronJobParams,
@@ -27,7 +26,6 @@ import type {
 } from "../ir/types";
 import {
   TriggerType,
-  ActionType,
   LogicType,
   NodeCategory,
 } from "../ir/types";
@@ -124,22 +122,6 @@ interface CompilerContext {
   /** 此次編譯使用的 Plugin Registry（per-instance，避免全域汙染） */
   pluginRegistry: PluginRegistry;
 }
-
-/**
- * 節點類型 → npm 套件映射表（fallback，Plugin 優先）
- */
-const NODE_PACKAGE_MAP: Partial<Record<NodeType, string[]>> = {
-  [ActionType.FETCH_API]: [],
-  [ActionType.SQL_QUERY]: [],
-  [ActionType.REDIS_CACHE]: ["ioredis"],
-};
-
-/** SQL ORM → 套件映射 */
-const ORM_PACKAGE_MAP: Record<string, string[]> = {
-  drizzle: ["drizzle-orm"],
-  prisma: ["@prisma/client"],
-  raw: [],
-};
 
 // ============================================================
 // 主編譯函式
@@ -825,24 +807,11 @@ function resolveEnvVars(url: string, context: CompilerContext): string {
 
 function collectRequiredPackages(ir: FlowIR, context: CompilerContext): void {
   for (const node of ir.nodes) {
-    // 從 Plugin 取得依賴
+    // 從 Plugin 取得依賴（Plugin 已包含所有節點的套件資訊）
     const plugin = context.pluginRegistry.get(node.nodeType);
     if (plugin?.getRequiredPackages) {
       const packages = plugin.getRequiredPackages(node);
       packages.forEach((pkg: string) => context.requiredPackages.add(pkg));
-    } else {
-      // Fallback: 靜態映射
-      const packages = NODE_PACKAGE_MAP[node.nodeType];
-      if (packages) {
-        packages.forEach((pkg) => context.requiredPackages.add(pkg));
-      }
-    }
-
-    // 特殊處理 SQL ORM（Plugin 已處理，此為雙重保險）
-    if (node.nodeType === ActionType.SQL_QUERY) {
-      const params = node.params as import("../ir/types").SqlQueryParams;
-      const ormPackages = ORM_PACKAGE_MAP[params.orm] ?? [];
-      ormPackages.forEach((pkg) => context.requiredPackages.add(pkg));
     }
   }
 

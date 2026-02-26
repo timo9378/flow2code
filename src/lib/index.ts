@@ -79,7 +79,7 @@ export {
 export { builtinPlugins } from "./compiler/plugins/builtin";
 
 // ── Platform System ──
-export type { PlatformAdapter, PlatformContext, TriggerInitContext } from "./compiler/platforms/types";
+export type { PlatformAdapter, PlatformContext, TriggerInitContext, BuiltinPlatformName } from "./compiler/platforms/types";
 export {
   registerPlatform,
   getPlatform,
