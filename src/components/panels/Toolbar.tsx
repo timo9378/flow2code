@@ -498,6 +498,7 @@ export default function Toolbar() {
         <DialogContent className="sm:max-w-[720px] max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Output</DialogTitle>
+            <DialogDescription>編譯、驗證或 AI 生成的輸出結果</DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 max-h-[60vh]">
             <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap leading-relaxed">

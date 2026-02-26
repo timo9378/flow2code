@@ -146,9 +146,12 @@ export default function AISettingsDialog({
               </div>
 
               {endpoints.map((ep, i) => (
-                <button
+                <div
                   key={i}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setActiveEndpoint(String(i))}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setActiveEndpoint(String(i)); }}
                   className={`w-full text-left px-4 py-3 rounded-lg border transition-all cursor-pointer ${
                     activeEndpointId === String(i)
                       ? "border-purple-500 bg-purple-500/10"
@@ -206,7 +209,7 @@ export default function AISettingsDialog({
                       </Button>
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
 
               {endpoints.length === 0 && (

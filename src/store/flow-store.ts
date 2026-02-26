@@ -462,19 +462,22 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
   loadIR: (ir: FlowIR) => {
     nodeCounter = ir.nodes.length;
 
-    const nodes: Node<FlowNodeData>[] = ir.nodes.map((n, i) => ({
-      id: n.id,
-      type: "flowNode",
-      position: { x: 100 + (i % 3) * 300, y: 100 + Math.floor(i / 3) * 200 },
-      data: {
-        nodeType: n.nodeType,
-        category: n.category,
-        label: n.label,
-        params: n.params,
-        inputs: n.inputs,
-        outputs: n.outputs,
-      },
-    }));
+    const nodes: Node<FlowNodeData>[] = ir.nodes.map((n, i) => {
+      const defaults = getDefaultPorts(n.nodeType);
+      return {
+        id: n.id,
+        type: "flowNode",
+        position: { x: 100 + (i % 3) * 300, y: 100 + Math.floor(i / 3) * 200 },
+        data: {
+          nodeType: n.nodeType,
+          category: n.category,
+          label: n.label ?? getDefaultLabel(n.nodeType),
+          params: n.params ?? getDefaultParams(n.nodeType),
+          inputs: n.inputs ?? defaults.inputs,
+          outputs: n.outputs ?? defaults.outputs,
+        },
+      };
+    });
 
     const edges: Edge[] = ir.edges.map((e) => ({
       id: e.id,

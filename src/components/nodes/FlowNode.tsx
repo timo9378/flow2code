@@ -93,7 +93,7 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
       </div>
 
       {/* 輸入 Handles */}
-      {data.inputs.map((input, i) => (
+      {(data.inputs ?? []).map((input, i) => (
         <Handle
           key={`input-${input.id}`}
           type="target"
@@ -112,7 +112,7 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
       ))}
 
       {/* 輸出 Handles */}
-      {data.outputs.map((output, i) => (
+      {(data.outputs ?? []).map((output, i) => (
         <Handle
           key={`output-${output.id}`}
           type="source"
