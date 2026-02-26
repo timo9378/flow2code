@@ -113,7 +113,7 @@ export class CloudflarePlatform implements PlatformAdapter {
           params.parseBody &&
           ["POST", "PUT", "PATCH"].includes(params.method)
         ) {
-          writer.writeLine("let body: any;");
+          writer.writeLine("let body: unknown;");
           writer.write("try ").block(() => {
             writer.writeLine("body = await request.json();");
           });

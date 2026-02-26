@@ -7,7 +7,7 @@
  * 深色背景 + 點狀格線 + 發光連線
  */
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   ReactFlow,
   Controls,
@@ -23,6 +23,7 @@ import FlowNodeComponent from "@/components/nodes/FlowNode";
 import NodeLibrary from "@/components/panels/NodeLibrary";
 import ConfigPanel from "@/components/panels/ConfigPanel";
 import Toolbar from "@/components/panels/Toolbar";
+import { FlowErrorBoundary } from "@/components/FlowErrorBoundary";
 
 const nodeTypes = {
   flowNode: FlowNodeComponent,
@@ -35,6 +36,43 @@ export default function FlowCanvas() {
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange);
   const onConnect = useFlowStore((s) => s.onConnect);
   const selectNode = useFlowStore((s) => s.selectNode);
+  const removeNode = useFlowStore((s) => s.removeNode);
+  const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
+  const undo = useFlowStore((s) => s.undo);
+  const redo = useFlowStore((s) => s.redo);
+
+  // ── 鍵盤快捷鍵 ──
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 如果焦點在 input/textarea，不攔截鍵盤
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      // Delete / Backspace：刪除選取的節點
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
+        e.preventDefault();
+        removeNode(selectedNodeId);
+      }
+
+      // Ctrl+Z / Cmd+Z：Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+
+      // Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y：Redo
+      if (
+        ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) ||
+        ((e.ctrlKey || e.metaKey) && e.key === "y")
+      ) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedNodeId, removeNode, undo, redo]);
 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
@@ -56,8 +94,9 @@ export default function FlowCanvas() {
         <NodeLibrary />
 
         {/* 中央：畫布 */}
-        <div className="flex-1 relative">
-          <ReactFlow
+        <FlowErrorBoundary>
+          <div className="flex-1 relative">
+            <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -105,6 +144,7 @@ export default function FlowCanvas() {
             />
           </ReactFlow>
         </div>
+        </FlowErrorBoundary>
 
         {/* 右側：配置面板 */}
         <ConfigPanel />

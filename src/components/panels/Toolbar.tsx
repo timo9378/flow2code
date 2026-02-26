@@ -8,11 +8,13 @@
 
 import { useState, useRef } from "react";
 import { useFlowStore } from "@/store/flow-store";
+import { useAISettingsStore } from "@/store/ai-settings-store";
 import { validateFlowIR } from "@/lib/ir/validator";
 import { topologicalSort, formatExecutionPlan } from "@/lib/ir/topological-sort";
 import { EXAMPLE_PROMPTS } from "@/lib/ai/prompt";
 import { getApiBase } from "@/lib/api-base";
 import ApiSandbox from "./ApiSandbox";
+import AISettingsDialog from "./AISettingsDialog";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +58,8 @@ export default function Toolbar() {
   const [sandboxPath, setSandboxPath] = useState("/api/hello");
   const [showOpenAPIDialog, setShowOpenAPIDialog] = useState(false);
   const [openAPIFlows, setOpenAPIFlows] = useState<any[]>([]);
+  const [showAISettings, setShowAISettings] = useState(false);
+  const aiSettings = useAISettingsStore();
 
   // ── handlers ──
 
@@ -146,21 +150,84 @@ export default function Toolbar() {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
     try {
-      const res = await fetch(`${getApiBase()}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: aiPrompt.trim() }),
-      });
-      const data = await res.json();
-      if (data.success && data.ir) {
-        loadIR(data.ir);
+      const activeConfig = aiSettings.getActiveConfig();
+
+      // 如果有自訂端點，直接從前端打 LLM API（避免必須設定後端環境變數）
+      if (activeConfig) {
+        const { FLOW_IR_SYSTEM_PROMPT: systemPrompt } = await import("@/lib/ai/prompt");
+        const url = activeConfig.baseUrl.replace(/\/+$/, "");
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (activeConfig.apiKey) headers["Authorization"] = `Bearer ${activeConfig.apiKey}`;
+
+        const body: Record<string, unknown> = {
+          model: activeConfig.model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: aiPrompt.trim() },
+          ],
+          temperature: 0.2,
+        };
+        if (activeConfig.supportsJsonMode) {
+          body.response_format = { type: "json_object" };
+        }
+
+        const llmRes = await fetch(`${url}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
+        if (!llmRes.ok) {
+          const errText = await llmRes.text();
+          setOutput(`❌ AI API 錯誤 (${llmRes.status}): ${errText}`);
+          setShowOutput(true);
+          return;
+        }
+        const llmData = await llmRes.json();
+        const content = llmData.choices?.[0]?.message?.content;
+        if (!content) {
+          setOutput("❌ AI 回傳空內容");
+          setShowOutput(true);
+          return;
+        }
+        // 從 content 中提取 JSON（支援 markdown code block）
+        let jsonStr = content;
+        const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+        if (codeBlockMatch) jsonStr = codeBlockMatch[1];
+
+        let ir;
+        try { ir = JSON.parse(jsonStr); } catch {
+          setOutput(`❌ JSON 解析失敗:\n${content}`);
+          setShowOutput(true);
+          return;
+        }
+        const { validateFlowIR: validate } = await import("@/lib/ir/validator");
+        const validation = validate(ir);
+        if (!validation.valid) {
+          setOutput(`❌ IR 驗證失敗:\n${validation.errors.map((e: { code: string; message: string }) => `  [${e.code}] ${e.message}`).join("\n")}\n\n${JSON.stringify(ir, null, 2)}`);
+          setShowOutput(true);
+          return;
+        }
+        loadIR(ir);
         setShowAIDialog(false);
         setAiPrompt("");
-        setOutput(`✅ AI 已生成流程圖：「${data.ir.meta?.name ?? "Untitled"}」\n\n共 ${data.ir.nodes?.length ?? 0} 個節點、${data.ir.edges?.length ?? 0} 條連線`);
+        setOutput(`✅ AI 已生成流程圖：「${ir.meta?.name ?? "Untitled"}」\n📡 ${activeConfig.name} (${activeConfig.model})\n\n共 ${ir.nodes?.length ?? 0} 個節點、${ir.edges?.length ?? 0} 條連線`);
         setShowOutput(true);
       } else {
-        setOutput(`❌ AI 生成失敗:\n${data.error ?? "未知錯誤"}\n\n${data.validationErrors ? JSON.stringify(data.validationErrors, null, 2) : ""}`);
-        setShowOutput(true);
+        // 使用後端 /api/generate（環境變數模式）
+        const res = await fetch(`${getApiBase()}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: aiPrompt.trim() }),
+        });
+        const data = await res.json();
+        if (data.success && data.ir) {
+          loadIR(data.ir);
+          setShowAIDialog(false);
+          setAiPrompt("");
+          setOutput(`✅ AI 已生成流程圖：「${data.ir.meta?.name ?? "Untitled"}」\n\n共 ${data.ir.nodes?.length ?? 0} 個節點、${data.ir.edges?.length ?? 0} 條連線`);
+          setShowOutput(true);
+        } else {
+          setOutput(`❌ AI 生成失敗:\n${data.error ?? "未知錯誤"}\n\n${data.validationErrors ? JSON.stringify(data.validationErrors, null, 2) : ""}`);
+          setShowOutput(true);
+        }
       }
     } catch (err) {
       setOutput(`❌ AI 請求失敗: ${err instanceof Error ? err.message : String(err)}`);
@@ -299,6 +366,15 @@ export default function Toolbar() {
           <TooltipContent>用自然語言描述，AI 自動生成流程圖</TooltipContent>
         </Tooltip>
 
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={() => setShowAISettings(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-1.5">
+              ⚙️
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>AI API 端點設定</TooltipContent>
+        </Tooltip>
+
         <Separator orientation="vertical" className="h-5 mx-1" />
 
         {/* 檔案操作 */}
@@ -394,7 +470,17 @@ export default function Toolbar() {
 
           <DialogFooter className="flex items-center justify-between">
             <span className="text-muted-foreground text-[10px]">
-              ⌘+Enter 快速送出 · 需要設定 OPENAI_API_KEY
+              ⌘+Enter 快速送出 ·{" "}
+              {aiSettings.getActiveConfig()
+                ? `📡 ${aiSettings.getActiveConfig()!.name}`
+                : "🔑 環境變數模式"}
+              {" · "}
+              <button
+                onClick={() => { setShowAISettings(true); }}
+                className="text-purple-400 hover:underline cursor-pointer"
+              >
+                設定端點
+              </button>
             </span>
             <Button
               onClick={handleAIGenerate}
@@ -462,6 +548,9 @@ export default function Toolbar() {
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      {/* ── AI 設定對話框 ── */}
+      <AISettingsDialog open={showAISettings} onOpenChange={setShowAISettings} />
     </>
   );
 }

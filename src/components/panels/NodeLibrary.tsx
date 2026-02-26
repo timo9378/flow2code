@@ -56,6 +56,7 @@ const nodeTemplates: Record<string, { icon: string; color: string; templates: No
       { nodeType: ActionType.SQL_QUERY, label: "SQL Query", icon: "🗄️", category: NodeCategory.ACTION },
       { nodeType: ActionType.REDIS_CACHE, label: "Redis Cache", icon: "💾", category: NodeCategory.ACTION },
       { nodeType: ActionType.CUSTOM_CODE, label: "Custom Code", icon: "💻", category: NodeCategory.ACTION },
+      { nodeType: ActionType.CALL_SUBFLOW, label: "Call Subflow", icon: "🔗", category: NodeCategory.ACTION },
     ],
   },
   "邏輯控制": {

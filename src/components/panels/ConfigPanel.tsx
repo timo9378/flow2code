@@ -24,6 +24,14 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 // ── Field Components ──
 
 function ParamField({
@@ -31,11 +39,15 @@ function ParamField({
   value,
   onChange,
   type = "text",
+  placeholder,
+  error,
 }: {
   label: string;
   value: string | number | boolean;
   onChange: (value: string) => void;
   type?: "text" | "number" | "select" | "textarea" | "checkbox";
+  placeholder?: string;
+  error?: string;
 }) {
   const id = `param-${label}`;
 
@@ -47,8 +59,10 @@ function ParamField({
           id={id}
           value={String(value)}
           onChange={(e) => onChange(e.target.value)}
-          className="font-mono text-xs resize-y min-h-[60px]"
+          placeholder={placeholder}
+          className={`font-mono text-xs resize-y min-h-[60px] ${error ? "border-red-500" : ""}`}
         />
+        {error && <p className="text-[10px] text-red-400">{error}</p>}
       </div>
     );
   }
@@ -76,8 +90,10 @@ function ParamField({
         type={type}
         value={String(value)}
         onChange={(e) => onChange(e.target.value)}
-        className="font-mono text-xs h-8"
+        placeholder={placeholder}
+        className={`font-mono text-xs h-8 ${error ? "border-red-500" : ""}`}
       />
+      {error && <p className="text-[10px] text-red-400">{error}</p>}
     </div>
   );
 }
@@ -87,35 +103,109 @@ function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string)
   const nodeType = data.nodeType;
 
   switch (nodeType) {
-    case TriggerType.HTTP_WEBHOOK:
+    case TriggerType.HTTP_WEBHOOK: {
+      const routePath = String(params.routePath ?? "");
+      const routeError = routePath && !routePath.startsWith("/") ? "路徑必須以 / 開頭" : undefined;
       return (
         <>
-          <ParamField label="HTTP Method" value={String(params.method ?? "")} onChange={(v) => onUpdate("method", v)} />
-          <ParamField label="Route Path" value={String(params.routePath ?? "")} onChange={(v) => onUpdate("routePath", v)} />
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wider">HTTP Method</Label>
+            <Select value={String(params.method ?? "GET")} onValueChange={(v) => onUpdate("method", v)}>
+              <SelectTrigger className="font-mono text-xs h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                  <SelectItem key={m} value={m} className="font-mono text-xs">{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <ParamField label="Route Path" value={routePath} onChange={(v) => onUpdate("routePath", v)} placeholder="/api/endpoint" error={routeError} />
           <ParamField label="Parse Body" value={Boolean(params.parseBody)} onChange={(v) => onUpdate("parseBody", v)} type="checkbox" />
         </>
       );
-    case ActionType.FETCH_API:
+    }
+    case ActionType.FETCH_API: {
       return (
         <>
-          <ParamField label="URL" value={String(params.url ?? "")} onChange={(v) => onUpdate("url", v)} />
-          <ParamField label="Method" value={String(params.method ?? "")} onChange={(v) => onUpdate("method", v)} />
+          <ParamField label="URL" value={String(params.url ?? "")} onChange={(v) => onUpdate("url", v)} placeholder="https://api.example.com" />
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wider">Method</Label>
+            <Select value={String(params.method ?? "GET")} onValueChange={(v) => onUpdate("method", v)}>
+              <SelectTrigger className="font-mono text-xs h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                  <SelectItem key={m} value={m} className="font-mono text-xs">{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <ParamField label="Body" value={String(params.body ?? "")} onChange={(v) => onUpdate("body", v)} type="textarea" />
           <ParamField label="Parse JSON" value={Boolean(params.parseJson)} onChange={(v) => onUpdate("parseJson", v)} type="checkbox" />
         </>
       );
-    case ActionType.SQL_QUERY:
+    }
+    case ActionType.SQL_QUERY: {
       return (
         <>
-          <ParamField label="ORM" value={String(params.orm ?? "")} onChange={(v) => onUpdate("orm", v)} />
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wider">ORM</Label>
+            <Select value={String(params.orm ?? "drizzle")} onValueChange={(v) => onUpdate("orm", v)}>
+              <SelectTrigger className="font-mono text-xs h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["drizzle", "prisma", "raw"].map((o) => (
+                  <SelectItem key={o} value={o} className="font-mono text-xs">{o}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <ParamField label="Query" value={String(params.query ?? "")} onChange={(v) => onUpdate("query", v)} type="textarea" />
         </>
       );
+    }
     case ActionType.CUSTOM_CODE:
       return (
         <>
           <ParamField label="Code" value={String(params.code ?? "")} onChange={(v) => onUpdate("code", v)} type="textarea" />
           <ParamField label="Return Variable" value={String(params.returnVariable ?? "")} onChange={(v) => onUpdate("returnVariable", v)} />
+        </>
+      );
+    case ActionType.REDIS_CACHE:
+      return (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wider">Operation</Label>
+            <Select value={String(params.operation ?? "get")} onValueChange={(v) => onUpdate("operation", v)}>
+              <SelectTrigger className="font-mono text-xs h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["get", "set", "del"].map((op) => (
+                  <SelectItem key={op} value={op} className="font-mono text-xs">{op}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <ParamField label="Key" value={String(params.key ?? "")} onChange={(v) => onUpdate("key", v)} />
+          {String(params.operation) === "set" && (
+            <>
+              <ParamField label="Value" value={String(params.value ?? "")} onChange={(v) => onUpdate("value", v)} type="textarea" />
+              <ParamField label="TTL (seconds)" value={String(params.ttl ?? "")} onChange={(v) => onUpdate("ttl", v)} type="number" />
+            </>
+          )}
+        </>
+      );
+    case ActionType.CALL_SUBFLOW:
+      return (
+        <>
+          <ParamField label="Flow Path" value={String(params.flowPath ?? "")} onChange={(v) => onUpdate("flowPath", v)} />
+          <ParamField label="Function Name" value={String(params.functionName ?? "")} onChange={(v) => onUpdate("functionName", v)} />
+          <ParamField label="Input Mapping (JSON)" value={typeof params.inputMapping === "object" ? JSON.stringify(params.inputMapping) : String(params.inputMapping ?? "{}")} onChange={(v) => onUpdate("inputMapping", v)} type="textarea" />
         </>
       );
     case LogicType.IF_ELSE:
@@ -130,24 +220,52 @@ function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string)
       );
     case LogicType.TRY_CATCH:
       return <ParamField label="Error Variable" value={String(params.errorVariable ?? "")} onChange={(v) => onUpdate("errorVariable", v)} />;
+    case TriggerType.CRON_JOB:
+      return (
+        <>
+          <ParamField label="Cron Schedule" value={String(params.schedule ?? "")} onChange={(v) => onUpdate("schedule", v)} placeholder="0 * * * *" />
+          <ParamField label="Function Name" value={String(params.functionName ?? "")} onChange={(v) => onUpdate("functionName", v)} />
+        </>
+      );
+    case TriggerType.MANUAL:
+      return (
+        <>
+          <ParamField label="Function Name" value={String(params.functionName ?? "")} onChange={(v) => onUpdate("functionName", v)} />
+        </>
+      );
     case VariableType.DECLARE:
       return (
         <>
           <ParamField label="Variable Name" value={String(params.name ?? "")} onChange={(v) => onUpdate("name", v)} />
-          <ParamField label="Data Type" value={String(params.dataType ?? "")} onChange={(v) => onUpdate("dataType", v)} />
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-[10px] uppercase tracking-wider">Data Type</Label>
+            <Select value={String(params.dataType ?? "string")} onValueChange={(v) => onUpdate("dataType", v)}>
+              <SelectTrigger className="font-mono text-xs h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["string", "number", "boolean", "object", "array", "any"].map((t) => (
+                  <SelectItem key={t} value={t} className="font-mono text-xs">{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <ParamField label="Initial Value" value={String(params.initialValue ?? "")} onChange={(v) => onUpdate("initialValue", v)} />
           <ParamField label="Is Const" value={Boolean(params.isConst)} onChange={(v) => onUpdate("isConst", v)} type="checkbox" />
         </>
       );
     case VariableType.TRANSFORM:
       return <ParamField label="Expression" value={String(params.expression ?? "")} onChange={(v) => onUpdate("expression", v)} type="textarea" />;
-    case OutputType.RETURN_RESPONSE:
+    case OutputType.RETURN_RESPONSE: {
+      const statusCode = Number(params.statusCode ?? 200);
+      const statusError = statusCode < 100 || statusCode > 599 ? "狀態碼範圍 100-599" : undefined;
       return (
         <>
-          <ParamField label="Status Code" value={String(params.statusCode ?? 200)} onChange={(v) => onUpdate("statusCode", v)} type="number" />
+          <ParamField label="Status Code" value={String(params.statusCode ?? 200)} onChange={(v) => onUpdate("statusCode", v)} type="number" error={statusError} />
           <ParamField label="Body Expression" value={String(params.bodyExpression ?? "")} onChange={(v) => onUpdate("bodyExpression", v)} type="textarea" />
         </>
       );
+    }
     default:
       return (
         <pre className="text-[10px] text-muted-foreground font-mono overflow-x-auto bg-secondary rounded-md p-2">
@@ -180,9 +298,22 @@ export default function ConfigPanel() {
 
   const handleParamUpdate = (key: string, value: string) => {
     let parsedValue: unknown = value;
-    if (value === "true") parsedValue = true;
-    else if (value === "false") parsedValue = false;
-    else if (!isNaN(Number(value)) && value !== "") parsedValue = Number(value);
+
+    // JSON 欄位（如 inputMapping）
+    if (key === "inputMapping") {
+      try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
+    } else if (value === "true") {
+      parsedValue = true;
+    } else if (value === "false") {
+      parsedValue = false;
+    } else if (key === "statusCode") {
+      // statusCode 強制為數字
+      const num = Number(value);
+      parsedValue = isNaN(num) ? value : num;
+    } else if (!isNaN(Number(value)) && value !== "" && key !== "routePath" && key !== "name" && key !== "functionName" && key !== "flowPath") {
+      parsedValue = Number(value);
+    }
+
     updateNodeParams(selectedNode.id, { [key]: parsedValue } as never);
   };
 

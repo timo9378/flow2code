@@ -311,7 +311,8 @@ describe("Boss 3: DAG Promise 安全性", () => {
 
     // Promise.allSettled 應在 Output 節點標記之前
     const barrierPos = code.indexOf("Promise.allSettled");
-    const outputCommentPos = code.indexOf("// --- Return (return_response) ---");
+    const outputCommentMatch = code.match(/\/\/ --- Return \(return_response\)/);
+    const outputCommentPos = outputCommentMatch ? code.indexOf(outputCommentMatch[0]) : -1;
     expect(barrierPos).toBeGreaterThan(-1);
     expect(outputCommentPos).toBeGreaterThan(-1);
     expect(barrierPos).toBeLessThan(outputCommentPos);

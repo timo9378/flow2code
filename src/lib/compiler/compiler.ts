@@ -462,7 +462,7 @@ function generateBlockContinuation(
 
     context.generatedBlockNodeIds.add(nodeId);
     context.symbolTableExclusions.add(nodeId);
-    writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+    writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
     generateNodeBody(writer, node, context);
   }
 }
@@ -592,7 +592,7 @@ function generateNodeChainDAG(
       for (const depId of resolvedDeps) {
         writer.writeLine(`await p_${sanitizeId(depId)};`);
       }
-      writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+      writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
       generateNodeBody(writer, node, context);
     });
     writer.writeLine(`)();`);
@@ -623,7 +623,7 @@ function generateNodeChainDAG(
     for (const depId of resolvedDeps) {
       writer.writeLine(`await p_${sanitizeId(depId)};`);
     }
-    writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+    writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
     generateNodeBody(writer, node, context);
   }
 }
@@ -693,7 +693,7 @@ function generateSingleNode(
   node: FlowNode,
   context: CompilerContext
 ): void {
-  writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+  writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
   generateNodeBody(writer, node, context);
 
   // 為非輸出節點生成命名變數別名（Output 節點通常是 return，不需要別名）
@@ -763,7 +763,7 @@ function createPluginContext(
       context.childBlockNodeIds.add(node.id);
       context.symbolTableExclusions.add(node.id);
       context.generatedBlockNodeIds.add(node.id);
-      writer.writeLine(`// --- ${node.label} (${node.nodeType}) ---`);
+      writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
       generateNodeBody(writer, node, context);
 
       // 生成此子節點的所有後代延續鏈（修復 Control Flow 外洩問題）
@@ -832,7 +832,8 @@ function buildSourceMap(
   const lines = code.split("\n");
   const mappings: Record<string, { startLine: number; endLine: number }> = {};
 
-  const nodeMarkerRegex = /^[\s]*\/\/ --- (.+?) \((.+?)\) ---$/;
+  // Match: // --- Label (nodeType) [nodeId] ---
+  const nodeMarkerRegex = /^[\s]*\/\/ --- .+? \(.+?\) \[(.+?)\] ---$/;
 
   let currentNodeId: string | null = null;
   let currentStartLine = 0;
@@ -849,12 +850,9 @@ function buildSourceMap(
         };
       }
 
-      const [, label, nodeType] = match;
-      const node = ir.nodes.find(
-        (n) => n.label === label && n.nodeType === nodeType
-      );
-      if (node) {
-        currentNodeId = node.id;
+      const [, nodeId] = match;
+      if (ir.nodes.some((n) => n.id === nodeId)) {
+        currentNodeId = nodeId;
         currentStartLine = lineNum;
       } else {
         currentNodeId = null;

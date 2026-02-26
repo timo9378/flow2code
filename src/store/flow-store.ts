@@ -60,6 +60,13 @@ interface FlowStoreState {
   // 選取狀態
   selectedNodeId: string | null;
 
+  /** 流程的建立時間 */
+  flowCreatedAt: string | null;
+
+  // Undo/Redo 歷史
+  undoStack: Array<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }>;
+  redoStack: Array<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }>;
+
   // 節點操作
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
@@ -75,6 +82,11 @@ interface FlowStoreState {
   updateNodeLabel: (nodeId: string, label: string) => void;
   selectNode: (nodeId: string | null) => void;
   removeNode: (nodeId: string) => void;
+
+  // Undo/Redo
+  pushSnapshot: () => void;
+  undo: () => void;
+  redo: () => void;
 
   // IR 匯出
   exportIR: () => FlowIR;
@@ -130,6 +142,11 @@ function getDefaultPorts(nodeType: NodeType): {
         outputs: [{ id: "value", label: "Value", dataType: "any" }],
       };
     case ActionType.CUSTOM_CODE:
+      return {
+        inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
+        outputs: [{ id: "result", label: "Result", dataType: "any" }],
+      };
+    case ActionType.CALL_SUBFLOW:
       return {
         inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
         outputs: [{ id: "result", label: "Result", dataType: "any" }],
@@ -209,6 +226,8 @@ function getDefaultParams(nodeType: NodeType): NodeParamsMap[NodeType] {
       return { operation: "get", key: "cache_key" } as NodeParamsMap[typeof ActionType.REDIS_CACHE];
     case ActionType.CUSTOM_CODE:
       return { code: "// your code here", returnVariable: "result" } as NodeParamsMap[typeof ActionType.CUSTOM_CODE];
+    case ActionType.CALL_SUBFLOW:
+      return { flowPath: "./sub-flow", functionName: "subHandler", inputMapping: {} } as NodeParamsMap[typeof ActionType.CALL_SUBFLOW];
     case LogicType.IF_ELSE:
       return { condition: "data !== null" } as NodeParamsMap[typeof LogicType.IF_ELSE];
     case LogicType.FOR_LOOP:
@@ -237,6 +256,7 @@ function getDefaultLabel(nodeType: NodeType): string {
     [ActionType.SQL_QUERY]: "SQL Query",
     [ActionType.REDIS_CACHE]: "Redis Cache",
     [ActionType.CUSTOM_CODE]: "Custom Code",
+    [ActionType.CALL_SUBFLOW]: "Call Subflow",
     [LogicType.IF_ELSE]: "If / Else",
     [LogicType.FOR_LOOP]: "For Loop",
     [LogicType.TRY_CATCH]: "Try / Catch",
@@ -261,12 +281,17 @@ function getCategoryForType(nodeType: NodeType): NodeCategory {
 // Zustand Store
 // ============================================================
 
+const MAX_UNDO_HISTORY = 50;
+
 let nodeCounter = 0;
 
 export const useFlowStore = create<FlowStoreState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNodeId: null,
+  flowCreatedAt: null,
+  undoStack: [],
+  redoStack: [],
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) as Node<FlowNodeData>[] });
@@ -277,10 +302,12 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
   },
 
   onConnect: (connection) => {
+    get().pushSnapshot();
     set({ edges: addEdge(connection, get().edges) });
   },
 
   addFlowNode: (nodeType, _category, position) => {
+    get().pushSnapshot();
     const id = `node_${++nodeCounter}_${Date.now()}`;
     const category = getCategoryForType(nodeType);
     const { inputs, outputs } = getDefaultPorts(nodeType);
@@ -301,7 +328,10 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
       },
     };
 
-    set({ nodes: [...get().nodes, newNode] });
+    set({
+      nodes: [...get().nodes, newNode],
+      flowCreatedAt: get().flowCreatedAt ?? new Date().toISOString(),
+    });
     return id;
   },
 
@@ -336,6 +366,7 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
   },
 
   removeNode: (nodeId) => {
+    get().pushSnapshot();
     set({
       nodes: get().nodes.filter((n) => n.id !== nodeId),
       edges: get().edges.filter(
@@ -343,6 +374,49 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
       ),
       selectedNodeId:
         get().selectedNodeId === nodeId ? null : get().selectedNodeId,
+    });
+  },
+
+  pushSnapshot: () => {
+    const { nodes, edges, undoStack } = get();
+    const snapshot = {
+      nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
+      edges: edges.map((e) => ({ ...e })),
+    };
+    const newStack = [...undoStack, snapshot];
+    if (newStack.length > MAX_UNDO_HISTORY) newStack.shift();
+    set({ undoStack: newStack, redoStack: [] });
+  },
+
+  undo: () => {
+    const { undoStack, nodes, edges } = get();
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    const currentSnapshot = {
+      nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
+      edges: edges.map((e) => ({ ...e })),
+    };
+    set({
+      undoStack: undoStack.slice(0, -1),
+      redoStack: [...get().redoStack, currentSnapshot],
+      nodes: prev.nodes,
+      edges: prev.edges,
+    });
+  },
+
+  redo: () => {
+    const { redoStack, nodes, edges } = get();
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    const currentSnapshot = {
+      nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
+      edges: edges.map((e) => ({ ...e })),
+    };
+    set({
+      redoStack: redoStack.slice(0, -1),
+      undoStack: [...get().undoStack, currentSnapshot],
+      nodes: next.nodes,
+      edges: next.edges,
     });
   },
 
@@ -372,7 +446,7 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
       meta: {
         name: "Untitled Flow",
         description: "",
-        createdAt: new Date().toISOString(),
+        createdAt: get().flowCreatedAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
       nodes: irNodes,
@@ -382,7 +456,7 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
 
   reset: () => {
     nodeCounter = 0;
-    set({ nodes: [], edges: [], selectedNodeId: null });
+    set({ nodes: [], edges: [], selectedNodeId: null, flowCreatedAt: null, undoStack: [], redoStack: [] });
   },
 
   loadIR: (ir: FlowIR) => {
@@ -411,6 +485,6 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
       animated: true,
     }));
 
-    set({ nodes, edges, selectedNodeId: null });
+    set({ nodes, edges, selectedNodeId: null, flowCreatedAt: ir.meta?.createdAt ?? new Date().toISOString() });
   },
 }));
