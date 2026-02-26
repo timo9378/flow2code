@@ -6,13 +6,14 @@
  * 頂部工具列 + 浮動視窗（AI、輸出、OpenAPI 選擇器）
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useFlowStore } from "@/store/flow-store";
 import { useAISettingsStore } from "@/store/ai-settings-store";
 import { validateFlowIR } from "@/lib/ir/validator";
 import { topologicalSort, formatExecutionPlan } from "@/lib/ir/topological-sort";
 import { EXAMPLE_PROMPTS } from "@/lib/ai/prompt";
 import { getApiBase } from "@/lib/api-base";
+import { streamChatCompletion, withRetry, estimateTokenCount, checkTokenBudget } from "@/lib/ai/stream";
 import ApiSandbox from "./ApiSandbox";
 import AISettingsDialog from "./AISettingsDialog";
 
@@ -59,7 +60,15 @@ export default function Toolbar() {
   const [showOpenAPIDialog, setShowOpenAPIDialog] = useState(false);
   const [openAPIFlows, setOpenAPIFlows] = useState<any[]>([]);
   const [showAISettings, setShowAISettings] = useState(false);
+  const [aiStreamContent, setAiStreamContent] = useState("");
+  const [tokenEstimate, setTokenEstimate] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const aiSettings = useAISettingsStore();
+
+  // Token 估算
+  const updateTokenEstimate = useCallback((prompt: string) => {
+    setTokenEstimate(estimateTokenCount(prompt));
+  }, []);
 
   // ── handlers ──
 
@@ -149,12 +158,24 @@ export default function Toolbar() {
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
+    setAiStreamContent("");
+    abortControllerRef.current = new AbortController();
     try {
       const activeConfig = aiSettings.getActiveConfig();
 
       // 如果有自訂端點，直接從前端打 LLM API（避免必須設定後端環境變數）
       if (activeConfig) {
         const { FLOW_IR_SYSTEM_PROMPT: systemPrompt } = await import("@/lib/ai/prompt");
+
+        // Token budget 檢查
+        const budget = checkTokenBudget(systemPrompt, aiPrompt.trim());
+        if (!budget.withinBudget) {
+          setOutput(`⚠️ Prompt 可能過長（估計 ~${budget.estimated} tokens，建議 ≤${budget.limit}）\n請精簡描述後重試。`);
+          setShowOutput(true);
+          setAiLoading(false);
+          return;
+        }
+
         const url = activeConfig.baseUrl.replace(/\/+$/, "");
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
@@ -173,20 +194,61 @@ export default function Toolbar() {
           body.response_format = { type: "json_object" };
         }
 
-        const llmRes = await fetch(`${url}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
-        if (!llmRes.ok) {
-          const errText = await llmRes.text();
-          setOutput(`❌ AI API 錯誤 (${llmRes.status}): ${errText}`);
-          setShowOutput(true);
-          return;
+        // 嘗試使用 SSE 串流（帶自動重試）
+        let content = "";
+        try {
+          content = await withRetry(async () => {
+            return new Promise<string>((resolve, reject) => {
+              let accumulated = "";
+              streamChatCompletion(
+                {
+                  url: `${url}/chat/completions`,
+                  headers,
+                  body,
+                  signal: abortControllerRef.current?.signal,
+                },
+                {
+                  onToken: (token) => {
+                    accumulated += token;
+                    setAiStreamContent(accumulated);
+                  },
+                  onComplete: (full) => resolve(full),
+                  onError: (err) => reject(err),
+                }
+              );
+            });
+          }, {
+            maxRetries: 2,
+            initialDelay: 1500,
+            signal: abortControllerRef.current?.signal,
+            onRetry: (attempt, err) => {
+              setAiStreamContent(`⏳ 重試中 (${attempt}/2)：${err.message}\n`);
+            },
+          });
+        } catch (streamErr) {
+          // 串流失敗，fallback 到非串流模式
+          const llmRes = await fetch(`${url}/chat/completions`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: abortControllerRef.current?.signal,
+          });
+          if (!llmRes.ok) {
+            const errText = await llmRes.text();
+            setOutput(`❌ AI API 錯誤 (${llmRes.status}): ${errText}`);
+            setShowOutput(true);
+            return;
+          }
+          const llmData = await llmRes.json();
+          content = llmData.choices?.[0]?.message?.content ?? "";
         }
-        const llmData = await llmRes.json();
-        const content = llmData.choices?.[0]?.message?.content;
+
         if (!content) {
           setOutput("❌ AI 回傳空內容");
           setShowOutput(true);
           return;
         }
+
         // 從 content 中提取 JSON（支援 markdown code block）
         let jsonStr = content;
         const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
@@ -205,10 +267,26 @@ export default function Toolbar() {
           setShowOutput(true);
           return;
         }
+
         loadIR(ir);
         setShowAIDialog(false);
         setAiPrompt("");
-        setOutput(`✅ AI 已生成流程圖：「${ir.meta?.name ?? "Untitled"}」\n📡 ${activeConfig.name} (${activeConfig.model})\n\n共 ${ir.nodes?.length ?? 0} 個節點、${ir.edges?.length ?? 0} 條連線`);
+        setAiStreamContent("");
+
+        // AI Code Review：自動分析生成結果
+        const reviewNotes: string[] = [];
+        const nodeCount = ir.nodes?.length ?? 0;
+        const edgeCount = ir.edges?.length ?? 0;
+        const hasTrigger = ir.nodes?.some((n: { category: string }) => n.category === "trigger");
+        const hasOutput = ir.nodes?.some((n: { nodeType: string }) => n.nodeType === "return_response");
+        if (!hasTrigger) reviewNotes.push("⚠️ 缺少觸發器節點");
+        if (!hasOutput) reviewNotes.push("⚠️ 缺少 Return Response 節點");
+        if (nodeCount > 15) reviewNotes.push("💡 節點數量較多，建議拆分為子流程");
+        if (edgeCount === 0 && nodeCount > 1) reviewNotes.push("⚠️ 節點之間沒有連線");
+
+        const review = reviewNotes.length > 0 ? `\n\n📋 自動審計:\n${reviewNotes.join("\n")}` : "\n\n✅ 自動審計通過";
+
+        setOutput(`✅ AI 已生成流程圖：「${ir.meta?.name ?? "Untitled"}」\n📡 ${activeConfig.name} (${activeConfig.model})\n📊 Token 估計: ~${budget.estimated}\n\n共 ${nodeCount} 個節點、${edgeCount} 條連線${review}`);
         setShowOutput(true);
       } else {
         // 使用後端 /api/generate（環境變數模式）
@@ -216,6 +294,7 @@ export default function Toolbar() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: aiPrompt.trim() }),
+          signal: abortControllerRef.current?.signal,
         });
         const data = await res.json();
         if (data.success && data.ir) {
@@ -230,11 +309,21 @@ export default function Toolbar() {
         }
       }
     } catch (err) {
-      setOutput(`❌ AI 請求失敗: ${err instanceof Error ? err.message : String(err)}`);
+      if ((err as Error).name === "AbortError") {
+        setOutput("⏹️ AI 生成已取消");
+      } else {
+        setOutput(`❌ AI 請求失敗: ${err instanceof Error ? err.message : String(err)}`);
+      }
       setShowOutput(true);
     } finally {
       setAiLoading(false);
+      setAiStreamContent("");
+      abortControllerRef.current = null;
     }
+  };
+
+  const handleCancelAI = () => {
+    abortControllerRef.current?.abort();
   };
 
   const handleLoadIRFromJSON = () => {
@@ -312,6 +401,44 @@ export default function Toolbar() {
     setShowOpenAPIDialog(false);
     setOutput(`✅ 已載入端點：「${flow.meta?.name ?? "Untitled"}」\n共 ${flow.nodes?.length ?? 0} 個節點`);
     setShowOutput(true);
+  };
+
+  const handleDecompileTS = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".ts,.js";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const { decompile } = await import("@/lib/compiler/decompiler");
+        const result = decompile(text, { fileName: file.name });
+        if (result.success && result.ir) {
+          loadIR(result.ir);
+          const confidencePercent = Math.round(result.confidence * 100);
+          let msg = `✅ TypeScript → IR 反向解析成功\n`;
+          msg += `📊 信心分數: ${confidencePercent}%\n`;
+          msg += `📁 ${file.name}\n`;
+          msg += `\n共 ${result.ir.nodes.length} 個節點、${result.ir.edges.length} 條連線`;
+          if (result.errors?.length) {
+            msg += `\n\n⚠️ 部分警告:\n${result.errors.join("\n")}`;
+          }
+          if (confidencePercent < 50) {
+            msg += `\n\n💡 信心分數較低，建議手動檢查節點配置`;
+          }
+          setOutput(msg);
+          setShowOutput(true);
+        } else {
+          setOutput(`❌ 反向解析失敗:\n${result.errors?.join("\n") ?? "未知錯誤"}`);
+          setShowOutput(true);
+        }
+      } catch (err) {
+        setOutput(`❌ 解析錯誤: ${err instanceof Error ? err.message : String(err)}`);
+        setShowOutput(true);
+      }
+    };
+    input.click();
   };
 
   return (
@@ -398,6 +525,9 @@ export default function Toolbar() {
             <DropdownMenuItem onClick={handleImportOpenAPI}>
               <span className="mr-2">📄</span> 匯入 OpenAPI Spec
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleDecompileTS}>
+              <span className="mr-2">🔄</span> 匯入 TypeScript（反向解析）
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -444,7 +574,10 @@ export default function Toolbar() {
             <Textarea
               ref={promptRef}
               value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
+              onChange={(e) => {
+                setAiPrompt(e.target.value);
+                updateTokenEstimate(e.target.value);
+              }}
               placeholder="例如：建立一個 GET /api/users 端點，從資料庫查詢用戶列表並回傳..."
               className="min-h-[120px] font-mono text-sm resize-y"
               onKeyDown={(e) => {
@@ -452,13 +585,26 @@ export default function Toolbar() {
               }}
             />
 
+            {/* 串流即時預覽 */}
+            {aiLoading && aiStreamContent && (
+              <div className="bg-secondary/50 rounded-md p-3 max-h-[120px] overflow-y-auto">
+                <div className="text-[10px] text-muted-foreground mb-1 font-semibold">📡 即時串流</div>
+                <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words">
+                  {aiStreamContent.length > 500 ? `...${aiStreamContent.slice(-500)}` : aiStreamContent}
+                </pre>
+              </div>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">範例</span>
               <div className="flex flex-wrap gap-1">
                 {EXAMPLE_PROMPTS.map((p, i) => (
                   <button
                     key={i}
-                    onClick={() => setAiPrompt(p)}
+                    onClick={() => {
+                      setAiPrompt(p);
+                      updateTokenEstimate(p);
+                    }}
                     className="text-[10px] text-purple-400 hover:text-purple-300 bg-secondary hover:bg-secondary/80 px-2 py-1 rounded-md cursor-pointer truncate max-w-[280px] transition-colors"
                   >
                     {p}
@@ -474,6 +620,7 @@ export default function Toolbar() {
               {aiSettings.getActiveConfig()
                 ? `📡 ${aiSettings.getActiveConfig()!.name}`
                 : "🔑 環境變數模式"}
+              {tokenEstimate > 0 && ` · ~${tokenEstimate} tokens`}
               {" · "}
               <button
                 onClick={() => { setShowAISettings(true); }}
@@ -482,26 +629,38 @@ export default function Toolbar() {
                 設定端點
               </button>
             </span>
-            <Button
-              onClick={handleAIGenerate}
-              disabled={aiLoading || !aiPrompt.trim()}
-              className="bg-purple-600 hover:bg-purple-500 text-white"
-            >
-              {aiLoading ? "⏳ 生成中..." : "✨ 生成"}
-            </Button>
+            <div className="flex gap-2">
+              {aiLoading && (
+                <Button
+                  onClick={handleCancelAI}
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                >
+                  ⏹ 取消
+                </Button>
+              )}
+              <Button
+                onClick={handleAIGenerate}
+                disabled={aiLoading || !aiPrompt.trim()}
+                className="bg-purple-600 hover:bg-purple-500 text-white"
+              >
+                {aiLoading ? "⏳ 生成中..." : "✨ 生成"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* ── 輸出面板（浮動視窗） ── */}
       <Dialog open={showOutput} onOpenChange={setShowOutput}>
-        <DialogContent className="sm:max-w-[720px] max-h-[80vh] flex flex-col">
+        <DialogContent className="sm:max-w-[720px] max-h-[80vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Output</DialogTitle>
             <DialogDescription>編譯、驗證或 AI 生成的輸出結果</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 max-h-[60vh]">
-            <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap leading-relaxed">
+          <ScrollArea className="flex-1 max-h-[60vh] w-full">
+            <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap break-words leading-relaxed max-w-full">
               {output}
             </pre>
           </ScrollArea>

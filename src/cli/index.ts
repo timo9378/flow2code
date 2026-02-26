@@ -84,6 +84,10 @@ program
     }
 
     // 輸出
+    if (!result.code || !(options.output ?? result.filePath)) {
+      console.error("❌ 編譯結果缺少 code 或 filePath");
+      process.exit(1);
+    }
     const outputPath = options.output ?? result.filePath!;
     const fullOutputPath = resolve(outputPath);
     const outputDir = dirname(fullOutputPath);
@@ -92,7 +96,7 @@ program
       mkdirSync(outputDir, { recursive: true });
     }
 
-    writeFileSync(fullOutputPath, result.code!, "utf-8");
+    writeFileSync(fullOutputPath, result.code, "utf-8");
     console.log(`✅ 編譯成功: ${fullOutputPath}`);
 
     // 生成 Source Map
@@ -534,14 +538,18 @@ function compileFile(filePath: string, projectRoot: string): void {
       return;
     }
 
-    const outputPath = join(projectRoot, result.filePath!);
+    if (!result.code || !result.filePath) {
+      console.error(`❌ [${filePath}] 編譯結果缺少 code 或 filePath`);
+      return;
+    }
+    const outputPath = join(projectRoot, result.filePath);
     const outputDir = dirname(outputPath);
 
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
     }
 
-    writeFileSync(outputPath, result.code!, "utf-8");
+    writeFileSync(outputPath, result.code, "utf-8");
 
     const elapsed = Date.now() - startTime;
     console.log(`✅ [${elapsed}ms] ${filePath} → ${outputPath}`);

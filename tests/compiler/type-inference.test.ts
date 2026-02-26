@@ -94,4 +94,246 @@ describe("Type Inference", () => {
     const typeInfo = inferFlowStateTypes(ir);
     expect(typeInfo.nodeTypes.get("redis_1")).toBe("string | null");
   });
+
+  // ── P2-4 新增: transform / custom_code / call_subflow ──
+
+  it("Transform .map() 應推斷為 unknown[]", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "transform_1",
+          nodeType: "transform" as any,
+          category: NodeCategory.VARIABLE,
+          label: "Map",
+          params: { expression: "items.map(i => i.name)" },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
+          outputs: [{ id: "output", label: "Output", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("transform_1")).toBe("unknown[]");
+  });
+
+  it("Transform .length 應推斷為 number", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "transform_1",
+          nodeType: "transform" as any,
+          category: NodeCategory.VARIABLE,
+          label: "Count",
+          params: { expression: "arr.length" },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
+          outputs: [{ id: "output", label: "Output", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("transform_1")).toBe("number");
+  });
+
+  it("Transform JSON.stringify 應推斷為 string", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "transform_1",
+          nodeType: "transform" as any,
+          category: NodeCategory.VARIABLE,
+          label: "Stringify",
+          params: { expression: "JSON.stringify(data)" },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
+          outputs: [{ id: "output", label: "Output", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("transform_1")).toBe("string");
+  });
+
+  it("Transform Object.keys 應推斷為 string[]", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "transform_1",
+          nodeType: "transform" as any,
+          category: NodeCategory.VARIABLE,
+          label: "Keys",
+          params: { expression: "Object.keys(obj)" },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
+          outputs: [{ id: "output", label: "Output", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("transform_1")).toBe("string[]");
+  });
+
+  it("Custom Code 無 returnVariable → void", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "custom_1",
+          nodeType: ActionType.CUSTOM_CODE,
+          category: NodeCategory.ACTION,
+          label: "Log",
+          params: { code: "console.log('hello');" },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
+          outputs: [{ id: "result", label: "Result", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("custom_1")).toBe("void");
+  });
+
+  it("Custom Code 有 returnType → 使用指定型別", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "custom_1",
+          nodeType: ActionType.CUSTOM_CODE,
+          category: NodeCategory.ACTION,
+          label: "Custom",
+          params: { code: "const x = 1;", returnVariable: "x", returnType: "number" },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
+          outputs: [{ id: "result", label: "Result", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("custom_1")).toBe("number");
+  });
+
+  it("Call Subflow 應推斷為 Awaited<ReturnType<typeof fn>>", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "subflow_1",
+          nodeType: ActionType.CALL_SUBFLOW,
+          category: NodeCategory.ACTION,
+          label: "Auth",
+          params: { flowPath: "./auth", functionName: "checkAuth", inputMapping: {} },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
+          outputs: [{ id: "result", label: "Result", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("subflow_1")).toBe("Awaited<ReturnType<typeof checkAuth>>");
+  });
+
+  it("Call Subflow 有 returnType → 使用指定型別", () => {
+    const ir: FlowIR = {
+      version: "1.0.0",
+      meta: { name: "test", createdAt: "", updatedAt: "" },
+      nodes: [
+        {
+          id: "trigger_1",
+          nodeType: TriggerType.HTTP_WEBHOOK,
+          category: NodeCategory.TRIGGER,
+          label: "Trigger",
+          params: { method: "GET", routePath: "/api/test", parseBody: false },
+          inputs: [],
+          outputs: [{ id: "query", label: "Query", dataType: "object" }],
+        },
+        {
+          id: "subflow_1",
+          nodeType: ActionType.CALL_SUBFLOW,
+          category: NodeCategory.ACTION,
+          label: "Users",
+          params: { flowPath: "./users", functionName: "getUsers", inputMapping: {}, returnType: "User[]" },
+          inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
+          outputs: [{ id: "result", label: "Result", dataType: "any" }],
+        },
+      ],
+      edges: [],
+    };
+    const typeInfo = inferFlowStateTypes(ir);
+    expect(typeInfo.nodeTypes.get("subflow_1")).toBe("User[]");
+  });
 });

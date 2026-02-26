@@ -55,6 +55,7 @@ export default defineConfig([
     splitting: false,
     sourcemap: true,
     dts: true,
+    tsconfig: "tsconfig.build.json",
     clean: false,
     external: [
       "ts-morph",

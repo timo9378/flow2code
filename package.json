@@ -22,16 +22,19 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/server.js"
+      "import": "./dist/compiler.js",
+      "types": "./dist/compiler.d.ts"
     },
     "./compiler": {
       "import": "./dist/compiler.js",
       "types": "./dist/compiler.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server.js"
     }
   },
   "files": [
     "dist",
-    "out",
     "README.md",
     "LICENSE"
   ],

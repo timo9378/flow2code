@@ -77,10 +77,21 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
+const MAX_BODY_SIZE = 2 * 1024 * 1024; // 2 MB
+
 async function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk) => chunks.push(chunk));
+    let totalSize = 0;
+    req.on("data", (chunk: Buffer) => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error(`Body too large (max ${MAX_BODY_SIZE / 1024 / 1024} MB)`));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
     req.on("error", reject);
   });
@@ -141,11 +152,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
       return;
     }
 
-    let body: any;
+    let body: unknown;
     try {
       body = await parseJsonBody(req);
-    } catch {
-      sendJson(res, 400, { error: "Invalid JSON body" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid JSON body";
+      sendJson(res, 400, { error: msg });
       return;
     }
 

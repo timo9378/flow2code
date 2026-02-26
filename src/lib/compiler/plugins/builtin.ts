@@ -32,6 +32,111 @@ import type { NodePlugin, PluginContext } from "./types";
 import type { CodeBlockWriter } from "ts-morph";
 
 // ============================================================
+// Type Inference Helpers
+// ============================================================
+
+/**
+ * 從 transform 表達式推斷輸出型別
+ * 分析常見的 JavaScript 表達式模式
+ */
+function inferTypeFromExpression(expr: string): string {
+  const trimmed = expr.trim();
+
+  // Array methods → array types
+  if (/\.map\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.filter\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.flatMap\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.slice\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.concat\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.sort\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.reverse\s*\(/.test(trimmed)) return "unknown[]";
+  if (/Array\.from\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.flat\s*\(/.test(trimmed)) return "unknown[]";
+  if (/\.entries\s*\(/.test(trimmed)) return "[string, unknown][]";
+
+  // Reduce → unknown (could be anything)
+  if (/\.reduce\s*\(/.test(trimmed)) return "unknown";
+
+  // Number-producing methods
+  if (/\.length\b/.test(trimmed)) return "number";
+  if (/\.indexOf\s*\(/.test(trimmed)) return "number";
+  if (/\.findIndex\s*\(/.test(trimmed)) return "number";
+  if (/parseInt\s*\(/.test(trimmed)) return "number";
+  if (/parseFloat\s*\(/.test(trimmed)) return "number";
+  if (/Number\s*\(/.test(trimmed)) return "number";
+  if (/Math\./.test(trimmed)) return "number";
+
+  // Boolean-producing patterns
+  if (/\.includes\s*\(/.test(trimmed)) return "boolean";
+  if (/\.some\s*\(/.test(trimmed)) return "boolean";
+  if (/\.every\s*\(/.test(trimmed)) return "boolean";
+  if (/\.has\s*\(/.test(trimmed)) return "boolean";
+  if (/^!/.test(trimmed)) return "boolean";
+  if (/===|!==|==|!=|>=|<=|>|<|\&\&|\|\|/.test(trimmed)) return "boolean";
+
+  // String-producing patterns
+  if (/\.join\s*\(/.test(trimmed)) return "string";
+  if (/\.toString\s*\(/.test(trimmed)) return "string";
+  if (/\.trim\s*\(/.test(trimmed)) return "string";
+  if (/\.replace\s*\(/.test(trimmed)) return "string";
+  if (/\.toLowerCase\s*\(/.test(trimmed)) return "string";
+  if (/\.toUpperCase\s*\(/.test(trimmed)) return "string";
+  if (/String\s*\(/.test(trimmed)) return "string";
+  if (/JSON\.stringify\s*\(/.test(trimmed)) return "string";
+  if (/`[^`]*`/.test(trimmed)) return "string";
+
+  // Object-producing patterns
+  if (/JSON\.parse\s*\(/.test(trimmed)) return "unknown";
+  if (/Object\.keys\s*\(/.test(trimmed)) return "string[]";
+  if (/Object\.values\s*\(/.test(trimmed)) return "unknown[]";
+  if (/Object\.entries\s*\(/.test(trimmed)) return "[string, unknown][]";
+  if (/Object\.assign\s*\(/.test(trimmed)) return "Record<string, unknown>";
+  if (/Object\.fromEntries\s*\(/.test(trimmed)) return "Record<string, unknown>";
+  if (/^\{/.test(trimmed)) return "Record<string, unknown>";
+  if (/^\[/.test(trimmed)) return "unknown[]";
+  if (/\.\.\.\s*\{\{/.test(trimmed)) return "Record<string, unknown>";
+
+  // Find → single element or undefined
+  if (/\.find\s*\(/.test(trimmed)) return "unknown | undefined";
+
+  return "unknown";
+}
+
+/**
+ * 從 custom_code 程式碼推斷 returnVariable 的型別
+ */
+function inferTypeFromCode(code: string, returnVar: string): string {
+  // 尋找 returnVar 的宣告
+  const declMatch = code.match(
+    new RegExp(`(?:const|let|var)\\s+${escapeRegex(returnVar)}\\s*(?::\\s*([^=]+?))?\\s*=\\s*(.+?)(?:;|$)`, "m")
+  );
+  if (declMatch) {
+    // 有明確的型別註解
+    const typeAnnotation = declMatch[1]?.trim();
+    if (typeAnnotation) return typeAnnotation;
+
+    // 從賦值表達式推斷
+    const initializer = declMatch[2]?.trim();
+    if (initializer) {
+      if (/^\[/.test(initializer)) return "unknown[]";
+      if (/^\{/.test(initializer)) return "Record<string, unknown>";
+      if (/^["'`]/.test(initializer)) return "string";
+      if (/^\d/.test(initializer)) return "number";
+      if (/^(true|false)$/.test(initializer)) return "boolean";
+      if (/^new Map/.test(initializer)) return "Map<unknown, unknown>";
+      if (/^new Set/.test(initializer)) return "Set<unknown>";
+      if (/\.map\s*\(/.test(initializer)) return "unknown[]";
+      if (/\.filter\s*\(/.test(initializer)) return "unknown[]";
+    }
+  }
+  return "unknown";
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ============================================================
 // Trigger Plugins (No-ops, 已在 Platform Adapter 處理)
 // ============================================================
 
@@ -216,11 +321,44 @@ const redisCachePlugin: NodePlugin = {
   },
 };
 
+/**
+ * ⚠️ 危險 API 模式清單 — 用於在編譯時產生警告
+ * custom_code 會將使用者代碼逐行寫入輸出，必須提醒風險。
+ */
+const DANGEROUS_CODE_PATTERNS = [
+  { pattern: /\bprocess\.exit\b/, desc: "process.exit() — 會終止 Node.js 進程" },
+  { pattern: /\bchild_process\b/, desc: "child_process — 可執行任意系統指令" },
+  { pattern: /\beval\s*\(/, desc: "eval() — 動態執行任意代碼" },
+  { pattern: /\bnew\s+Function\s*\(/, desc: "new Function() — 動態建構函式" },
+  { pattern: /\brequire\s*\(\s*['"]fs['"]/, desc: "require('fs') — 檔案系統存取" },
+  { pattern: /\bimport\s*\(\s*['"]fs['"]/, desc: "import('fs') — 檔案系統存取" },
+  { pattern: /\bfs\.\w*(unlink|rmdir|rm|writeFile)\b/, desc: "fs 刪除/寫入操作" },
+];
+
 const customCodePlugin: NodePlugin = {
   nodeType: ActionType.CUSTOM_CODE,
 
-  generate(node, writer) {
+  generate(node, writer, context) {
     const params = node.params as CustomCodeParams;
+
+    // 安全檢查：偵測危險 API 呼叫
+    const warnings: string[] = [];
+    for (const { pattern, desc } of DANGEROUS_CODE_PATTERNS) {
+      if (pattern.test(params.code)) {
+        warnings.push(desc);
+      }
+    }
+    if (warnings.length > 0) {
+      writer.writeLine(`// ⚠️ SECURITY WARNING: 此自訂代碼使用了以下危險 API:`);
+      for (const w of warnings) {
+        writer.writeLine(`//   - ${w}`);
+      }
+      writer.writeLine(`// 請在部署前仔細審閱此段代碼。`);
+      // 也記錄到 context warnings（如果有的話）
+      if (context && "addWarning" in context) {
+        (context as any).addWarning?.(`[${node.id}] Custom code 使用危險 API: ${warnings.join(", ")}`);
+      }
+    }
 
     writer.writeLine(`// Custom Code: ${node.label}`);
     for (const line of params.code.split("\n")) {
@@ -231,7 +369,14 @@ const customCodePlugin: NodePlugin = {
     }
   },
 
-  getOutputType: () => "unknown",
+  getOutputType(node) {
+    const params = node.params as CustomCodeParams & { returnType?: string };
+    // 使用者可透過 returnType 參數指定回傳型別
+    if (params.returnType) return params.returnType;
+    if (!params.returnVariable) return "void";
+    // 嘗試從 code 中推斷型別
+    return inferTypeFromCode(params.code, params.returnVariable);
+  },
 };
 
 const callSubflowPlugin: NodePlugin = {
@@ -261,7 +406,12 @@ const callSubflowPlugin: NodePlugin = {
     );
   },
 
-  getOutputType: () => "unknown",
+  getOutputType(node) {
+    const params = node.params as CallSubflowParams & { returnType?: string };
+    if (params.returnType) return params.returnType;
+    // 利用 TypeScript 型別推斷：Awaited<ReturnType<typeof fn>>
+    return `Awaited<ReturnType<typeof ${params.functionName}>>`;
+  },
 };
 
 // ============================================================
@@ -488,7 +638,10 @@ const transformPlugin: NodePlugin = {
     writer.writeLine(`flowState['${node.id}'] = ${expr};`);
   },
 
-  getOutputType: () => "unknown",
+  getOutputType(node) {
+    const params = node.params as TransformParams;
+    return inferTypeFromExpression(params.expression);
+  },
 };
 
 // ============================================================

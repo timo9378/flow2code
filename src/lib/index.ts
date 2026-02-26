@@ -93,5 +93,9 @@ export { parseExpression } from "./compiler/expression-parser";
 // ── Type Inference ──
 export { inferFlowStateTypes } from "./compiler/type-inference";
 
+// ── Decompiler (TS → IR) ──
+export { decompile } from "./compiler/decompiler";
+export type { DecompileResult } from "./compiler/decompiler";
+
 // ── Diff ──
 export { semanticDiff, formatDiff } from "./diff/semantic-diff";

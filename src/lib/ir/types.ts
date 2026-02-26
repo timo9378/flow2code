@@ -193,6 +193,8 @@ export interface CustomCodeParams {
   code: string;
   /** 返回值的變數名稱 */
   returnVariable?: string;
+  /** 明確指定返回型別（用於型別推斷，例如 "User[]" 或 "{ count: number }"） */
+  returnType?: string;
 }
 
 /** 子流程呼叫參數 */
@@ -203,6 +205,8 @@ export interface CallSubflowParams {
   functionName: string;
   /** 輸入參數映射：參數名稱 → 表達式（可使用模板語法） */
   inputMapping: Record<string, string>;
+  /** 明確指定子流程返回型別（可選，預設由 TypeScript 推斷） */
+  returnType?: string;
 }
 
 /** If/Else 邏輯控制參數 */
