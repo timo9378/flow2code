@@ -4,7 +4,10 @@ import type { FlowIR } from "@/lib/ir/types";
 
 export async function POST(req: Request) {
   try {
-    const ir: FlowIR = await req.json();
+    const body = await req.json();
+
+    // 支援新格式 { ir, write } 和舊格式（直接傳 IR）
+    const ir: FlowIR = body.ir ?? body;
     const result = compile(ir);
 
     if (result.success) {
@@ -12,6 +15,7 @@ export async function POST(req: Request) {
         success: true,
         code: result.code,
         filePath: result.filePath,
+        writtenTo: null, // Next.js dev mode 不寫入檔案
         dependencies: result.dependencies,
         sourceMap: result.sourceMap,
       });

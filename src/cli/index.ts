@@ -380,37 +380,46 @@ program
 // dev 指令 — 啟動 standalone server
 // ============================================================
 
+async function startDevServer(options: { port: string; open: boolean }) {
+  const port = parseInt(options.port, 10);
+  // 動態 import — 僅在 dev/ui 指令時載入 server
+  const { startServer } = await import("../server/index.js");
+
+  startServer({
+    port,
+    onReady: (url) => {
+      console.log(`\n  🚀 Flow2Code Dev Server`);
+      console.log(`  ├─ Editor:  ${url}`);
+      console.log(`  ├─ API:     ${url}/api/compile`);
+      console.log(`  └─ Project: ${process.cwd()}\n`);
+
+      if (options.open) {
+        // 跨平台開啟瀏覽器
+        const openCmd =
+          process.platform === "darwin"
+            ? "open"
+            : process.platform === "win32"
+              ? "start"
+              : "xdg-open";
+        import("node:child_process").then(({ exec }) => exec(`${openCmd} ${url}`));
+      }
+    },
+  });
+}
+
 program
   .command("dev")
   .description("啟動 Flow2Code 視覺化編輯器 (standalone dev server)")
   .option("-p, --port <port>", "伺服器埠號", "3100")
   .option("--no-open", "不自動開啟瀏覽器")
-  .action(async (options: { port: string; open: boolean }) => {
-    const port = parseInt(options.port, 10);
-    // 動態 import — 僅在 dev 指令時載入 server
-    const { startServer } = await import("../server/index.js");
+  .action(startDevServer);
 
-    startServer({
-      port,
-      onReady: (url) => {
-        console.log(`\n  🚀 Flow2Code Dev Server`);
-        console.log(`  ├─ Editor:  ${url}`);
-        console.log(`  ├─ API:     ${url}/api/compile`);
-        console.log(`  └─ Project: ${process.cwd()}\n`);
-
-        if (options.open) {
-          // 跨平台開啟瀏覽器
-          const openCmd =
-            process.platform === "darwin"
-              ? "open"
-              : process.platform === "win32"
-                ? "start"
-                : "xdg-open";
-          import("node:child_process").then(({ exec }) => exec(`${openCmd} ${url}`));
-        }
-      },
-    });
-  });
+program
+  .command("ui")
+  .description("啟動 Flow2Code 視覺化編輯器 (dev 的別名)")
+  .option("-p, --port <port>", "伺服器埠號", "3100")
+  .option("--no-open", "不自動開啟瀏覽器")
+  .action(startDevServer);
 
 // ============================================================
 // 輔助函式

@@ -10,6 +10,8 @@ import { validateFlowIR } from "../lib/ir/validator";
 import { convertOpenAPIToFlowIR } from "../lib/openapi/converter";
 import { FLOW_IR_SYSTEM_PROMPT } from "../lib/ai/prompt";
 import type { FlowIR } from "../lib/ir/types";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
 
 export interface ApiResponse {
   status: number;
@@ -18,26 +20,84 @@ export interface ApiResponse {
 
 // ── POST /api/compile ──
 
-export function handleCompile(ir: FlowIR): ApiResponse {
+export interface CompileRequest {
+  ir?: FlowIR;
+  /** 是否寫入檔案到使用者專案 (預設 true) */
+  write?: boolean;
+}
+
+/**
+ * @param body - { ir: FlowIR, write?: boolean }
+ * @param projectRoot - 使用者專案根目錄 (process.cwd())
+ */
+export function handleCompile(body: CompileRequest, projectRoot: string): ApiResponse {
   try {
+    const ir = body.ir;
+    const shouldWrite = body.write !== false; // 預設寫入
+
+    if (!ir) {
+      return { status: 400, body: { success: false, error: "Missing 'ir' in request body" } };
+    }
+
     const result = compile(ir);
-    if (result.success) {
-      return {
-        status: 200,
-        body: {
-          success: true,
-          code: result.code,
-          filePath: result.filePath,
-          dependencies: result.dependencies,
-          sourceMap: result.sourceMap,
-        },
-      };
-    } else {
+    if (!result.success) {
       return {
         status: 400,
         body: { success: false, error: result.errors?.join("\n") },
       };
     }
+
+    let writtenPath: string | null = null;
+
+    // 寫入檔案到使用者專案
+    if (shouldWrite && result.filePath && result.code) {
+      const fullPath = join(projectRoot, result.filePath);
+      const dir = dirname(fullPath);
+
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+
+      writeFileSync(fullPath, result.code, "utf-8");
+      writtenPath = fullPath;
+
+      // 寫入 Source Map
+      if (result.sourceMap) {
+        const mapPath = fullPath.replace(/\.ts$/, ".flow.map.json");
+        writeFileSync(mapPath, JSON.stringify(result.sourceMap, null, 2), "utf-8");
+      }
+
+      // 檢查缺少的套件
+      if (result.dependencies && result.dependencies.all.length > 0) {
+        const pkgPath = join(projectRoot, "package.json");
+        if (existsSync(pkgPath)) {
+          try {
+            const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+            const installed = new Set([
+              ...Object.keys(pkg.dependencies ?? {}),
+              ...Object.keys(pkg.devDependencies ?? {}),
+            ]);
+            result.dependencies.missing = result.dependencies.all.filter(
+              (d) => !installed.has(d)
+            );
+          } catch {
+            // ignore parse error
+          }
+        }
+      }
+    }
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        code: result.code,
+        filePath: result.filePath,
+        writtenTo: writtenPath,
+        dependencies: result.dependencies,
+        sourceMap: result.sourceMap,
+      },
+    };
   } catch (err) {
     return {
       status: 500,

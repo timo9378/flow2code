@@ -42,11 +42,16 @@ describe("AST Compiler", () => {
       expect(result.code).toContain("req: NextRequest");
     });
 
-    it("生成的代碼應包含 flowState 初始化", () => {
+    it("生成的代碼應包含具型別的 flowState 初始化", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
-      expect(result.code).toContain("const flowState: Record<string, any> = {}");
+      // v2: 使用 FlowState interface 取代 Record<string, any>
+      expect(result.code).toContain("interface FlowState");
+      expect(result.code).toContain("const flowState = {} as FlowState");
+      // 應包含節點 ID 的型別定義
+      expect(result.code).toContain("'trigger_1':");
+      expect(result.code).toContain("'response_1':");
     });
 
     it("生成的代碼應包含 NextResponse.json 回傳", () => {

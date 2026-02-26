@@ -11,8 +11,9 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { join, extname, resolve } from "node:path";
+import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 
 import { handleCompile, handleGenerate, handleImportOpenAPI } from "./handlers.js";
 
@@ -20,21 +21,27 @@ import { handleCompile, handleGenerate, handleImportOpenAPI } from "./handlers.j
 // __dirname → package-internal assets (out/ 靜態檔案)
 // process.cwd() → 使用者專案目錄 (user project)
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = join(__filename, "..");
+const __dirname = dirname(__filename);
 
 /**
- * 找 out/ 目錄：
- * 1. 打包後: dist/server.js → 同層的 ../out/ 或 ./out/
- * 2. 開發時: src/server/index.ts → ../../out/
+ * 找 out/ 目錄：依序檢查候選路徑，回傳第一個存在的
  */
 function resolveStaticDir(): string {
   const candidates = [
-    join(__dirname, "..", "out"),       // dist/server.js → ../out
-    join(__dirname, "out"),             // dist/out/ (如果 out 被複製進 dist)
+    join(__dirname, "..", "out"),       // dist/server.js → ../out (npm 套件結構)
+    join(__dirname, "out"),             // dist/out/
     join(__dirname, "..", "..", "out"), // src/server/index.ts → ../../out (dev)
     join(process.cwd(), "out"),        // fallback: cwd/out
   ];
-  return candidates[0]; // 以最常見路徑為預設
+
+  for (const dir of candidates) {
+    if (existsSync(join(dir, "index.html"))) {
+      return dir;
+    }
+  }
+
+  // 都不存在就用最常見的路徑（啟動時會印警告）
+  return candidates[0];
 }
 
 // ── MIME Types ──
@@ -113,7 +120,7 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
 
 // ── Route Handler ──
 
-async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDir: string) {
+async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDir: string, projectRoot: string) {
   setCors(res);
 
   const { method } = req;
@@ -143,7 +150,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
     }
 
     if (pathname === "/api/compile") {
-      const result = handleCompile(body);
+      const result = handleCompile(body, projectRoot);
       sendJson(res, result.status, result.body);
       return;
     }
@@ -186,6 +193,8 @@ export interface ServerOptions {
   port?: number;
   host?: string;
   staticDir?: string;
+  /** 使用者專案根目錄 (預設 process.cwd()) */
+  projectRoot?: string;
   /** 啟動後的 callback */
   onReady?: (url: string) => void;
 }
@@ -194,9 +203,10 @@ export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? (Number(process.env.PORT) || 3100);
   const host = options.host ?? "0.0.0.0";
   const staticDir = options.staticDir ?? resolveStaticDir();
+  const projectRoot = options.projectRoot ?? process.cwd();
 
   const server = createServer((req, res) => {
-    handleRequest(req, res, staticDir).catch((err) => {
+    handleRequest(req, res, staticDir, projectRoot).catch((err) => {
       console.error("[flow2code] Internal error:", err);
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Internal Server Error");
@@ -212,20 +222,15 @@ export function startServer(options: ServerOptions = {}) {
       console.log(`  ├─ Local:   ${url}`);
       console.log(`  ├─ API:     ${url}/api/compile`);
       console.log(`  ├─ Static:  ${staticDir}`);
-      console.log(`  └─ Project: ${process.cwd()}\n`);
+      console.log(`  └─ Project: ${projectRoot}\n`);
     }
   });
 
   return server;
 }
 
-// 如果直接執行此檔案 (非 import)
-const isMainModule =
-  process.argv[1] &&
-  (process.argv[1].endsWith("server.js") ||
-    process.argv[1].endsWith("server/index.ts") ||
-    process.argv[1].endsWith("server/index.js"));
-
-if (isMainModule) {
+// 如果直接執行此檔案 (非透過 CLI import)
+// node dist/server.js → argv[1] 就是這個檔案本身
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   startServer();
 }

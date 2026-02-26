@@ -1,0 +1,172 @@
+/**
+ * Cloudflare Workers Platform Adapter
+ *
+ * 生成與 Cloudflare Workers 相容的 Request handler 代碼。
+ */
+
+import type { SourceFile, CodeBlockWriter } from "ts-morph";
+import type { FlowNode } from "../../ir/types";
+import { TriggerType } from "../../ir/types";
+import type { PlatformAdapter, PlatformContext } from "./types";
+import type {
+  HttpWebhookParams,
+  CronJobParams,
+  ManualTriggerParams,
+} from "../../ir/types";
+
+export class CloudflarePlatform implements PlatformAdapter {
+  readonly name = "cloudflare";
+
+  generateImports(
+    _sourceFile: SourceFile,
+    _trigger: FlowNode,
+    _context: PlatformContext
+  ): void {
+    // Cloudflare Workers 使用全域 Web API，不需額外 import
+  }
+
+  generateFunction(
+    sourceFile: SourceFile,
+    trigger: FlowNode,
+    _context: PlatformContext,
+    bodyGenerator: (writer: CodeBlockWriter) => void
+  ): void {
+    switch (trigger.nodeType) {
+      case TriggerType.HTTP_WEBHOOK:
+        this.generateFetchHandler(sourceFile, trigger, bodyGenerator);
+        break;
+      case TriggerType.CRON_JOB:
+        this.generateScheduledHandler(sourceFile, trigger, bodyGenerator);
+        break;
+      case TriggerType.MANUAL:
+        this.generateManualFunction(sourceFile, trigger, bodyGenerator);
+        break;
+      default:
+        throw new Error(`不支援的觸發器類型: ${trigger.nodeType}`);
+    }
+  }
+
+  generateResponse(
+    writer: CodeBlockWriter,
+    bodyExpr: string,
+    statusCode: number,
+    headers?: Record<string, string>
+  ): void {
+    const headersObj = headers && Object.keys(headers).length > 0
+      ? `, { status: ${statusCode}, headers: ${JSON.stringify({ "Content-Type": "application/json", ...headers })} }`
+      : `, { status: ${statusCode}, headers: { "Content-Type": "application/json" } }`;
+    writer.writeLine(
+      `return new Response(JSON.stringify(${bodyExpr})${headersObj});`
+    );
+  }
+
+  generateErrorResponse(writer: CodeBlockWriter): void {
+    writer.writeLine('console.error("Workflow failed:", error);');
+    writer.writeLine(
+      `return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Internal Server Error" }), { status: 500, headers: { "Content-Type": "application/json" } });`
+    );
+  }
+
+  getOutputFilePath(trigger: FlowNode): string {
+    if (trigger.nodeType === TriggerType.HTTP_WEBHOOK) {
+      return "src/worker.ts";
+    }
+    if (trigger.nodeType === TriggerType.CRON_JOB) {
+      const params = trigger.params as CronJobParams;
+      return `src/scheduled/${params.functionName}.ts`;
+    }
+    if (trigger.nodeType === TriggerType.MANUAL) {
+      const params = trigger.params as ManualTriggerParams;
+      return `src/functions/${params.functionName}.ts`;
+    }
+    return "src/generated/flow.ts";
+  }
+
+  getImplicitDependencies(): string[] {
+    return ["@cloudflare/workers-types"];
+  }
+
+  // ── Private ──
+
+  private generateFetchHandler(
+    sourceFile: SourceFile,
+    trigger: FlowNode,
+    bodyGenerator: (writer: CodeBlockWriter) => void
+  ): void {
+    // Cloudflare Workers 使用 export default { fetch() {} } 模式
+    // 但為了與其他平台一致，生成命名導出函式
+    const params = trigger.params as HttpWebhookParams;
+
+    sourceFile.addStatements(`// Cloudflare Workers handler`);
+
+    const funcDecl = sourceFile.addFunction({
+      name: "handleRequest",
+      isAsync: true,
+      isExported: true,
+      parameters: [
+        { name: "request", type: "Request" },
+        { name: "env", type: "Env" },
+        { name: "ctx", type: "ExecutionContext" },
+      ],
+    });
+
+    funcDecl.addStatements((writer) => {
+      writer.write("try ").block(() => {
+        bodyGenerator(writer);
+      });
+      writer.write(" catch (error) ").block(() => {
+        this.generateErrorResponse(writer);
+      });
+    });
+
+    // 導出 default handler
+    sourceFile.addStatements(`
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handleRequest(request, env, ctx);
+  },
+};`);
+  }
+
+  private generateScheduledHandler(
+    sourceFile: SourceFile,
+    trigger: FlowNode,
+    bodyGenerator: (writer: CodeBlockWriter) => void
+  ): void {
+    const params = trigger.params as CronJobParams;
+
+    sourceFile.addStatements(`// @schedule ${params.schedule}`);
+
+    const funcDecl = sourceFile.addFunction({
+      name: params.functionName,
+      isAsync: true,
+      isExported: true,
+    });
+
+    funcDecl.addStatements((writer) => {
+      bodyGenerator(writer);
+    });
+  }
+
+  private generateManualFunction(
+    sourceFile: SourceFile,
+    trigger: FlowNode,
+    bodyGenerator: (writer: CodeBlockWriter) => void
+  ): void {
+    const params = trigger.params as ManualTriggerParams;
+
+    const funcDecl = sourceFile.addFunction({
+      name: params.functionName,
+      isAsync: true,
+      isExported: true,
+      parameters: params.args.map((arg) => ({
+        name: arg.name,
+        type: arg.type,
+      })),
+    });
+
+    funcDecl.addStatements((writer) => {
+      bodyGenerator(writer);
+    });
+  }
+}

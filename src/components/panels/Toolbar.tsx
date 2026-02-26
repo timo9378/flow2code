@@ -105,11 +105,14 @@ export default function Toolbar() {
       const res = await fetch(`${getApiBase()}/api/compile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ir),
+        body: JSON.stringify({ ir, write: true }),
       });
       const data = await res.json();
       if (data.success) {
         let msg = `✅ 編譯成功！\n📁 ${data.filePath ?? "generated.ts"}\n`;
+        if (data.writtenTo) {
+          msg += `💾 已寫入: ${data.writtenTo}\n`;
+        }
         if (data.dependencies?.missing?.length > 0) {
           msg += `\n⚠️ 缺少的套件:\n`;
           msg += data.dependencies.missing.map((d: string) => `  npm install ${d}`).join("\n");
