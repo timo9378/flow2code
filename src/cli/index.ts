@@ -148,8 +148,8 @@ program
     watcher.on("change", (filePath) => compileFile(filePath, projectRoot));
     watcher.on("add", (filePath) => compileFile(filePath, projectRoot));
 
-    watcher.on("error", (error) => {
-      console.error("❌ 監聽錯誤:", error.message);
+    watcher.on("error", (error: unknown) => {
+      console.error("❌ 監聽錯誤:", error instanceof Error ? error.message : String(error));
     });
   });
 
@@ -187,7 +187,7 @@ program
     }
 
     // 建立範例 flow.json
-    const exampleFlow: FlowIR = {
+    const exampleFlow = {
       version: "1.0.0",
       meta: {
         name: "Example API",
@@ -198,28 +198,28 @@ program
       nodes: [
         {
           id: "trigger_1",
-          nodeType: "http_webhook" as const,
-          category: "trigger" as const,
+          nodeType: "http_webhook",
+          category: "trigger",
           label: "GET /api/hello",
           params: {
             method: "GET",
             routePath: "/api/hello",
             parseBody: false,
           },
-          inputs: [],
+          inputs: [] as any[],
           outputs: [{ id: "request", label: "Request", dataType: "object" }],
         },
         {
           id: "response_1",
-          nodeType: "return_response" as const,
-          category: "output" as const,
+          nodeType: "return_response",
+          category: "output",
           label: "Return Hello",
           params: {
             statusCode: 200,
             bodyExpression: '{ message: "Hello from Flow2Code!" }',
           },
           inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
-          outputs: [],
+          outputs: [] as any[],
         },
       ],
       edges: [
@@ -374,6 +374,42 @@ program
       console.error(`❌ 解析 Source Map 失敗: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
+  });
+
+// ============================================================
+// dev 指令 — 啟動 standalone server
+// ============================================================
+
+program
+  .command("dev")
+  .description("啟動 Flow2Code 視覺化編輯器 (standalone dev server)")
+  .option("-p, --port <port>", "伺服器埠號", "3100")
+  .option("--no-open", "不自動開啟瀏覽器")
+  .action(async (options: { port: string; open: boolean }) => {
+    const port = parseInt(options.port, 10);
+    // 動態 import — 僅在 dev 指令時載入 server
+    const { startServer } = await import("../server/index.js");
+
+    startServer({
+      port,
+      onReady: (url) => {
+        console.log(`\n  🚀 Flow2Code Dev Server`);
+        console.log(`  ├─ Editor:  ${url}`);
+        console.log(`  ├─ API:     ${url}/api/compile`);
+        console.log(`  └─ Project: ${process.cwd()}\n`);
+
+        if (options.open) {
+          // 跨平台開啟瀏覽器
+          const openCmd =
+            process.platform === "darwin"
+              ? "open"
+              : process.platform === "win32"
+                ? "start"
+                : "xdg-open";
+          import("node:child_process").then(({ exec }) => exec(`${openCmd} ${url}`));
+        }
+      },
+    });
   });
 
 // ============================================================

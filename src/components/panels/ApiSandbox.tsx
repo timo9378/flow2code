@@ -1,20 +1,33 @@
 "use client";
 
 /**
- * API 測試沙盒元件
- *
- * 在編譯完成後可以直接在 UI 中測試生成的 API 端點。
- * 支援 GET/POST/PUT/PATCH/DELETE，自定義 Headers 和 Body。
+ * API 測試沙盒元件 — shadcn/ui 版
  */
 
 import { useState, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface SandboxProps {
-  /** 初始 HTTP 方法 */
   initialMethod?: string;
-  /** 初始路由路徑（如 /api/hello） */
   initialPath?: string;
-  /** 關閉回呼 */
   onClose: () => void;
 }
 
@@ -33,21 +46,18 @@ export default function ApiSandbox({
 }: SandboxProps) {
   const [method, setMethod] = useState(initialMethod);
   const [url, setUrl] = useState(`http://localhost:3003${initialPath}`);
-  const [headers, setHeaders] = useState(
-    '{\n  "Content-Type": "application/json"\n}'
-  );
+  const [headers, setHeaders] = useState('{\n  "Content-Type": "application/json"\n}');
   const [body, setBody] = useState("{}");
   const [response, setResponse] = useState<SandboxResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"body" | "headers">("body");
 
   const handleSend = useCallback(async () => {
     setLoading(true);
     setError(null);
     setResponse(null);
-
     const start = performance.now();
+
     try {
       let parsedHeaders: Record<string, string> = {};
       try {
@@ -58,22 +68,15 @@ export default function ApiSandbox({
         return;
       }
 
-      const fetchOpts: RequestInit = {
-        method,
-        headers: parsedHeaders,
-      };
-
+      const fetchOpts: RequestInit = { method, headers: parsedHeaders };
       if (["POST", "PUT", "PATCH"].includes(method) && body.trim()) {
         fetchOpts.body = body;
       }
 
       const res = await fetch(url, fetchOpts);
       const duration = Math.round(performance.now() - start);
-
       const resHeaders: Record<string, string> = {};
-      res.headers.forEach((v, k) => {
-        resHeaders[k] = v;
-      });
+      res.headers.forEach((v, k) => { resHeaders[k] = v; });
 
       let resBody: string;
       const contentType = res.headers.get("content-type") || "";
@@ -84,13 +87,7 @@ export default function ApiSandbox({
         resBody = await res.text();
       }
 
-      setResponse({
-        status: res.status,
-        statusText: res.statusText,
-        headers: resHeaders,
-        body: resBody,
-        duration,
-      });
+      setResponse({ status: res.status, statusText: res.statusText, headers: resHeaders, body: resBody, duration });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -98,152 +95,112 @@ export default function ApiSandbox({
     }
   }, [method, url, headers, body]);
 
-  const statusColor =
-    !response
-      ? "text-gray-400"
-      : response.status < 300
-        ? "text-green-400"
-        : response.status < 400
-          ? "text-yellow-400"
-          : "text-red-400";
+  const statusVariant = !response
+    ? "secondary"
+    : response.status < 300
+      ? "default"
+      : response.status < 400
+        ? "secondary"
+        : "destructive";
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-900 rounded-lg shadow-2xl w-[800px] max-h-[85vh] flex flex-col border border-gray-700">
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-          <span className="text-white text-sm font-semibold">
-            🧪 API 測試沙盒
-          </span>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white text-sm cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[820px] max-h-[85vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-5 pt-5 pb-3">
+          <DialogTitle>🧪 API 測試沙盒</DialogTitle>
+        </DialogHeader>
 
-        {/* ── Request ── */}
-        <div className="p-4 space-y-3 border-b border-gray-700">
-          {/* Method + URL */}
+        {/* Request */}
+        <div className="px-5 pb-4 space-y-3 border-b border-border">
           <div className="flex gap-2">
-            <select
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-              className="bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700 focus:border-blue-500 outline-none min-w-[100px]"
-            >
-              {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
+            <Select value={method} onValueChange={setMethod}>
+              <SelectTrigger className="w-[110px] font-mono text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="http://localhost:3003/api/..."
-              className="flex-1 bg-gray-800 text-white text-sm rounded px-3 py-1.5 border border-gray-700 focus:border-blue-500 outline-none font-mono"
+              className="flex-1 font-mono text-sm"
             />
-            <button
-              onClick={handleSend}
-              disabled={loading}
-              className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors cursor-pointer font-semibold"
-            >
+
+            <Button onClick={handleSend} disabled={loading} size="default">
               {loading ? "⏳" : "▶ Send"}
-            </button>
+            </Button>
           </div>
 
-          {/* Tabs: Body / Headers */}
-          <div className="flex gap-1">
-            <button
-              onClick={() => setActiveTab("body")}
-              className={`px-3 py-1 text-xs rounded cursor-pointer ${
-                activeTab === "body"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-500 hover:text-white"
-              }`}
-            >
-              Body
-            </button>
-            <button
-              onClick={() => setActiveTab("headers")}
-              className={`px-3 py-1 text-xs rounded cursor-pointer ${
-                activeTab === "headers"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-500 hover:text-white"
-              }`}
-            >
-              Headers
-            </button>
-          </div>
-
-          {/* Body / Headers textareas */}
-          {activeTab === "body" ? (
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder='{ "key": "value" }'
-              rows={4}
-              className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-gray-700 focus:border-blue-500 outline-none resize-y font-mono"
-            />
-          ) : (
-            <textarea
-              value={headers}
-              onChange={(e) => setHeaders(e.target.value)}
-              rows={4}
-              className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-gray-700 focus:border-blue-500 outline-none resize-y font-mono"
-            />
-          )}
+          <Tabs defaultValue="body" className="w-full">
+            <TabsList className="h-8">
+              <TabsTrigger value="body" className="text-xs">Body</TabsTrigger>
+              <TabsTrigger value="headers" className="text-xs">Headers</TabsTrigger>
+            </TabsList>
+            <TabsContent value="body">
+              <Textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder='{ "key": "value" }'
+                rows={4}
+                className="font-mono text-xs resize-y"
+              />
+            </TabsContent>
+            <TabsContent value="headers">
+              <Textarea
+                value={headers}
+                onChange={(e) => setHeaders(e.target.value)}
+                rows={4}
+                className="font-mono text-xs resize-y"
+              />
+            </TabsContent>
+          </Tabs>
         </div>
 
-        {/* ── Response ── */}
-        <div className="flex-1 overflow-auto p-4 space-y-2">
+        {/* Response */}
+        <ScrollArea className="flex-1 px-5 py-4 max-h-[50vh]">
           {error && (
-            <div className="text-red-400 text-xs font-mono bg-red-900/20 px-3 py-2 rounded">
+            <div className="text-destructive text-xs font-mono bg-destructive/10 px-3 py-2 rounded-md mb-3">
               ❌ {error}
             </div>
           )}
 
           {response && (
-            <>
-              {/* Status bar */}
-              <div className="flex items-center gap-3 text-xs">
-                <span className={`font-bold ${statusColor}`}>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Badge variant={statusVariant} className="font-mono">
                   {response.status} {response.statusText}
-                </span>
-                <span className="text-gray-500">
-                  ⏱ {response.duration}ms
-                </span>
-                <span className="text-gray-500">
-                  📦 {new Blob([response.body]).size} bytes
-                </span>
+                </Badge>
+                <span className="text-muted-foreground text-xs">⏱ {response.duration}ms</span>
+                <span className="text-muted-foreground text-xs">📦 {new Blob([response.body]).size} bytes</span>
               </div>
 
-              {/* Response body */}
-              <pre className="bg-gray-800 text-green-400 text-xs font-mono rounded-lg p-3 overflow-auto max-h-[300px] whitespace-pre-wrap border border-gray-700">
+              <pre className="bg-secondary text-emerald-400 text-xs font-mono rounded-lg p-3 overflow-auto max-h-[300px] whitespace-pre-wrap border border-border">
                 {response.body}
               </pre>
 
-              {/* Response headers (collapsible) */}
               <details className="text-xs">
-                <summary className="text-gray-500 cursor-pointer hover:text-white">
+                <summary className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
                   Response Headers ({Object.keys(response.headers).length})
                 </summary>
-                <pre className="bg-gray-800 text-gray-400 font-mono rounded-lg p-2 mt-1 overflow-auto max-h-[150px]">
+                <pre className="bg-secondary text-muted-foreground font-mono rounded-lg p-2 mt-1 overflow-auto max-h-[150px] border border-border">
                   {JSON.stringify(response.headers, null, 2)}
                 </pre>
               </details>
-            </>
+            </div>
           )}
 
           {!response && !error && !loading && (
-            <div className="text-gray-600 text-xs text-center py-8">
+            <p className="text-muted-foreground text-xs text-center py-8">
               點擊 Send 發送請求
-            </div>
+            </p>
           )}
-        </div>
-      </div>
-    </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * Flow2Code 統一自定義節點元件
- * 
- * 根據 nodeType 與 category 動態渲染不同外觀，
- * 同時處理連線端口 (Handle) 的生成。
+ * Flow2Code 統一自定義節點元件 — 暗色主題版
+ *
+ * 節點的卡片使用半透明暗色搭配分類色彩的頂部飾條。
  */
 
 import { memo } from "react";
@@ -12,36 +11,45 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import type { FlowNodeData } from "@/store/flow-store";
 import { NodeCategory } from "@/lib/ir/types";
 
-// 分類顏色映射
-const categoryColors: Record<NodeCategory, { bg: string; border: string; header: string }> = {
+// 分類色彩 — 暗色變體（與 Koimsurai 深色背景搭配）
+const categoryStyles: Record<NodeCategory, { accent: string; bg: string; text: string; handleIn: string; handleOut: string }> = {
   [NodeCategory.TRIGGER]: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-500",
-    header: "bg-emerald-500",
+    accent: "bg-emerald-500",
+    bg: "bg-emerald-500/5 border-emerald-500/20",
+    text: "text-emerald-400",
+    handleIn: "#10b981",
+    handleOut: "#10b981",
   },
   [NodeCategory.ACTION]: {
-    bg: "bg-blue-50",
-    border: "border-blue-500",
-    header: "bg-blue-500",
+    accent: "bg-blue-500",
+    bg: "bg-blue-500/5 border-blue-500/20",
+    text: "text-blue-400",
+    handleIn: "#3b82f6",
+    handleOut: "#3b82f6",
   },
   [NodeCategory.LOGIC]: {
-    bg: "bg-amber-50",
-    border: "border-amber-500",
-    header: "bg-amber-500",
+    accent: "bg-amber-500",
+    bg: "bg-amber-500/5 border-amber-500/20",
+    text: "text-amber-400",
+    handleIn: "#f59e0b",
+    handleOut: "#f59e0b",
   },
   [NodeCategory.VARIABLE]: {
-    bg: "bg-purple-50",
-    border: "border-purple-500",
-    header: "bg-purple-500",
+    accent: "bg-purple-500",
+    bg: "bg-purple-500/5 border-purple-500/20",
+    text: "text-purple-400",
+    handleIn: "#8b5cf6",
+    handleOut: "#8b5cf6",
   },
   [NodeCategory.OUTPUT]: {
-    bg: "bg-rose-50",
-    border: "border-rose-500",
-    header: "bg-rose-500",
+    accent: "bg-rose-500",
+    bg: "bg-rose-500/5 border-rose-500/20",
+    text: "text-rose-400",
+    handleIn: "#f43f5e",
+    handleOut: "#f43f5e",
   },
 };
 
-// 分類圖示
 const categoryIcons: Record<NodeCategory, string> = {
   [NodeCategory.TRIGGER]: "⚡",
   [NodeCategory.ACTION]: "🔧",
@@ -53,35 +61,35 @@ const categoryIcons: Record<NodeCategory, string> = {
 type FlowNodeType = Node<FlowNodeData>;
 
 function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
-  const colors = categoryColors[data.category] ?? categoryColors[NodeCategory.ACTION];
+  const style = categoryStyles[data.category] ?? categoryStyles[NodeCategory.ACTION];
   const icon = categoryIcons[data.category] ?? "📦";
 
   return (
     <div
       className={`
-        rounded-lg shadow-md border-2 min-w-[200px] max-w-[280px]
-        ${colors.bg} ${colors.border}
-        ${selected ? "ring-2 ring-offset-2 ring-blue-400" : ""}
-        transition-shadow duration-200
+        rounded-lg border min-w-[200px] max-w-[280px] backdrop-blur-sm
+        ${style.bg}
+        ${selected ? "ring-2 ring-primary/50 shadow-lg shadow-primary/10" : "shadow-md shadow-black/30"}
+        transition-all duration-200
       `}
     >
+      {/* 頂部色條 */}
+      <div className={`h-1 ${style.accent} rounded-t-lg`} />
+
       {/* Header */}
-      <div
-        className={`
-          ${colors.header} text-white text-xs font-semibold 
-          px-3 py-1.5 rounded-t-md flex items-center gap-1.5
-        `}
-      >
-        <span>{icon}</span>
-        <span className="truncate">{data.label}</span>
-        <span className="ml-auto text-[10px] opacity-75 uppercase">
+      <div className="px-3 py-2 flex items-center gap-1.5">
+        <span className="text-sm">{icon}</span>
+        <span className="text-xs font-semibold text-foreground truncate flex-1">
+          {data.label}
+        </span>
+        <span className={`text-[9px] uppercase font-medium ${style.text}`}>
           {data.category}
         </span>
       </div>
 
       {/* Body */}
-      <div className="px-3 py-2 text-xs text-gray-600">
-        <span className="font-mono text-[10px] opacity-60">{data.nodeType}</span>
+      <div className="px-3 pb-2">
+        <span className="font-mono text-[10px] text-muted-foreground">{data.nodeType}</span>
       </div>
 
       {/* 輸入 Handles */}
@@ -92,11 +100,12 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
           position={Position.Left}
           id={input.id}
           style={{
-            top: `${40 + i * 20}px`,
-            background: "#6366f1",
-            width: 10,
-            height: 10,
-            border: "2px solid white",
+            top: `${36 + i * 20}px`,
+            background: style.handleIn,
+            width: 9,
+            height: 9,
+            border: "2px solid rgba(0,0,0,0.4)",
+            boxShadow: `0 0 4px ${style.handleIn}40`,
           }}
           title={`${input.label} (${input.dataType})`}
         />
@@ -110,11 +119,12 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
           position={Position.Right}
           id={output.id}
           style={{
-            top: `${40 + i * 20}px`,
-            background: "#f59e0b",
-            width: 10,
-            height: 10,
-            border: "2px solid white",
+            top: `${36 + i * 20}px`,
+            background: style.handleOut,
+            width: 9,
+            height: 9,
+            border: "2px solid rgba(0,0,0,0.4)",
+            boxShadow: `0 0 4px ${style.handleOut}40`,
           }}
           title={`${output.label} (${output.dataType})`}
         />

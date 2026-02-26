@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * 工具列元件
- * 
- * 提供匯出 IR JSON、AI 生成、編譯、重置、API 測試沙盒、OpenAPI 匯入等操作。
+ * 工具列元件 — Koimsurai 風格暗色主題
+ *
+ * 頂部工具列 + 浮動視窗（AI、輸出、OpenAPI 選擇器）
  */
 
 import { useState, useRef } from "react";
@@ -11,7 +11,34 @@ import { useFlowStore } from "@/store/flow-store";
 import { validateFlowIR } from "@/lib/ir/validator";
 import { topologicalSort, formatExecutionPlan } from "@/lib/ir/topological-sort";
 import { EXAMPLE_PROMPTS } from "@/lib/ai/prompt";
+import { getApiBase } from "@/lib/api-base";
 import ApiSandbox from "./ApiSandbox";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Toolbar() {
   const exportIR = useFlowStore((s) => s.exportIR);
@@ -29,6 +56,8 @@ export default function Toolbar() {
   const [sandboxPath, setSandboxPath] = useState("/api/hello");
   const [showOpenAPIDialog, setShowOpenAPIDialog] = useState(false);
   const [openAPIFlows, setOpenAPIFlows] = useState<any[]>([]);
+
+  // ── handlers ──
 
   const handleExportIR = () => {
     const ir = exportIR();
@@ -60,7 +89,6 @@ export default function Toolbar() {
       setShowOutput(true);
       return;
     }
-
     try {
       const plan = topologicalSort(ir);
       const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
@@ -74,7 +102,7 @@ export default function Toolbar() {
   const handleCompile = async () => {
     const ir = exportIR();
     try {
-      const res = await fetch("/api/compile", {
+      const res = await fetch(`${getApiBase()}/api/compile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(ir),
@@ -82,8 +110,6 @@ export default function Toolbar() {
       const data = await res.json();
       if (data.success) {
         let msg = `✅ 編譯成功！\n📁 ${data.filePath ?? "generated.ts"}\n`;
-
-        // 顯示依賴套件資訊
         if (data.dependencies?.missing?.length > 0) {
           msg += `\n⚠️ 缺少的套件:\n`;
           msg += data.dependencies.missing.map((d: string) => `  npm install ${d}`).join("\n");
@@ -92,16 +118,12 @@ export default function Toolbar() {
         if (data.dependencies?.all?.length > 0) {
           msg += `\n📦 需要的套件: ${data.dependencies.all.join(", ")}\n`;
         }
-
-        // 顯示 Source Map 資訊
         if (data.sourceMap) {
           msg += `\n🗺️ Source Map: ${Object.keys(data.sourceMap.mappings ?? {}).length} 個節點已映射\n`;
         }
-
         msg += `\n${data.code}`;
         setOutput(msg);
 
-        // 自動挖出 method + routePath 供沙盒使用
         const trigger = ir.nodes.find((n: any) => n.category === "trigger");
         if (trigger?.params) {
           const p = trigger.params as any;
@@ -120,15 +142,13 @@ export default function Toolbar() {
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
-
     try {
-      const res = await fetch("/api/generate", {
+      const res = await fetch(`${getApiBase()}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: aiPrompt.trim() }),
       });
       const data = await res.json();
-
       if (data.success && data.ir) {
         loadIR(data.ir);
         setShowAIDialog(false);
@@ -196,7 +216,7 @@ export default function Toolbar() {
       const text = await file.text();
       try {
         const spec = JSON.parse(text);
-        const res = await fetch("/api/import-openapi", {
+        const res = await fetch(`${getApiBase()}/api/import-openapi`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ spec }),
@@ -226,175 +246,179 @@ export default function Toolbar() {
 
   return (
     <>
-      {/* 頂部工具列 */}
-      <div className="h-10 bg-gray-900 border-b border-gray-700 flex items-center px-4 gap-2">
-        <span className="text-white text-sm font-bold mr-4">Flow2Code</span>
+      {/* ── 頂部工具列 ── */}
+      <header className="h-12 bg-card border-b border-border flex items-center px-4 gap-1.5 shrink-0">
+        {/* Logo */}
+        <div className="flex items-center gap-2 mr-3">
+          <img src="/favicon-32x32.png" alt="Flow2Code" className="w-6 h-6" />
+          <span className="text-sm font-bold tracking-tight text-foreground">Flow2Code</span>
+        </div>
 
-        <button
-          onClick={handleExportIR}
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors cursor-pointer"
-        >
-          📋 匯出 IR
-        </button>
+        <Separator orientation="vertical" className="h-5 mx-1" />
 
-        <button
-          onClick={handleValidate}
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors cursor-pointer"
-        >
-          ✅ 驗證
-        </button>
+        {/* 主要操作 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={handleCompile} className="text-primary hover:text-primary hover:bg-primary/10">
+              🚀 編譯
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>將流程圖編譯為 TypeScript 代碼</TooltipContent>
+        </Tooltip>
 
-        <button
-          onClick={handleAnalyze}
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors cursor-pointer"
-        >
-          📊 分析執行計畫
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={handleValidate}>
+              ✅ 驗證
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>驗證 IR 結構正確性</TooltipContent>
+        </Tooltip>
 
-        <button
-          onClick={handleCompile}
-          className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors cursor-pointer"
-        >
-          🚀 編譯
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={handleAnalyze}>
+              📊 分析
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>分析執行計畫（拓撲排序 + 並發偵測）</TooltipContent>
+        </Tooltip>
 
-        <button
-          onClick={() => setShowAIDialog(true)}
-          className="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded transition-colors cursor-pointer"
-        >
-          ✨ AI 生成
-        </button>
+        <Separator orientation="vertical" className="h-5 mx-1" />
 
-        <div className="border-l border-gray-700 h-5 mx-1" />
+        {/* AI */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={() => setShowAIDialog(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
+              ✨ AI 生成
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>用自然語言描述，AI 自動生成流程圖</TooltipContent>
+        </Tooltip>
 
-        <button
-          onClick={handleLoadIRFromJSON}
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors cursor-pointer"
-        >
-          📂 載入
-        </button>
+        <Separator orientation="vertical" className="h-5 mx-1" />
 
-        <button
-          onClick={handleDownloadIR}
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors cursor-pointer"
-        >
-          💾 下載
-        </button>
+        {/* 檔案操作 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm">
+              📁 檔案
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={handleLoadIRFromJSON}>
+              <span className="mr-2">📂</span> 載入 Flow JSON
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleDownloadIR}>
+              <span className="mr-2">💾</span> 下載 Flow JSON
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportIR}>
+              <span className="mr-2">📋</span> 匯出 IR 到剪貼簿
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleImportOpenAPI}>
+              <span className="mr-2">📄</span> 匯入 OpenAPI Spec
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-        <button
-          onClick={handleImportOpenAPI}
-          className="px-3 py-1 text-xs bg-orange-700 hover:bg-orange-600 text-white rounded transition-colors cursor-pointer"
-        >
-          📄 OpenAPI
-        </button>
+        {/* 測試 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={() => setShowSandbox(true)} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10">
+              🧪 測試
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>開啟 API 測試沙盒</TooltipContent>
+        </Tooltip>
 
-        <button
-          onClick={() => setShowSandbox(true)}
-          className="px-3 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors cursor-pointer"
-        >
-          🧪 測試
-        </button>
-
+        {/* Spacer */}
         <div className="flex-1" />
 
-        <span className="text-gray-500 text-[10px]">
-          Nodes: {nodes.length}
-        </span>
+        {/* Node count badge */}
+        <Badge variant="secondary" className="text-[10px] font-mono">
+          {nodes.length} nodes
+        </Badge>
 
-        <button
-          onClick={reset}
-          className="px-3 py-1 text-xs bg-red-800 hover:bg-red-700 text-white rounded transition-colors cursor-pointer"
-        >
-          🗑️ 重置
-        </button>
-      </div>
+        {/* 重置 */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={reset} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+              🗑️ 重置
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>清除所有節點和邊</TooltipContent>
+        </Tooltip>
+      </header>
 
-      {/* AI 生成對話框 */}
-      {showAIDialog && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-lg shadow-2xl w-[600px] flex flex-col border border-gray-700">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <span className="text-white text-sm font-semibold">✨ AI 生成流程圖</span>
-              <button
-                onClick={() => setShowAIDialog(false)}
-                className="text-gray-400 hover:text-white text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+      {/* ── AI 生成對話框 ── */}
+      <Dialog open={showAIDialog} onOpenChange={setShowAIDialog}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>✨ AI 生成流程圖</DialogTitle>
+            <DialogDescription>
+              描述你想建立的 API 端點或工作流程，AI 會自動生成完整的流程圖。
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="p-4 flex flex-col gap-3">
-              <p className="text-gray-400 text-xs">
-                描述你想建立的 API 端點或工作流程，AI 會自動生成完整的流程圖。
-              </p>
+          <div className="flex flex-col gap-3 py-2">
+            <Textarea
+              ref={promptRef}
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="例如：建立一個 GET /api/users 端點，從資料庫查詢用戶列表並回傳..."
+              className="min-h-[120px] font-mono text-sm resize-y"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAIGenerate();
+              }}
+            />
 
-              <textarea
-                ref={promptRef}
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="例如：建立一個 GET /api/users 端點，從資料庫查詢用戶列表並回傳..."
-                className="bg-gray-800 text-white text-sm rounded-lg px-3 py-2 border border-gray-700 focus:border-purple-500 outline-none resize-y min-h-[100px] font-mono"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    handleAIGenerate();
-                  }
-                }}
-              />
-
-              {/* 範例提示 */}
-              <div className="flex flex-col gap-1">
-                <span className="text-gray-500 text-[10px] uppercase font-semibold">範例</span>
-                <div className="flex flex-wrap gap-1">
-                  {EXAMPLE_PROMPTS.map((p, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setAiPrompt(p)}
-                      className="text-[10px] text-purple-400 hover:text-purple-300 bg-gray-800 hover:bg-gray-750 px-2 py-1 rounded cursor-pointer truncate max-w-[280px]"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">範例</span>
+              <div className="flex flex-wrap gap-1">
+                {EXAMPLE_PROMPTS.map((p, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setAiPrompt(p)}
+                    className="text-[10px] text-purple-400 hover:text-purple-300 bg-secondary hover:bg-secondary/80 px-2 py-1 rounded-md cursor-pointer truncate max-w-[280px] transition-colors"
+                  >
+                    {p}
+                  </button>
+                ))}
               </div>
             </div>
-
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700">
-              <span className="text-gray-600 text-[10px]">
-                ⌘+Enter 快速送出 · 需要設定 OPENAI_API_KEY
-              </span>
-              <button
-                onClick={handleAIGenerate}
-                disabled={aiLoading || !aiPrompt.trim()}
-                className="px-4 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors cursor-pointer font-semibold"
-              >
-                {aiLoading ? "⏳ 生成中..." : "✨ 生成"}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
 
-      {/* 輸出面板 */}
-      {showOutput && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-lg shadow-2xl w-[700px] max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
-              <span className="text-white text-sm font-semibold">Output</span>
-              <button
-                onClick={() => setShowOutput(false)}
-                className="text-gray-400 hover:text-white text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <pre className="p-4 text-xs text-green-400 font-mono overflow-auto flex-1 whitespace-pre-wrap">
+          <DialogFooter className="flex items-center justify-between">
+            <span className="text-muted-foreground text-[10px]">
+              ⌘+Enter 快速送出 · 需要設定 OPENAI_API_KEY
+            </span>
+            <Button
+              onClick={handleAIGenerate}
+              disabled={aiLoading || !aiPrompt.trim()}
+              className="bg-purple-600 hover:bg-purple-500 text-white"
+            >
+              {aiLoading ? "⏳ 生成中..." : "✨ 生成"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 輸出面板（浮動視窗） ── */}
+      <Dialog open={showOutput} onOpenChange={setShowOutput}>
+        <DialogContent className="sm:max-w-[720px] max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Output</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="flex-1 max-h-[60vh]">
+            <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap leading-relaxed">
               {output}
             </pre>
-          </div>
-        </div>
-      )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
-      {/* API 測試沙盒 */}
+      {/* ── API 測試沙盒 ── */}
       {showSandbox && (
         <ApiSandbox
           initialMethod={sandboxMethod}
@@ -403,43 +427,38 @@ export default function Toolbar() {
         />
       )}
 
-      {/* OpenAPI 匯入選擇對話框 */}
-      {showOpenAPIDialog && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-lg shadow-2xl w-[700px] max-h-[80vh] flex flex-col border border-gray-700">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <span className="text-white text-sm font-semibold">
-                📄 選擇要匯入的端點 ({openAPIFlows.length} 個)
-              </span>
-              <button
-                onClick={() => setShowOpenAPIDialog(false)}
-                className="text-gray-400 hover:text-white text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="overflow-auto flex-1 p-2">
+      {/* ── OpenAPI 匯入選擇對話框 ── */}
+      <Dialog open={showOpenAPIDialog} onOpenChange={setShowOpenAPIDialog}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>📄 選擇要匯入的端點</DialogTitle>
+            <DialogDescription>
+              從 OpenAPI 規範中找到 {openAPIFlows.length} 個端點，選擇一個匯入：
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 max-h-[60vh]">
+            <div className="flex flex-col gap-0.5 p-1">
               {openAPIFlows.map((flow: any, i: number) => (
                 <button
                   key={i}
                   onClick={() => handleSelectOpenAPIFlow(flow)}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-800 rounded transition-colors cursor-pointer flex items-center gap-3"
+                  className="w-full text-left px-3 py-2.5 hover:bg-accent rounded-md transition-colors cursor-pointer flex items-center gap-3 group"
                 >
-                  <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-700 text-white rounded min-w-[60px] text-center">
+                  <Badge variant="outline" className="min-w-[60px] justify-center text-[10px] font-bold">
                     {flow.meta?.name?.split(" ")[0] ?? "?"}
-                  </span>
-                  <span className="text-white text-xs flex-1 truncate">
+                  </Badge>
+                  <span className="text-sm text-foreground flex-1 truncate group-hover:text-primary transition-colors">
                     {flow.meta?.name ?? `端點 ${i + 1}`}
                   </span>
-                  <span className="text-gray-500 text-[10px]">
+                  <span className="text-muted-foreground text-[10px]">
                     {flow.nodes?.length ?? 0} nodes
                   </span>
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-      )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
