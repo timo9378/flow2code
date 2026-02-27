@@ -1,0 +1,94 @@
+{
+  "version": "1.0.0",
+  "meta": {
+    "name": "Auth Check with If/Else",
+    "description": "POST /api/login → Validate credentials with If/Else branching, return success or 401.",
+    "createdAt": "2026-02-27T00:00:00Z",
+    "updatedAt": "2026-02-27T00:00:00Z"
+  },
+  "nodes": [
+    {
+      "id": "trigger_login",
+      "nodeType": "http_webhook",
+      "category": "trigger",
+      "label": "POST /api/login",
+      "params": {
+        "method": "POST",
+        "routePath": "/api/login",
+        "parseBody": true
+      },
+      "inputs": [],
+      "outputs": [
+        { "id": "request", "label": "Request", "dataType": "object" },
+        { "id": "body", "label": "Body", "dataType": "object" }
+      ]
+    },
+    {
+      "id": "check_credentials",
+      "nodeType": "if_else",
+      "category": "logic",
+      "label": "Valid Credentials?",
+      "params": {
+        "condition": "$trigger.body.email === 'admin@example.com' && $trigger.body.password === 'secret'"
+      },
+      "inputs": [
+        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+      ],
+      "outputs": [
+        { "id": "true", "label": "Valid", "dataType": "any" },
+        { "id": "false", "label": "Invalid", "dataType": "any" }
+      ]
+    },
+    {
+      "id": "response_ok",
+      "nodeType": "return_response",
+      "category": "output",
+      "label": "Login Success",
+      "params": {
+        "statusCode": 200,
+        "body": "{ \"token\": \"jwt-token-here\", \"message\": \"Login successful\" }"
+      },
+      "inputs": [
+        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+      ],
+      "outputs": []
+    },
+    {
+      "id": "response_401",
+      "nodeType": "return_response",
+      "category": "output",
+      "label": "Unauthorized",
+      "params": {
+        "statusCode": 401,
+        "body": "{ \"error\": \"Invalid credentials\" }"
+      },
+      "inputs": [
+        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+      ],
+      "outputs": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_trigger_check",
+      "source": "trigger_login",
+      "target": "check_credentials",
+      "sourceHandle": "body",
+      "targetHandle": "input"
+    },
+    {
+      "id": "e_check_ok",
+      "source": "check_credentials",
+      "target": "response_ok",
+      "sourceHandle": "true",
+      "targetHandle": "input"
+    },
+    {
+      "id": "e_check_fail",
+      "source": "check_credentials",
+      "target": "response_401",
+      "sourceHandle": "false",
+      "targetHandle": "input"
+    }
+  ]
+}

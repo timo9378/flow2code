@@ -6,7 +6,7 @@
 
 ```bash
 # 1. Clone & Install
-git clone https://github.com/<your-org>/flow2code.git
+git clone https://github.com/timo9378/flow2code.git
 cd flow2code
 pnpm install
 

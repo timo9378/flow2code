@@ -48,8 +48,16 @@
     "typescript",
     "next.js"
   ],
-  "author": "",
+  "author": "timo9378",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/timo9378/flow2code.git"
+  },
+  "homepage": "https://github.com/timo9378/flow2code#readme",
+  "bugs": {
+    "url": "https://github.com/timo9378/flow2code/issues"
+  },
   "packageManager": "pnpm@10.28.0",
   "peerDependencies": {
     "ts-morph": ">=24.0.0"

@@ -66,8 +66,11 @@ const MIME_TYPES: Record<string, string> = {
 
 // ── Helpers ──
 
+const isDev = process.env.NODE_ENV !== "production";
+
 function setCors(res: ServerResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  const origin = isDev ? "*" : (process.env.CORS_ORIGIN || "*");
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
@@ -78,17 +81,30 @@ function setCors(res: ServerResponse) {
  */
 function setSecurityHeaders(res: ServerResponse) {
   // CSP：限制載入來源，防止 XSS
-  const csp = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // dev 模式需要 inline scripts
-    "style-src 'self' 'unsafe-inline'",                 // Tailwind injects inline styles
-    "img-src 'self' data: blob:",
-    "font-src 'self' data:",
-    "connect-src 'self' *",                             // AI endpoints 需要任意連線
-    "frame-ancestors 'self'",
-    "form-action 'self'",
-    "base-uri 'self'",
-  ].join("; ");
+  // Production 模式收緊策略；Dev 模式允許 inline（React/Next HMR 需求）
+  const csp = isDev
+    ? [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self' *",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+        "base-uri 'self'",
+      ].join("; ")
+    : [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "frame-ancestors 'self'",
+        "form-action 'self'",
+        "base-uri 'self'",
+      ].join("; ");
 
   res.setHeader("Content-Security-Policy", csp);
   res.setHeader("X-Content-Type-Options", "nosniff");

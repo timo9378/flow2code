@@ -35,5 +35,8 @@ research.md
 keypoint.md
 ROADMAP.md
 
+# test coverage
+coverage/
+
 # Generated API docs
 docs/api/

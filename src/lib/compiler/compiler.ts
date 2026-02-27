@@ -738,8 +738,10 @@ function generateNodeBody(
     const pluginCtx = createPluginContext(context);
     plugin.generate(node, writer, pluginCtx);
   } else {
-    writer.writeLine(`// TODO: 尚未實作節點類型 "${node.nodeType}"`);
-    writer.writeLine(`flowState['${node.id}'] = undefined;`);
+    throw new Error(
+      `[flow2code] Unsupported node type: "${node.nodeType}". ` +
+      `Register a plugin via pluginRegistry.register() or use a built-in node type.`
+    );
   }
 }
 

@@ -4,8 +4,9 @@
 
 > AI generates the graph, you review it visually, the compiler outputs production-ready TypeScript.
 
-[![CI](https://github.com/<your-org>/flow2code/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-org>/flow2code/actions/workflows/ci.yml)
+[![CI](https://github.com/timo9378/flow2code/actions/workflows/ci.yml/badge.svg)](https://github.com/timo9378/flow2code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/flow2code.svg)](https://www.npmjs.com/package/flow2code)
 
 ```
 使用者 → 自然語言 → AI → IR JSON → flow2code compiler → TypeScript
@@ -156,10 +157,6 @@ flow2code/
 ## 貢獻
 
 參閱 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 路線圖
-
-參閱 [ROADMAP.md](ROADMAP.md)。
 
 ## LICENSE
 

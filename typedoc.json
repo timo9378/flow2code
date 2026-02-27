@@ -11,7 +11,7 @@
   "categorizeByGroup": true,
   "sort": ["source-order"],
   "navigationLinks": {
-    "GitHub": "https://github.com/user/flow2code",
+    "GitHub": "https://github.com/timo9378/flow2code",
     "npm": "https://www.npmjs.com/package/flow2code"
   },
   "plugin": ["typedoc-plugin-markdown"],

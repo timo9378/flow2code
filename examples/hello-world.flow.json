@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "meta": {
+    "name": "Hello World API",
+    "description": "GET /api/hello → Returns a greeting message. The simplest possible flow.",
+    "createdAt": "2026-02-27T00:00:00Z",
+    "updatedAt": "2026-02-27T00:00:00Z"
+  },
+  "nodes": [
+    {
+      "id": "trigger_hello",
+      "nodeType": "http_webhook",
+      "category": "trigger",
+      "label": "GET /api/hello",
+      "params": {
+        "method": "GET",
+        "routePath": "/api/hello",
+        "parseBody": false
+      },
+      "inputs": [],
+      "outputs": [
+        { "id": "request", "label": "Request", "dataType": "object" }
+      ]
+    },
+    {
+      "id": "response_ok",
+      "nodeType": "return_response",
+      "category": "output",
+      "label": "Return Greeting",
+      "params": {
+        "statusCode": 200,
+        "body": "{ \"message\": \"Hello from Flow2Code!\" }"
+      },
+      "inputs": [
+        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+      ],
+      "outputs": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_trigger_response",
+      "source": "trigger_hello",
+      "target": "response_ok",
+      "sourceHandle": "request",
+      "targetHandle": "input"
+    }
+  ]
+}
