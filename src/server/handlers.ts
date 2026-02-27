@@ -7,6 +7,7 @@
 
 import { compile } from "../lib/compiler/compiler";
 import { validateFlowIR } from "../lib/ir/validator";
+import { validateIRSecurity, formatSecurityReport } from "../lib/ir/security";
 import { convertOpenAPIToFlowIR } from "../lib/openapi/converter";
 import { FLOW_IR_SYSTEM_PROMPT } from "../lib/ai/prompt";
 import type { FlowIR } from "../lib/ir/types";
@@ -171,7 +172,11 @@ export async function handleGenerate(body: { prompt?: string }): Promise<ApiResp
       };
     }
 
-    return { status: 200, body: { success: true, ir: ir as unknown } };
+    // AI 生成的 IR 安全檢查
+    const security = validateIRSecurity(ir);
+    const securityReport = security.findings.length > 0 ? formatSecurityReport(security) : undefined;
+
+    return { status: 200, body: { success: true, ir: ir as unknown, security: { safe: security.safe, findings: security.findings as unknown, report: securityReport } } };
   } catch (err) {
     return {
       status: 500,

@@ -72,6 +72,31 @@ function setCors(res: ServerResponse) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
 
+/**
+ * 安全 Headers — Content-Security-Policy + 常見防禦標頭
+ * dev server 允許 'unsafe-inline' (React/Next dev 需求)。
+ */
+function setSecurityHeaders(res: ServerResponse) {
+  // CSP：限制載入來源，防止 XSS
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // dev 模式需要 inline scripts
+    "style-src 'self' 'unsafe-inline'",                 // Tailwind injects inline styles
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self' *",                             // AI endpoints 需要任意連線
+    "frame-ancestors 'self'",
+    "form-action 'self'",
+    "base-uri 'self'",
+  ].join("; ");
+
+  res.setHeader("Content-Security-Policy", csp);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
@@ -133,6 +158,7 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDir: string, projectRoot: string) {
   setCors(res);
+  setSecurityHeaders(res);
 
   const { method } = req;
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);

@@ -40,8 +40,8 @@ export default function FlowCanvas() {
   const selectNode = useFlowStore((s) => s.selectNode);
   const removeNode = useFlowStore((s) => s.removeNode);
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
-  const undo = useFlowStore((s) => s.undo);
-  const redo = useFlowStore((s) => s.redo);
+  const undo = useFlowStore((s) => s.undoFlow);
+  const redo = useFlowStore((s) => s.redoFlow);
 
   // ── Deep link 高亮（搭配 Runtime Tracer） ──
   useHighlightFromURL();

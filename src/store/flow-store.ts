@@ -36,6 +36,10 @@ import {
   getDefaultLabel,
   getCategoryForType,
 } from "@/lib/node-defaults";
+import {
+  createUndoRedoSlice,
+  type UndoRedoSlice,
+} from "./undo-redo-slice";
 
 // ============================================================
 // React Flow 節點 data 型別
@@ -51,10 +55,19 @@ export interface FlowNodeData extends Record<string, unknown> {
 }
 
 // ============================================================
+// Snapshot 型別（Undo/Redo 用）
+// ============================================================
+
+interface FlowSnapshot {
+  nodes: Node<FlowNodeData>[];
+  edges: Edge[];
+}
+
+// ============================================================
 // Store 狀態介面
 // ============================================================
 
-interface FlowStoreState {
+interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
   // React Flow 狀態
   nodes: Node<FlowNodeData>[];
   edges: Edge[];
@@ -64,10 +77,6 @@ interface FlowStoreState {
 
   /** 流程的建立時間 */
   flowCreatedAt: string | null;
-
-  // Undo/Redo 歷史
-  undoStack: Array<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }>;
-  redoStack: Array<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }>;
 
   // 節點操作
   onNodesChange: OnNodesChange;
@@ -85,10 +94,12 @@ interface FlowStoreState {
   selectNode: (nodeId: string | null) => void;
   removeNode: (nodeId: string) => void;
 
-  // Undo/Redo
-  pushSnapshot: () => void;
-  undo: () => void;
-  redo: () => void;
+  /** 拍攝快照並推入 undo 堆疊（零參數便捷版） */
+  snapshot: () => void;
+  /** 復原（零參數便捷版，自動拍攝當前快照） */
+  undoFlow: () => void;
+  /** 重做（零參數便捷版，自動拍攝當前快照） */
+  redoFlow: () => void;
 
   // IR 匯出
   exportIR: () => FlowIR;
@@ -107,13 +118,41 @@ const MAX_UNDO_HISTORY = 50;
 /** 模組內部 counter — 不暴露為全域可變狀態 */
 let _nodeCounter = 0;
 
-export const useFlowStore = create<FlowStoreState>((set, get) => ({
-  nodes: [],
-  edges: [],
-  selectedNodeId: null,
-  flowCreatedAt: null,
-  undoStack: [],
-  redoStack: [],
+/** 建立當前 nodes/edges 的深拷貝快照 */
+function createSnapshot(nodes: Node<FlowNodeData>[], edges: Edge[]): FlowSnapshot {
+  return {
+    nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
+    edges: edges.map((e) => ({ ...e })),
+  };
+}
+
+const undoRedoSlice = createUndoRedoSlice<FlowSnapshot>(MAX_UNDO_HISTORY);
+
+export const useFlowStore = create<FlowStoreState>((...args) => {
+  const [set, get] = args;
+  const undo = undoRedoSlice(...args);
+
+  return {
+    ...undo,
+    nodes: [],
+    edges: [],
+    selectedNodeId: null,
+    flowCreatedAt: null,
+
+    // ── 零參數便捷方法（UI / 鍵盤快捷鍵使用） ──
+    snapshot: () => {
+      get().pushSnapshot(createSnapshot(get().nodes, get().edges));
+    },
+
+    undoFlow: () => {
+      const prev = get().undo(createSnapshot(get().nodes, get().edges));
+      if (prev) set({ nodes: prev.nodes, edges: prev.edges });
+    },
+
+    redoFlow: () => {
+      const next = get().redo(createSnapshot(get().nodes, get().edges));
+      if (next) set({ nodes: next.nodes, edges: next.edges });
+    },
 
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) as Node<FlowNodeData>[] });
@@ -124,12 +163,12 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
   },
 
   onConnect: (connection) => {
-    get().pushSnapshot();
+    get().snapshot();
     set({ edges: addEdge(connection, get().edges) });
   },
 
   addFlowNode: (nodeType, _category, position) => {
-    get().pushSnapshot();
+    get().snapshot();
     const id = `node_${++_nodeCounter}_${Date.now()}`;
     const category = getCategoryForType(nodeType);
     const { inputs, outputs } = getDefaultPorts(nodeType);
@@ -188,7 +227,7 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
   },
 
   removeNode: (nodeId) => {
-    get().pushSnapshot();
+    get().snapshot();
     set({
       nodes: get().nodes.filter((n) => n.id !== nodeId),
       edges: get().edges.filter(
@@ -196,49 +235,6 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
       ),
       selectedNodeId:
         get().selectedNodeId === nodeId ? null : get().selectedNodeId,
-    });
-  },
-
-  pushSnapshot: () => {
-    const { nodes, edges, undoStack } = get();
-    const snapshot = {
-      nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
-      edges: edges.map((e) => ({ ...e })),
-    };
-    const newStack = [...undoStack, snapshot];
-    if (newStack.length > MAX_UNDO_HISTORY) newStack.shift();
-    set({ undoStack: newStack, redoStack: [] });
-  },
-
-  undo: () => {
-    const { undoStack, nodes, edges } = get();
-    if (undoStack.length === 0) return;
-    const prev = undoStack[undoStack.length - 1];
-    const currentSnapshot = {
-      nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
-      edges: edges.map((e) => ({ ...e })),
-    };
-    set({
-      undoStack: undoStack.slice(0, -1),
-      redoStack: [...get().redoStack, currentSnapshot],
-      nodes: prev.nodes,
-      edges: prev.edges,
-    });
-  },
-
-  redo: () => {
-    const { redoStack, nodes, edges } = get();
-    if (redoStack.length === 0) return;
-    const next = redoStack[redoStack.length - 1];
-    const currentSnapshot = {
-      nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
-      edges: edges.map((e) => ({ ...e })),
-    };
-    set({
-      redoStack: redoStack.slice(0, -1),
-      undoStack: [...get().undoStack, currentSnapshot],
-      nodes: next.nodes,
-      edges: next.edges,
     });
   },
 
@@ -278,7 +274,8 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
 
   reset: () => {
     _nodeCounter = 0;
-    set({ nodes: [], edges: [], selectedNodeId: null, flowCreatedAt: null, undoStack: [], redoStack: [] });
+    get().clearHistory();
+    set({ nodes: [], edges: [], selectedNodeId: null, flowCreatedAt: null });
   },
 
   loadIR: (ir: FlowIR) => {
@@ -312,4 +309,5 @@ export const useFlowStore = create<FlowStoreState>((set, get) => ({
 
     set({ nodes, edges, selectedNodeId: null, flowCreatedAt: ir.meta?.createdAt ?? new Date().toISOString() });
   },
-}));
+};
+});

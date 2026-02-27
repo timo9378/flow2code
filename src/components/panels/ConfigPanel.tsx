@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import ExpressionInput from "@/components/ui/expression-input";
 
 // ── Field Components ──
 
@@ -99,7 +100,7 @@ function ParamField({
   );
 }
 
-function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string) => void) {
+function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string) => void, nodeId: string | null) {
   const params = data.params as Record<string, unknown>;
   const nodeType = data.nodeType;
 
@@ -172,7 +173,7 @@ function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string)
     case ActionType.CUSTOM_CODE:
       return (
         <>
-          <ParamField label="Code" value={String(params.code ?? "")} onChange={(v) => onUpdate("code", v)} type="textarea" />
+          <ExpressionInput nodeId={nodeId} label="Code" value={String(params.code ?? "")} onChange={(v) => onUpdate("code", v)} />
           <ParamField label="Return Variable" value={String(params.returnVariable ?? "")} onChange={(v) => onUpdate("returnVariable", v)} />
         </>
       );
@@ -210,7 +211,7 @@ function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string)
         </>
       );
     case LogicType.IF_ELSE:
-      return <ParamField label="Condition" value={String(params.condition ?? "")} onChange={(v) => onUpdate("condition", v)} type="textarea" />;
+      return <ExpressionInput nodeId={nodeId} label="Condition" value={String(params.condition ?? "")} onChange={(v) => onUpdate("condition", v)} placeholder="flowState['nodeId'] > 0" />;
     case LogicType.FOR_LOOP:
       return (
         <>
@@ -256,14 +257,14 @@ function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string)
         </>
       );
     case VariableType.TRANSFORM:
-      return <ParamField label="Expression" value={String(params.expression ?? "")} onChange={(v) => onUpdate("expression", v)} type="textarea" />;
+      return <ExpressionInput nodeId={nodeId} label="Expression" value={String(params.expression ?? "")} onChange={(v) => onUpdate("expression", v)} placeholder="flowState['fetch_1'].data" />;
     case OutputType.RETURN_RESPONSE: {
       const statusCode = Number(params.statusCode ?? 200);
       const statusError = statusCode < 100 || statusCode > 599 ? "狀態碼範圍 100-599" : undefined;
       return (
         <>
           <ParamField label="Status Code" value={String(params.statusCode ?? 200)} onChange={(v) => onUpdate("statusCode", v)} type="number" error={statusError} />
-          <ParamField label="Body Expression" value={String(params.bodyExpression ?? "")} onChange={(v) => onUpdate("bodyExpression", v)} type="textarea" />
+          <ExpressionInput nodeId={nodeId} label="Body Expression" value={String(params.bodyExpression ?? "")} onChange={(v) => onUpdate("bodyExpression", v)} placeholder="{ result: flowState['nodeId'] }" />
         </>
       );
     }
@@ -356,7 +357,7 @@ export default function ConfigPanel() {
               <CardTitle className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">參數</CardTitle>
             </CardHeader>
             <CardContent className="px-3 pb-3 space-y-3">
-              {renderParams(data, handleParamUpdate)}
+              {renderParams(data, handleParamUpdate, selectedNodeId)}
             </CardContent>
           </Card>
 
