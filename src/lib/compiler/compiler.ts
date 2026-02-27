@@ -1,17 +1,17 @@
 /**
- * Flow2Code AST 編譯器核心 (v2)
+ * Flow2Code AST Compiler Core (v2)
  *
- * 架構重構：
- *   1. Platform Adapter — 解耦 Next.js，支援 Express / Cloudflare Workers
- *   2. Plugin System — 節點生成邏輯可外部註冊，取代 hardcoded nodeGenerators
- *   3. Expression Parser — 使用 Recursive Descent Parser 取代 Regex
- *   4. Type Inference — 生成具型別的 FlowState interface，取代 Record<string, any>
- *   5. Scoped State — 迴圈/try-catch 使用局部作用域，避免變數覆蓋
+ * Architecture:
+ *   1. Platform Adapter — Decoupled from Next.js, supports Express / Cloudflare Workers
+ *   2. Plugin System — Node generation logic is externally registerable
+ *   3. Expression Parser — Recursive Descent Parser replaces regex
+ *   4. Type Inference — Generates typed FlowState interface instead of Record<string, any>
+ *   5. Scoped State — Loops/try-catch use local scope to prevent variable shadowing
  *
- * 公開 API（向後相容）：
- *   - compile(ir)                → CompileResult（預設 nextjs 平台）
- *   - compile(ir, { platform })  → CompileResult（指定平台）
- *   - traceLineToNode(sourceMap, line) → 行號反查節點
+ * Public API (backward-compatible):
+ *   - compile(ir)                → CompileResult (default: nextjs platform)
+ *   - compile(ir, { platform })  → CompileResult (specified platform)
+ *   - traceLineToNode(sourceMap, line) → Reverse lookup node from line number
  */
 
 import { Project, SourceFile, CodeBlockWriter } from "ts-morph";
@@ -32,7 +32,7 @@ import {
 import { validateFlowIR } from "../ir/validator";
 import { topologicalSort, type ExecutionPlan } from "../ir/topological-sort";
 
-// ── 新模組 ──
+// ── Internal Modules ──
 import { parseExpression, type ExpressionContext, type ScopeEntry } from "./expression-parser";
 import {
   type PlatformAdapter,
@@ -50,32 +50,32 @@ import { inferFlowStateTypes } from "./type-inference";
 import { buildSymbolTable, type SymbolTable } from "./symbol-table";
 
 // ============================================================
-// 編譯結果
+// Compile Result
 // ============================================================
 
 export interface CompileResult {
   success: boolean;
   code?: string;
   errors?: string[];
-  /** 生成的檔案路徑（相對路徑） */
+  /** Generated file path (relative) */
   filePath?: string;
-  /** 依賴套件報告 */
+  /** Dependency report */
   dependencies?: DependencyReport;
-  /** Source Map（nodeId ↔ line number 映射） */
+  /** Source Map (nodeId ↔ line number mapping) */
   sourceMap?: SourceMap;
 }
 
-/** 依賴套件報告 */
+/** Dependency report */
 export interface DependencyReport {
-  /** 需要的所有套件 */
+  /** All required packages */
   all: string[];
-  /** 缺少的套件（與 package.json 比對） */
+  /** Missing packages (compared with package.json) */
   missing: string[];
-  /** 安裝指令建議 */
+  /** Suggested install command */
   installCommand?: string;
 }
 
-/** Source Map：行號 ↔ 節點 ID 映射 */
+/** Source Map: line number ↔ node ID mapping */
 export interface SourceMap {
   version: 1;
   generatedFile: string;
@@ -84,18 +84,18 @@ export interface SourceMap {
 }
 
 // ============================================================
-// 編譯選項
+// Compile Options
 // ============================================================
 
 export interface CompileOptions {
-  /** 目標平台（預設 "nextjs"） */
+  /** Target platform (default: "nextjs") */
   platform?: PlatformName;
-  /** 額外的 Node Plugins */
+  /** Additional Node Plugins */
   plugins?: NodePlugin[];
 }
 
 // ============================================================
-// 內部編譯器上下文
+// Internal Compiler Context
 // ============================================================
 
 interface CompilerContext {
@@ -109,37 +109,37 @@ interface CompilerContext {
   currentLine: number;
   platform: PlatformAdapter;
   symbolTable: SymbolTable;
-  /** Scope Stack：追蹤目前所處的局部作用域（for-loop / try-catch 等） */
+  /** Scope Stack: tracks current local scope (for-loop / try-catch etc.) */
   scopeStack: ScopeEntry[];
-  /** 在子區塊（if/else、for-loop body、try/catch）內生成的節點 ID */
+  /** Node IDs generated within child blocks (if/else, for-loop body, try/catch) */
   childBlockNodeIds: Set<NodeId>;
-  /** 是否啟用 DAG 並發排程（取代階層式 Promise.all） */
+  /** Whether DAG concurrent scheduling is enabled (replaces hierarchical Promise.all) */
   dagMode: boolean;
-  /** 不應使用 Symbol Table 別名的節點 ID（子區塊 + DAG promise 內節點） */
+  /** Node IDs that should NOT use Symbol Table aliases (child block + DAG promise nodes) */
   symbolTableExclusions: Set<NodeId>;
-  /** 執行時追蹤：已在區塊內生成的節點 ID（防止重複生成） */
+  /** Runtime tracking: node IDs already generated in blocks (prevents duplicate generation) */
   generatedBlockNodeIds: Set<NodeId>;
-  /** 此次編譯使用的 Plugin Registry（per-instance，避免全域汙染） */
+  /** Plugin Registry for this compile session (per-instance, avoids global pollution) */
   pluginRegistry: PluginRegistry;
 }
 
 // ============================================================
-// 主編譯函式
+// Main Compile Function
 // ============================================================
 
 /**
- * 將 FlowIR 編譯為 TypeScript 原始碼
+ * Compiles FlowIR into TypeScript source code.
  *
- * 經過以下階段：
- * 1. 驗證 IR 結構正確性
- * 2. 拓撲排序 + 並發偵測
- * 3. 平台適配（Hono / Express / Bun 等）
- * 4. 插件化運算子生成
- * 5. IDE 友善的 Source Map 輸出
+ * Pipeline stages:
+ * 1. Validate IR structure
+ * 2. Topological sort + concurrency detection
+ * 3. Platform adaptation (Next.js / Express / Cloudflare etc.)
+ * 4. Plugin-based node code generation
+ * 5. IDE-friendly Source Map output
  *
- * @param ir - FlowIR 輸入文件
- * @param options - 編譯選項（平台、插件、輸出路徑等）
- * @returns 編譯結果，包含 code、filePath、sourceMap、dependencies
+ * @param ir - FlowIR input document
+ * @param options - Compile options (platform, plugins, output path etc.)
+ * @returns Compile result containing code, filePath, sourceMap, dependencies
  *
  * @example
  * ```ts
@@ -152,14 +152,14 @@ interface CompilerContext {
  * ```
  */
 export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
-  // 建立 per-instance plugin registry（避免全域狀態汙染）
+  // Create per-instance plugin registry (avoids global state pollution)
   const pluginRegistry = createPluginRegistry();
   pluginRegistry.registerAll(builtinPlugins);
   if (options?.plugins) {
     pluginRegistry.registerAll(options.plugins);
   }
 
-  // 1. 驗證 IR
+  // 1. Validate IR
   const validation = validateFlowIR(ir);
   if (!validation.valid) {
     return {
@@ -168,7 +168,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     };
   }
 
-  // 2. 拓撲排序
+  // 2. Topological sort
   let plan: ExecutionPlan;
   try {
     plan = topologicalSort(ir);
@@ -179,7 +179,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     };
   }
 
-  // 3. 建立上下文
+  // 3. Build context
   const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
   const platformName = options?.platform ?? "nextjs";
   const platform = getPlatform(platformName);
@@ -204,10 +204,10 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     pluginRegistry,
   };
 
-  // 偵測並發機會：若執行計畫有任何並發步驟，啟用 DAG 排程
+  // Detect concurrency: if execution plan has any concurrent steps, enable DAG scheduling
   const trigger = ir.nodes.find((n) => n.category === NodeCategory.TRIGGER)!;
 
-  // ── 預先計算控制流子區塊節點（修復 DAG 重複生成 + Control Flow 外洩）──
+  // ── Pre-compute control flow child block nodes (fixes DAG duplicate generation + control flow leaks) ──
   const preComputedBlockNodes = computeControlFlowDescendants(ir, trigger.id);
   for (const nodeId of preComputedBlockNodes) {
     context.childBlockNodeIds.add(nodeId);
@@ -219,7 +219,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   );
   if (hasConcurrency) {
     context.dagMode = true;
-    // DAG 模式下，所有非 trigger 節點的 Symbol Table 別名不在外層可見
+    // In DAG mode, Symbol Table aliases for all non-trigger nodes are not visible at top level
     for (const node of ir.nodes) {
       if (node.category !== NodeCategory.TRIGGER) {
         context.symbolTableExclusions.add(node.id);
@@ -227,7 +227,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     }
   }
 
-  // 5. 使用 ts-morph 建構 AST
+  // 5. Build AST using ts-morph
   const project = new Project({ useInMemoryFileSystem: true });
   const sourceFile = project.createSourceFile("generated.ts", "");
 
@@ -240,7 +240,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     };
   }
 
-  // 6. 格式化並輸出
+  // 6. Format and output
   sourceFile.formatText({
     indentSize: 2,
     convertTabsToSpaces: true,
@@ -249,10 +249,10 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   const code = sourceFile.getFullText();
   const filePath = platform.getOutputFilePath(trigger);
 
-  // 收集依賴
+  // Collect dependencies
   collectRequiredPackages(ir, context);
 
-  // 建構 Source Map
+  // Build Source Map
   const sourceMap = buildSourceMap(code, ir, filePath);
 
   const dependencies: DependencyReport = {
@@ -274,7 +274,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
 }
 
 // ============================================================
-// 代碼生成主邏輯
+// Code Generation Main Logic
 // ============================================================
 
 function generateCode(
@@ -284,7 +284,7 @@ function generateCode(
 ): void {
   const { platform } = context;
 
-  // 生成 imports
+  // Generate imports
   platform.generateImports(sourceFile, trigger, {
     ir: context.ir,
     nodeMap: context.nodeMap,
@@ -292,7 +292,7 @@ function generateCode(
     imports: context.imports,
   });
 
-  // 生成函式（由 platform adapter 決定結構）
+  // Generate function (structure determined by platform adapter)
   platform.generateFunction(
     sourceFile,
     trigger,
@@ -309,7 +309,7 @@ function generateCode(
 }
 
 /**
- * 生成函式內部代碼（flowState + 觸發器初始化 + 節點鏈）
+ * Generates function body (flowState + trigger init + node chain)
  */
 function generateFunctionBody(
   writer: CodeBlockWriter,
@@ -318,36 +318,37 @@ function generateFunctionBody(
 ): void {
   const { ir } = context;
 
-  // ── 型別安全的 flowState 宣告 ──
+  // ── Type-safe flowState declaration ──
   const typeInfo = inferFlowStateTypes(ir);
   writer.writeLine(typeInfo.interfaceCode);
   writer.writeLine("const flowState: Partial<FlowState> = {};");
   writer.blankLine();
 
-  // ── 觸發器初始化（委託給 Platform Adapter） ──
+  // ── Trigger initialization (delegated to Platform Adapter) ──
   context.platform.generateTriggerInit(writer, trigger, {
     symbolTable: context.symbolTable,
   });
   writer.blankLine();
 
-  // ── 按拓撲排序生成後續節點 ──
+  // ── Generate subsequent nodes in topological order ──
   generateNodeChain(writer, trigger.id, context);
 }
 
-// generateTriggerInit 已移至各 Platform Adapter 實作
+// generateTriggerInit has been moved to each Platform Adapter implementation
 
 // ============================================================
 // ============================================================
-// 節點鏈生成器（調度器）
+// Node Chain Generator (Scheduler)
 // ============================================================
 
 // ============================================================
-// 控制流可達性分析（Reachability Analysis）
+// Control Flow Reachability Analysis
 // ============================================================
 
 /**
- * 控制流端口映射：只有來自特定邏輯節點類型的特定端口才算控制流邊。
- * 避免 "body" 等端口名稱在非控制流節點（如 HTTP Trigger）上被誤判。
+ * Control flow port mapping: only edges from specific logic node types and specific ports
+ * count as control flow edges. Prevents port names like "body" from being
+ * misidentified on non-control-flow nodes (e.g., HTTP Trigger).
  */
 const CONTROL_FLOW_PORT_MAP: Partial<Record<string, Set<string>>> = {
   [LogicType.IF_ELSE]: new Set(["true", "false"]),
@@ -356,8 +357,8 @@ const CONTROL_FLOW_PORT_MAP: Partial<Record<string, Set<string>>> = {
 };
 
 /**
- * 判斷一條邊是否為控制流邊。
- * 必須同時滿足：來源節點是控制流節點 AND 端口是該節點的控制流端口。
+ * Determines whether an edge is a control flow edge.
+ * Must satisfy: source node is a control flow node AND port is that node's control flow port.
  */
 function isControlFlowEdge(
   edge: FlowEdge,
@@ -370,19 +371,19 @@ function isControlFlowEdge(
 }
 
 /**
- * 預先計算所有「控制流子區塊節點」。
+ * Pre-computes all "control flow child block nodes".
  *
- * 核心演算法：
- *   1. 建立一個「去除控制流邊」的簡化圖（stripped graph）。
- *   2. 從 trigger 出發做 BFS，找出在簡化圖中可達的節點。
- *   3. 原始圖中存在、但在簡化圖中不可達的節點，
- *      就是「只能透過控制流端口到達的節點」——即子區塊節點。
+ * Core algorithm:
+ *   1. Build a "stripped graph" by removing control flow edges.
+ *   2. BFS from trigger to find all nodes reachable in the stripped graph.
+ *   3. Nodes that exist in the original graph but are NOT reachable in the stripped graph
+ *      are nodes only reachable via control flow ports — i.e., child block nodes.
  *
- * 這確保了：
- *   - If/Else 的 true/false 子節點及其下游全部被標記
- *   - For Loop 的 body 子節點及其下游全部被標記
- *   - Try/Catch 的 success/error 子節點及其下游全部被標記
- *   - 若某節點同時有「控制流路徑」與「資料流路徑」可達，則不標記（它屬於頂層）
+ * This ensures:
+ *   - If/Else true/false child nodes and all their downstream are marked
+ *   - For Loop body child nodes and all their downstream are marked
+ *   - Try/Catch success/error child nodes and all their downstream are marked
+ *   - Nodes reachable via BOTH control flow AND data flow paths are NOT marked (they belong to top level)
  */
 function computeControlFlowDescendants(
   ir: FlowIR,
@@ -390,7 +391,7 @@ function computeControlFlowDescendants(
 ): Set<NodeId> {
   const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
 
-  // 建立去除控制流邊的鄰接表
+  // Build adjacency list with control flow edges removed
   const strippedSuccessors = new Map<NodeId, Set<NodeId>>();
   for (const node of ir.nodes) {
     strippedSuccessors.set(node.id, new Set());
@@ -400,7 +401,7 @@ function computeControlFlowDescendants(
     strippedSuccessors.get(edge.sourceNodeId)?.add(edge.targetNodeId);
   }
 
-  // BFS：從 trigger 出發，在簡化圖中找可達節點
+  // BFS: from trigger, find reachable nodes in the stripped graph
   const reachableWithoutControlFlow = new Set<NodeId>();
   const queue: NodeId[] = [triggerId];
   while (queue.length > 0) {
@@ -414,7 +415,7 @@ function computeControlFlowDescendants(
     }
   }
 
-  // 不可達的就是控制流子區塊節點
+  // Unreachable nodes are control flow child block nodes
   const childBlockNodeIds = new Set<NodeId>();
   for (const node of ir.nodes) {
     if (node.id === triggerId) continue;
@@ -441,7 +442,7 @@ function generateBlockContinuation(
   fromNodeId: NodeId,
   context: CompilerContext
 ): void {
-  // 計算從 fromNodeId 可達的所有節點（含間接後代）
+  // Compute all nodes reachable from fromNodeId (including indirect descendants)
   const reachable = new Set<NodeId>();
   const bfsQueue: NodeId[] = [fromNodeId];
   const edgeSuccessors = new Map<NodeId, NodeId[]>();
@@ -464,17 +465,17 @@ function generateBlockContinuation(
     }
   }
 
-  // 按拓撲序生成可達且屬於子區塊的後代節點
+  // Generate reachable child block descendant nodes in topological order
   for (const nodeId of context.plan.sortedNodeIds) {
     if (nodeId === fromNodeId) continue;
     if (!reachable.has(nodeId)) continue;
     if (!context.childBlockNodeIds.has(nodeId)) continue;
     if (context.generatedBlockNodeIds.has(nodeId)) continue;
 
-    // 確認所有區塊內的依賴都已生成
+    // Verify all in-block dependencies have been generated
     const deps = context.plan.dependencies.get(nodeId) ?? new Set();
     const allBlockDepsReady = [...deps].every((depId) => {
-      // 非子區塊依賴（頂層節點）視為已就緒
+      // Non-child-block dependencies (top-level nodes) are considered ready
       if (!context.childBlockNodeIds.has(depId)) return true;
       return context.generatedBlockNodeIds.has(depId);
     });
@@ -504,7 +505,7 @@ function generateNodeChain(
 }
 
 // ============================================================
-// 循序模式（無並發機會時使用）
+// Sequential Mode (used when no concurrency opportunity)
 // ============================================================
 
 function generateNodeChainSequential(
@@ -515,7 +516,7 @@ function generateNodeChainSequential(
   const { plan, nodeMap } = context;
 
   for (const step of plan.steps) {
-    // 過濾 trigger 和已在子區塊生成的節點
+    // Filter out trigger and nodes already generated in child blocks
     const activeNodes = step.nodeIds.filter(
       (id) => id !== triggerId && !context.childBlockNodeIds.has(id)
     );
@@ -539,9 +540,9 @@ function generateNodeChainSequential(
 // ============================================================
 
 /**
- * 將子區塊節點的依賴解析到其宿主 DAG 節點。
- * 例如 if_else → [true: fetch_child]，下游依賴 fetch_child 時
- * 實際應 await if_else 的 promise。
+ * Resolves a child block node's dependency to its host DAG node.
+ * e.g., if_else → [true: fetch_child], when downstream depends on fetch_child,
+ * it should actually await if_else's promise.
  */
 function resolveToDAGNodes(
   depId: NodeId,
@@ -552,10 +553,10 @@ function resolveToDAGNodes(
   if (visited.has(depId) || depId === triggerId) return [];
   visited.add(depId);
 
-  // 如果 dep 不是子區塊節點，它就是 DAG 節點（有自己的 promise）
+  // If dep is not a child block node, it IS a DAG node (has its own promise)
   if (!context.childBlockNodeIds.has(depId)) return [depId];
 
-  // 子區塊節點：往上游遞迴找到宿主 DAG 節點
+  // Child block node: recurse upstream to find host DAG node
   const parentDeps = context.plan.dependencies.get(depId) ?? new Set();
   const result: NodeId[] = [];
   for (const pd of parentDeps) {
@@ -571,15 +572,15 @@ function generateNodeChainDAG(
 ): void {
   const { plan, nodeMap } = context;
 
-  // 按拓撲序收集所有非 trigger 節點
+  // Collect all non-trigger nodes in topological order
   const allNodeIds = plan.sortedNodeIds.filter((id) => id !== triggerId);
 
-  // 分離 output 節點（它們含 return，不能包在 promise 裡）
+  // Separate output nodes (they contain return, can't be wrapped in promises)
   const outputNodeIds: NodeId[] = [];
   const dagNodeIds: NodeId[] = [];
 
   for (const id of allNodeIds) {
-    // 子區塊節點跳過（由父節點 plugin 內部生成）
+    // Skip child block nodes (generated internally by parent node's plugin)
     if (context.childBlockNodeIds.has(id)) continue;
     const node = nodeMap.get(id);
     if (!node) continue;
@@ -595,11 +596,11 @@ function generateNodeChainDAG(
     writer.blankLine();
   }
 
-  // 為每個 worker 節點生成 promise IIFE
+  // Generate promise IIFE for each worker node
   for (const nodeId of dagNodeIds) {
     const node = nodeMap.get(nodeId)!;
 
-    // 解析直接上游依賴（子區塊 dep 會被映射到其宿主 DAG 節點）
+    // Resolve direct upstream dependencies (child block deps mapped to host DAG nodes)
     const rawDeps = [...(plan.dependencies.get(nodeId) ?? [])];
     const resolvedDeps = new Set<NodeId>();
     for (const depId of rawDeps) {
@@ -607,12 +608,12 @@ function generateNodeChainDAG(
         resolvedDeps.add(dagDep);
       }
     }
-    // 排除自己（防止自環）
+    // Exclude self (prevent self-loop)
     resolvedDeps.delete(nodeId);
 
     const promiseVar = `p_${sanitizeId(nodeId)}`;
     writer.write(`const ${promiseVar} = (async () => `).block(() => {
-      // await 所有直接上游 promise
+      // Await all direct upstream promises
       for (const depId of resolvedDeps) {
         writer.writeLine(`await p_${sanitizeId(depId)};`);
       }
@@ -620,7 +621,7 @@ function generateNodeChainDAG(
       generateNodeBody(writer, node, context);
     });
     writer.writeLine(`)();`);
-    // 防止 Unhandled Promise Rejection（錯誤仍會透過下游 await 傳播）
+    // Prevent Unhandled Promise Rejection (errors still propagate via downstream await)
     writer.writeLine(`${promiseVar}.catch(() => {});`);
     writer.blankLine();
   }
@@ -633,7 +634,7 @@ function generateNodeChainDAG(
     writer.blankLine();
   }
 
-  // Output 節點：循序 await 上游 promise，然後執行（含 return）
+  // Output nodes: sequentially await upstream promises, then execute (contains return)
   for (const nodeId of outputNodeIds) {
     const node = nodeMap.get(nodeId)!;
     const rawDeps = [...(plan.dependencies.get(nodeId) ?? [])];
@@ -653,7 +654,7 @@ function generateNodeChainDAG(
 }
 
 // ============================================================
-// 並發節點生成器 (Promise.all)
+// Concurrent Node Generator (Promise.all)
 // ============================================================
 
 function generateConcurrentNodes(
@@ -662,11 +663,11 @@ function generateConcurrentNodes(
   context: CompilerContext
 ): void {
   const { nodeMap } = context;
-  // 過濾已在子區塊生成的節點
+  // Filter nodes already generated in child blocks
   const activeNodeIds = nodeIds.filter((id) => !context.childBlockNodeIds.has(id));
   if (activeNodeIds.length === 0) return;
 
-  // 只剩一個節點時無需 Promise.all
+  // No need for Promise.all when only one node remains
   if (activeNodeIds.length === 1) {
     const node = nodeMap.get(activeNodeIds[0]);
     if (node) {
@@ -699,7 +700,7 @@ function generateConcurrentNodes(
     writer.writeLine(`flowState['${nodeId}'] = r${i};`);
   });
 
-  // 生成命名變數別名
+  // Generate named variable aliases
   activeNodeIds.forEach((nodeId) => {
     const varName = context.symbolTable.getVarName(nodeId);
     writer.writeLine(`const ${varName} = flowState['${nodeId}'];`);
@@ -709,7 +710,7 @@ function generateConcurrentNodes(
 }
 
 // ============================================================
-// 單節點代碼生成器
+// Single Node Code Generator
 // ============================================================
 
 function generateSingleNode(
@@ -720,7 +721,7 @@ function generateSingleNode(
   writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
   generateNodeBody(writer, node, context);
 
-  // 為非輸出節點生成命名變數別名（Output 節點通常是 return，不需要別名）
+  // Generate named variable alias for non-output nodes (output nodes are usually return, no alias needed)
   if (node.category !== NodeCategory.OUTPUT) {
     const varName = context.symbolTable.getVarName(node.id);
     writer.writeLine(`const ${varName} = flowState['${node.id}'];`);
@@ -746,7 +747,7 @@ function generateNodeBody(
 }
 
 // ============================================================
-// Plugin Context 工廠
+// Plugin Context Factory
 // ============================================================
 
 function createPluginContext(
@@ -771,7 +772,7 @@ function createPluginContext(
         scopeStack: context.scopeStack.length > 0
           ? [...context.scopeStack]
           : undefined,
-        // 合併子區塊 + DAG 排除清單
+        // Merge child block + DAG exclusion list
         blockScopedNodeIds: context.symbolTableExclusions.size > 0
           ? context.symbolTableExclusions
           : undefined,
@@ -785,14 +786,14 @@ function createPluginContext(
     },
 
     generateChildNode(writer: CodeBlockWriter, node: FlowNode): void {
-      // 標記此節點為「子區塊生成」，避免在頂層重複生成 + 避免 Symbol Table 別名洩漏
+      // Mark this node as "child block generated" to prevent top-level duplicate + Symbol Table alias leak
       context.childBlockNodeIds.add(node.id);
       context.symbolTableExclusions.add(node.id);
       context.generatedBlockNodeIds.add(node.id);
       writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
       generateNodeBody(writer, node, context);
 
-      // 生成此子節點的所有後代延續鏈（修復 Control Flow 外洩問題）
+      // Generate all descendant continuation chains for this child node (fixes control flow leak)
       generateBlockContinuation(writer, node.id, context);
     },
 
@@ -809,7 +810,7 @@ function createPluginContext(
 }
 
 // ============================================================
-// 輔助函式
+// Helper Functions
 // ============================================================
 
 function sanitizeId(id: string): string {
@@ -833,7 +834,7 @@ function resolveEnvVars(url: string, context: CompilerContext): string {
 
 function collectRequiredPackages(ir: FlowIR, context: CompilerContext): void {
   for (const node of ir.nodes) {
-    // 從 Plugin 取得依賴（Plugin 已包含所有節點的套件資訊）
+    // Get dependencies from Plugin (Plugin contains all node package info)
     const plugin = context.pluginRegistry.get(node.nodeType);
     if (plugin?.getRequiredPackages) {
       const packages = plugin.getRequiredPackages(node);
@@ -841,7 +842,7 @@ function collectRequiredPackages(ir: FlowIR, context: CompilerContext): void {
     }
   }
 
-  // 平台隱含依賴
+  // Platform implicit dependencies
   const platformDeps = context.platform.getImplicitDependencies();
   platformDeps.forEach((pkg) => context.requiredPackages.add(pkg));
 }
@@ -914,7 +915,7 @@ function buildSourceMap(
 }
 
 /**
- * 給定行號，反查對應的 nodeId
+ * Given a line number, reverse-lookup the corresponding nodeId.
  */
 export function traceLineToNode(
   sourceMap: SourceMap,

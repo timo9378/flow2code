@@ -23,17 +23,15 @@ dist/
 .DS_Store
 Thumbs.db
 
-# generated
+# generated / build artifacts
 src/generated/
 *.flow.map.json
+tsconfig.tsbuildinfo
 
-# debug
+# debug logs
 npm-debug.log*
 pnpm-debug.log*
-test.md
-research.md
-keypoint.md
-ROADMAP.md
+yarn-error.log*
 
 # test coverage
 coverage/

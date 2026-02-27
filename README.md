@@ -1,81 +1,86 @@
 # Flow2Code
 
-**The Visual AST Compiler for Backend APIs.**
+**The Visual AST Compiler & Code Audit Tool for Backend APIs.**
 
-> AI generates the graph, you review it visually, the compiler outputs production-ready TypeScript.
+> AI generates the code, Flow2Code decompiles it into a visual flow for you to audit, or compiles your visual flow into production-ready TypeScript.
 
 [![CI](https://github.com/timo9378/flow2code/actions/workflows/ci.yml/badge.svg)](https://github.com/timo9378/flow2code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/flow2code.svg)](https://www.npmjs.com/package/flow2code)
 
 ```
-使用者 → 自然語言 → AI → IR JSON → flow2code compiler → TypeScript
-                          ↑                              ↓
-                    可視化畫布 ←──── 雙向同步 ───→ 生成代碼
+            ┌──────────────────────────────────┐
+            │         flow2code                │
+            │                                  │
+  TS Code ──┤►  decompile() → FlowIR → Canvas  │  ← AI Code Audit
+            │                                  │
+  Canvas  ──┤►  FlowIR → compile() → TS Code   │  ← Visual Compiler
+            └──────────────────────────────────┘
 ```
 
 ## Why Flow2Code?
 
-| 傳統 Low‑Code | Flow2Code |
+| Traditional Low-Code | Flow2Code |
 |---|---|
-| 綁定私有 Runtime | **零依賴** — 產出原生 TypeScript，直接部署 |
-| 黑盒節點 | **AST 編譯** — ts-morph 生成語法正確的真實代碼 |
-| 單一平台鎖定 | **多平台** — Next.js、Express、Cloudflare Workers |
-| 無法版控 | **Git-friendly** — IR 是 JSON，可 diff/PR review |
-| 開發者不信任 | **可視化審計** — 畫布 ↔ 代碼雙向映射 |
+| Vendor-locked Runtime | **Zero-dependency** — outputs native TypeScript, deploy anywhere |
+| Black-box nodes | **AST Compilation** — ts-morph generates syntactically correct code |
+| Single platform | **Multi-platform** — Next.js, Express, Cloudflare Workers |
+| Can't version control | **Git-friendly** — IR is JSON/YAML, diffable in PRs |
+| Developers don't trust it | **Visual Audit** — bidirectional canvas ↔ code mapping |
 
-## 核心特性
+## Core Features
 
-- **AST 編譯而非解釋** — 使用 ts-morph 生成語法正確的 TypeScript，杜絕字串拼接的語法錯誤
-- **零依賴產出** — 生成的代碼不依賴任何 Runtime，可直接部署到 Vercel / AWS Lambda / Cloudflare
-- **多平台輸出** — 同一套 Flow 可編譯為 Next.js、Express、Cloudflare Workers 三種風格
-- **per-instance Plugin System** — 節點邏輯可外掛擴充，編譯間互不汙染
-- **flowState + 型別推論** — 跨節點數據傳遞具備 TypeScript 型別安全
-- **自動並發偵測** — 拓撲排序識別獨立節點，自動生成 `Promise.allSettled` + `.catch` 防護
-- **環境變數保護** — 敏感資訊自動轉為 `process.env.XXX`
-- **Expression Parser** — Recursive Descent Parser 解析 `$input` / `$trigger` / `$node.xxx` 模板語法
-- **Semantic Diff** — 結構化比較兩版 IR 的變動
+- **AST Compilation, not interpretation** — Uses ts-morph to generate syntactically correct TypeScript. No string concatenation.
+- **Zero-dependency output** — Generated code has no runtime dependency. Deploy directly to Vercel / AWS Lambda / Cloudflare.
+- **Multi-platform output** — Same flow compiles to Next.js, Express, or Cloudflare Workers.
+- **Per-instance Plugin System** — Node logic is extensible via plugins. Compile sessions are isolated.
+- **flowState + Type Inference** — Cross-node data passing with TypeScript type safety.
+- **Auto concurrency detection** — Topological sort identifies independent nodes, auto-generates `Promise.allSettled`.
+- **Environment variable protection** — Secrets auto-converted to `process.env.XXX`.
+- **Expression Parser** — Recursive Descent Parser for `$input` / `$trigger` / `$node.xxx` template syntax.
+- **Decompiler** — TypeScript → FlowIR reverse parser for code auditing.
+- **Semantic Diff** — Structural comparison of two IR versions.
 
-## 技術架構
+## Tech Stack
 
-| 層級 | 技術 |
-|------|------|
-| 前端畫布 | Next.js 16 + React 19 + React Flow (@xyflow/react v12) |
-| 狀態管理 | Zustand 5 |
-| IR 規範 | 自定義 JSON Schema + TypeScript Types |
-| AST 引擎 | ts-morph 27 (TypeScript Compiler API Wrapper) |
-| 平台適配 | NextjsPlatform / ExpressPlatform / CloudflarePlatform |
-| Plugin 系統 | `createPluginRegistry()` 工廠模式（per-instance） |
+| Layer | Technology |
+|-------|-----------|
+| Visual Canvas | Next.js 16 + React 19 + React Flow (@xyflow/react v12) |
+| State Management | Zustand 5 |
+| IR Specification | Custom JSON Schema + TypeScript Types |
+| AST Engine | ts-morph 27 (TypeScript Compiler API Wrapper) |
+| Platform Adapters | NextjsPlatform / ExpressPlatform / CloudflarePlatform |
+| Plugin System | `createPluginRegistry()` factory (per-instance) |
 | CLI | Commander.js + Chokidar |
-| 測試 | Vitest 4 — 207+ tests |
-| CI | GitHub Actions (Node 20/22 矩陣) |
+| Testing | Vitest 4 — 207+ tests |
+| CI | GitHub Actions (Node 20/22 matrix) |
 
-## 快速開始
+## Quick Start
 
 ```bash
-# 安裝依賴
+# Install dependencies
 pnpm install
 
-# 啟動開發伺服器（視覺化畫布）
+# Start dev server (visual canvas)
 pnpm dev
 
-# 執行測試
+# Run tests
 pnpm test:run
 
-# 編譯單一 .flow.json（預覽模式）
+# Compile a single .flow.json (preview mode)
 npx tsx src/cli/index.ts compile flows/hello.flow.json --dry-run
 
-# 指定平台編譯
+# Compile for a specific platform
 npx tsx src/cli/index.ts compile flows/hello.flow.json --platform express
 
-# 監聽模式（檔案變動自動編譯）
+# Watch mode (auto-compile on file change)
 npx tsx src/cli/index.ts watch flows/
 
-# 建置 CLI + Compiler
+# Build CLI + Compiler
 pnpm build:cli
 ```
 
-## Headless 使用（不需 UI）
+## Headless Usage (No UI Required)
 
 ```ts
 import { compile } from "flow2code/compiler";
@@ -88,76 +93,90 @@ if (result.success) {
 }
 ```
 
-## 專案結構
+## Decompiler (TypeScript → Visual Flow)
+
+```ts
+import { decompile } from "flow2code/compiler";
+
+const code = fs.readFileSync("route.ts", "utf-8");
+const result = decompile(code);
+
+if (result.success) {
+  console.log(JSON.stringify(result.ir, null, 2));
+  console.log(`Confidence: ${result.confidence}`);
+}
+```
+
+## Project Structure
 
 ```
 flow2code/
 ├── src/
 │   ├── app/                         # Next.js App Router (UI)
-│   ├── components/                  # 視覺化畫布元件
-│   ├── store/                       # Zustand 畫布狀態管理
+│   ├── components/                  # Visual canvas components
+│   ├── store/                       # Zustand canvas state management
 │   ├── lib/
-│   │   ├── index.ts                 # Headless Compiler 公開 API
+│   │   ├── index.ts                 # Headless Compiler public API
 │   │   ├── ir/
-│   │   │   ├── types.ts             # IR Schema + TypeScript 型別
-│   │   │   ├── validator.ts         # IR 驗證器
-│   │   │   └── topological-sort.ts  # 拓撲排序 + 並發偵測
+│   │   │   ├── types.ts             # IR Schema + TypeScript types
+│   │   │   ├── validator.ts         # IR validator
+│   │   │   └── topological-sort.ts  # Topological sort + concurrency detection
 │   │   ├── compiler/
-│   │   │   ├── compiler.ts          # AST 編譯器核心
+│   │   │   ├── compiler.ts          # AST compiler core
+│   │   │   ├── decompiler.ts        # TS → FlowIR reverse parser
 │   │   │   ├── expression-parser.ts # Recursive Descent Parser
-│   │   │   ├── type-inference.ts    # 型別推論引擎
-│   │   │   ├── symbol-table.ts      # 人類可讀變數命名
-│   │   │   ├── plugins/             # Plugin 系統（可擴充）
-│   │   │   │   ├── types.ts         # PluginRegistry 介面
-│   │   │   │   └── builtin.ts       # 14 個內建 Plugin
-│   │   │   └── platforms/           # Platform Adapter
-│   │   │       ├── types.ts         # PlatformAdapter 介面
+│   │   │   ├── type-inference.ts    # Type inference engine
+│   │   │   ├── symbol-table.ts      # Human-readable variable naming
+│   │   │   ├── plugins/             # Plugin system (extensible)
+│   │   │   │   ├── types.ts         # PluginRegistry interface
+│   │   │   │   └── builtin.ts       # 14 built-in plugins
+│   │   │   └── platforms/           # Platform adapters
+│   │   │       ├── types.ts         # PlatformAdapter interface
 │   │   │       ├── nextjs.ts        # Next.js App Router
 │   │   │       ├── express.ts       # Express.js
 │   │   │       └── cloudflare.ts    # Cloudflare Workers
 │   │   ├── diff/                    # Semantic Diff
-│   │   └── storage/                 # .flow.json 分割/合併
+│   │   └── storage/                 # .flow.json split/merge
 │   ├── cli/                         # CLI (compile/watch/init)
 │   └── server/                      # Standalone HTTP Server
 ├── tests/                           # 207+ tests (Vitest)
 ├── .github/workflows/ci.yml         # GitHub Actions CI
 ├── CONTRIBUTING.md
-├── ROADMAP.md
 └── vitest.config.ts
 ```
 
-## 節點類型
+## Node Types
 
-| 分類 | 節點 | 編譯產物 |
-|------|------|----------|
-| ⚡ 觸發器 | HTTP Webhook | `export async function POST(req)` |
-| ⚡ 觸發器 | Cron Job | Scheduled function |
-| ⚡ 觸發器 | Manual | Exported async function |
-| 🔧 執行器 | Fetch API | `await fetch(...)` + try/catch |
-| 🔧 執行器 | SQL Query | Drizzle / Prisma / Raw SQL |
-| 🔧 執行器 | Redis Cache | Redis get/set/del |
-| 🔧 執行器 | Custom Code | 直接插入 TypeScript |
-| 🔧 執行器 | Call Subflow | `await importedFunction(...)` |
-| 🔀 邏輯 | If/Else | `if (...) { } else { }` |
-| 🔀 邏輯 | For Loop | `for (const item of ...)` |
-| 🔀 邏輯 | Try/Catch | `try { } catch (e) { }` |
-| 🔀 邏輯 | Promise.all | `await Promise.allSettled([...])` |
-| 📦 變數 | Declare | `const x = ...` |
-| 📦 變數 | Transform | Expression transform |
-| 📤 輸出 | Return Response | 平台對應 Response（NextResponse / res.json / new Response） |
+| Category | Node | Compiled Output |
+|----------|------|-----------------|
+| ⚡ Trigger | HTTP Webhook | `export async function POST(req)` |
+| ⚡ Trigger | Cron Job | Scheduled function |
+| ⚡ Trigger | Manual | Exported async function |
+| 🔧 Action | Fetch API | `await fetch(...)` + try/catch |
+| 🔧 Action | SQL Query | Drizzle / Prisma / Raw SQL |
+| 🔧 Action | Redis Cache | Redis get/set/del |
+| 🔧 Action | Custom Code | Inline TypeScript |
+| 🔧 Action | Call Subflow | `await importedFunction(...)` |
+| 🔀 Logic | If/Else | `if (...) { } else { }` |
+| 🔀 Logic | For Loop | `for (const item of ...)` |
+| 🔀 Logic | Try/Catch | `try { } catch (e) { }` |
+| 🔀 Logic | Promise.all | `await Promise.allSettled([...])` |
+| 📦 Variable | Declare | `const x = ...` |
+| 📦 Variable | Transform | Expression transform |
+| 📤 Output | Return Response | Platform-specific Response |
 
-## 平台支援
+## Platform Support
 
-| 平台 | 觸發器初始化 | Response | CLI Flag |
-|------|-------------|----------|----------|
-| **Next.js** (預設) | `req.nextUrl.searchParams` / `req.json()` | `NextResponse.json()` | `--platform nextjs` |
+| Platform | Trigger Init | Response | CLI Flag |
+|----------|-------------|----------|----------|
+| **Next.js** (default) | `req.nextUrl.searchParams` / `req.json()` | `NextResponse.json()` | `--platform nextjs` |
 | **Express** | `req.query` / `req.body` | `res.status().json()` | `--platform express` |
 | **Cloudflare Workers** | `new URL(request.url)` / `request.json()` | `new Response()` | `--platform cloudflare` |
 
-## 貢獻
+## Contributing
 
-參閱 [CONTRIBUTING.md](CONTRIBUTING.md)。
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## LICENSE
+## License
 
 MIT

@@ -1,33 +1,33 @@
 /**
  * Flow2Code Intermediate Representation (IR) Schema
  * 
- * 這是前端畫布與後端 AST 編譯器之間的唯一協議。
- * 所有節點類型、連線、參數皆在此定義。
+ * This is the sole contract between the visual canvas and the AST compiler.
+ * All node types, edges, and parameters are defined here.
  * 
- * 設計原則：
- * 1. 與 UI 完全解耦 —— IR 不包含任何座標或樣式資訊
- * 2. 型別安全 —— 每個節點類型都有嚴格的參數定義
- * 3. 可序列化 —— 整個 IR 可以直接 JSON.stringify/parse
+ * Design principles:
+ * 1. Fully decoupled from UI — IR contains no coordinate or style information
+ * 2. Type-safe — each node type has strictly typed parameters
+ * 3. Serializable — entire IR can be directly JSON.stringify/parse
  */
 
 // ============================================================
-// 版本常數
+// Version Constants
 // ============================================================
 
-/** 目前支援的 IR 版本號 */
+/** Current supported IR version number */
 export const CURRENT_IR_VERSION = "1.0.0";
 
 // ============================================================
-// 基礎型別
+// Base Types
 // ============================================================
 
-/** 節點唯一識別碼 */
+/** Node unique identifier */
 export type NodeId = string;
 
-/** 連線端口識別碼 */
+/** Port identifier */
 export type PortId = string;
 
-/** 支援的資料型別 */
+/** Supported data types */
 export type FlowDataType =
   | "string"
   | "number"
@@ -39,20 +39,20 @@ export type FlowDataType =
   | "Response";
 
 // ============================================================
-// 端口定義 (Ports)
+// Port Definitions
 // ============================================================
 
-/** 輸入端口 */
+/** Input port */
 export interface InputPort {
   id: PortId;
   label: string;
   dataType: FlowDataType;
   required: boolean;
-  /** 預設值（JSON 序列化） */
+  /** Default value (JSON serialized) */
   defaultValue?: string;
 }
 
-/** 輸出端口 */
+/** Output port */
 export interface OutputPort {
   id: PortId;
   label: string;
@@ -60,36 +60,36 @@ export interface OutputPort {
 }
 
 // ============================================================
-// 連線定義 (Edges)
+// Edge Definitions
 // ============================================================
 
-/** 節點之間的資料流連線 */
+/** Data flow connection between nodes */
 export interface FlowEdge {
   id: string;
-  /** 來源節點 ID */
+  /** Source node ID */
   sourceNodeId: NodeId;
-  /** 來源端口 ID */
+  /** Source port ID */
   sourcePortId: PortId;
-  /** 目標節點 ID */
+  /** Target node ID */
   targetNodeId: NodeId;
-  /** 目標端口 ID */
+  /** Target port ID */
   targetPortId: PortId;
 }
 
 // ============================================================
-// 節點類型枚舉
+// Node Type Enums
 // ============================================================
 
 export enum NodeCategory {
-  /** 觸發器：工作流的進入點 */
+  /** Trigger: workflow entry point */
   TRIGGER = "trigger",
-  /** 執行器：產生副作用的操作 */
+  /** Action: side-effect producing operation */
   ACTION = "action",
-  /** 邏輯控制：分支、迴圈、例外處理 */
+  /** Logic: branching, loops, exception handling */
   LOGIC = "logic",
-  /** 變數：定義或轉換資料 */
+  /** Variable: define or transform data */
   VARIABLE = "variable",
-  /** 輸出：回傳結果 */
+  /** Output: return result */
   OUTPUT = "output",
 }
 
@@ -124,66 +124,66 @@ export enum OutputType {
 }
 
 // ============================================================
-// 節點參數定義 (Node Params)
+// Node Parameter Definitions
 // ============================================================
 
-/** HTTP Webhook 觸發器參數 */
+/** HTTP Webhook trigger parameters */
 export interface HttpWebhookParams {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  /** 路由路徑，例如 "/api/users" */
+  /** Route path, e.g. "/api/users" */
   routePath: string;
-  /** 是否解析 JSON body */
+  /** Whether to parse JSON body */
   parseBody: boolean;
-  /** 查詢參數定義 */
+  /** Query parameter definitions */
   queryParams?: Array<{ name: string; type: FlowDataType; required: boolean }>;
 }
 
-/** Cron Job 觸發器參數 */
+/** Cron Job trigger parameters */
 export interface CronJobParams {
-  /** Cron 表達式 */
+  /** Cron expression */
   schedule: string;
-  /** 函數名稱 */
+  /** Function name */
   functionName: string;
 }
 
-/** 手動觸發器參數 */
+/** Manual trigger parameters */
 export interface ManualTriggerParams {
-  /** 導出的函數名稱 */
+  /** Exported function name */
   functionName: string;
-  /** 函數參數定義 */
+  /** Function parameter definitions */
   args: Array<{ name: string; type: FlowDataType }>;
 }
 
-/** Fetch API 執行器參數 */
+/** Fetch API action parameters */
 export interface FetchApiParams {
-  /** 請求 URL（支援環境變數引用，如 ${ENV_VAR}） */
+  /** Request URL (supports env var references like ${ENV_VAR}) */
   url: string;
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  /** 請求標頭 */
+  /** Request headers */
   headers?: Record<string, string>;
-  /** 請求 body（JSON 字串或引用表達式） */
+  /** Request body (JSON string or reference expression) */
   body?: string;
-  /** 是否自動解析 JSON 回應 */
+  /** Whether to auto-parse JSON response */
   parseJson: boolean;
 }
 
-/** SQL Query 執行器參數 */
+/** SQL Query action parameters */
 export interface SqlQueryParams {
-  /** ORM 類型 */
+  /** ORM type */
   orm: "drizzle" | "prisma" | "raw";
-  /** SQL 或 ORM 查詢語句 */
+  /** SQL or ORM query statement */
   query: string;
-  /** 查詢參數綁定 */
+  /** Query parameter bindings */
   params?: Array<{ name: string; value: string }>;
 }
 
-/** Redis Cache 執行器參數 */
+/** Redis Cache action parameters */
 export interface RedisCacheParams {
   operation: "get" | "set" | "del";
   key: string;
-  /** set 操作的值 */
+  /** Value for set operation */
   value?: string;
-  /** TTL（秒） */
+  /** TTL (seconds) */
   ttl?: number;
 }
 
@@ -197,77 +197,77 @@ export interface CustomCodeParams {
   returnType?: string;
 }
 
-/** 子流程呼叫參數 */
+/** Subflow call parameters */
 export interface CallSubflowParams {
-  /** 子流程的導入路徑（結合編譯器生成的檔案） */
+  /** Import path of the subflow (combined with compiler-generated file) */
   flowPath: string;
-  /** 子流程導出的函數名稱 */
+  /** Exported function name of the subflow */
   functionName: string;
-  /** 輸入參數映射：參數名稱 → 表達式（可使用模板語法） */
+  /** Input parameter mapping: param name → expression (supports template syntax) */
   inputMapping: Record<string, string>;
-  /** 明確指定子流程返回型別（可選，預設由 TypeScript 推斷） */
+  /** Explicit subflow return type (optional, defaults to TypeScript inference) */
   returnType?: string;
 }
 
-/** If/Else 邏輯控制參數 */
+/** If/Else logic control parameters */
 export interface IfElseParams {
-  /** 條件表達式（TypeScript 表達式字串） */
+  /** Condition expression (TypeScript expression string) */
   condition: string;
 }
 
-/** For Loop 邏輯控制參數 */
+/** For Loop logic control parameters */
 export interface ForLoopParams {
-  /** 迭代目標（變數引用表達式） */
+  /** Iteration target (variable reference expression) */
   iterableExpression: string;
-  /** 迭代變數名稱 */
+  /** Iterator variable name */
   itemVariable: string;
-  /** 索引變數名稱（可選） */
+  /** Index variable name (optional) */
   indexVariable?: string;
 }
 
-/** Try/Catch 邏輯控制參數 */
+/** Try/Catch logic control parameters */
 export interface TryCatchParams {
-  /** 錯誤變數名稱 */
+  /** Error variable name */
   errorVariable: string;
 }
 
-/** Promise.all 並發控制參數 */
+/** Promise.all concurrency control parameters */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface, @typescript-eslint/no-empty-object-type
 export interface PromiseAllParams {
-  /** 無額外參數，並發任務由連線的子節點決定 */
+  /** No additional params. Concurrent tasks are determined by connected child nodes */
   [key: string]: never;
 }
 
-/** 變數宣告參數 */
+/** Variable declaration parameters */
 export interface DeclareVariableParams {
-  /** 變數名稱 */
+  /** Variable name */
   name: string;
-  /** 變數類型 */
+  /** Variable type */
   dataType: FlowDataType;
-  /** 初始值表達式 */
+  /** Initial value expression */
   initialValue?: string;
-  /** 是否為 const */
+  /** Whether const */
   isConst: boolean;
 }
 
-/** 資料轉換參數 */
+/** Data transform parameters */
 export interface TransformParams {
-  /** 轉換表達式（TypeScript 表達式） */
+  /** Transform expression (TypeScript expression) */
   expression: string;
 }
 
-/** 回傳 Response 參數 */
+/** Return Response parameters */
 export interface ReturnResponseParams {
-  /** HTTP 狀態碼 */
+  /** HTTP status code */
   statusCode: number;
-  /** 回傳 body 表達式 */
+  /** Response body expression */
   bodyExpression: string;
-  /** 自定義回傳標頭 */
+  /** Custom response headers */
   headers?: Record<string, string>;
 }
 
 // ============================================================
-// 節點參數映射表
+// Node Params Map
 // ============================================================
 
 export interface NodeParamsMap {
@@ -296,61 +296,61 @@ export interface NodeParamsMap {
 export type NodeType = keyof NodeParamsMap;
 
 // ============================================================
-// 核心節點定義
+// Core Node Definition
 // ============================================================
 
-/** 泛型節點，依據 nodeType 推斷 params 型別 */
+/** Generic node, params type inferred from nodeType */
 export interface FlowNode<T extends NodeType = NodeType> {
-  /** 節點唯一識別碼 */
+  /** Node unique identifier */
   id: NodeId;
-  /** 節點類型 */
+  /** Node type */
   nodeType: T;
-  /** 所屬分類 */
+  /** Category */
   category: NodeCategory;
-  /** 使用者標記的節點名稱 */
+  /** User-defined node label */
   label: string;
-  /** 節點參數 */
+  /** Node parameters */
   params: NodeParamsMap[T];
-  /** 輸入端口 */
+  /** Input ports */
   inputs: InputPort[];
-  /** 輸出端口 */
+  /** Output ports */
   outputs: OutputPort[];
 }
 
 // ============================================================
-// Flow IR 文件（頂層結構）
+// Flow IR Document (Top-level structure)
 // ============================================================
 
-/** Flow2Code IR 文件 — 畫布與編譯器之間的唯一協議 */
+/** Flow2Code IR Document — the sole contract between canvas and compiler */
 export interface FlowIR {
-  /** IR 版本號 */
+  /** IR version */
   version: string;
-  /** 工作流摘要 */
+  /** Workflow summary */
   meta: {
     name: string;
     description?: string;
     createdAt: string;
     updatedAt: string;
   };
-  /** 所有節點 */
+  /** All nodes */
   nodes: FlowNode[];
-  /** 所有連線 */
+  /** All edges */
   edges: FlowEdge[];
 }
 
 // ============================================================
-// 輔助型別
+// Helper Types
 // ============================================================
 
-/** 從 FlowNode 類型提取特定節點 */
+/** Extract a specific node type from FlowNode */
 export type ExtractNode<T extends NodeType> = FlowNode<T>;
 
-/** 變數引用表達式，用於節點間數據傳遞 */
+/** Variable reference expression for cross-node data passing */
 export interface VariableReference {
-  /** 來源節點 ID */
+  /** Source node ID */
   nodeId: NodeId;
-  /** 來源端口 ID */
+  /** Source port ID */
   portId: PortId;
-  /** 表達式路徑，例如 ".data.users[0].name" */
+  /** Expression path, e.g. ".data.users[0].name" */
   path?: string;
 }
