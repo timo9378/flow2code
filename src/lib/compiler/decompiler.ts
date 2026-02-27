@@ -100,6 +100,7 @@ export interface AuditHint {
 }
 
 export interface DecompileOptions {
+  /** File name or full file path (used for route inference) */
   fileName?: string;
   /** Target function name to decompile (omit to auto-detect) */
   functionName?: string;
@@ -279,20 +280,22 @@ function findTargetFunction(
 ): TargetFunction | null {
   const httpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
-  // Priority 1: Named export matching HTTP method (Next.js App Router style)
+  // Priority 1: Explicit target function name (user override via --function flag)
+  if (targetName) {
+    const fn = sourceFile.getFunction(targetName);
+    if (fn) {
+      const name = fn.getName();
+      const httpMethod = name && httpMethods.includes(name.toUpperCase()) ? name.toUpperCase() : undefined;
+      return { name: targetName, fn, httpMethod, isExported: fn.isExported() };
+    }
+  }
+
+  // Priority 2: Named export matching HTTP method (Next.js App Router style)
   for (const fn of sourceFile.getFunctions()) {
     if (!fn.isExported()) continue;
     const name = fn.getName();
     if (name && httpMethods.includes(name.toUpperCase())) {
       return { name, fn, httpMethod: name.toUpperCase(), isExported: true };
-    }
-  }
-
-  // Priority 2: Specific target function name
-  if (targetName) {
-    const fn = sourceFile.getFunction(targetName);
-    if (fn) {
-      return { name: targetName, fn, isExported: fn.isExported() };
     }
   }
 

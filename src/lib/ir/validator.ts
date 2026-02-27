@@ -1,11 +1,11 @@
 /**
- * Flow IR 驗證器
- * 
- * 在編譯前驗證 IR 文件的結構正確性：
- * 1. 必須有且僅有一個 Trigger 節點
- * 2. 所有 Edge 的 source/target 必須指向存在的節點
- * 3. 不能有孤立節點（除 Trigger 外）
- * 4. 圖必須是 DAG（無環）
+ * Flow IR Validator
+ *
+ * Validates structural correctness of an IR document before compilation:
+ * 1. Must have exactly one Trigger node
+ * 2. All Edge source/target must reference existing nodes
+ * 3. No orphan nodes (except Trigger)
+ * 4. Graph must be a DAG (no cycles)
  */
 
 import {
@@ -28,21 +28,44 @@ export interface ValidationError {
 export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
-  /** 若 IR 經過版本遷移，記錄遷移路徑 */
+  /** If the IR was auto-migrated, records the migration path */
   migrated?: boolean;
   migratedIR?: FlowIR;
   migrationLog?: string[];
 }
 
 /**
- * 驗證 FlowIR 文件的結構正確性
- * 若版本不符，會自動嘗試遷移後再驗證
+ * Validates the structural correctness of a FlowIR document.
+ * Auto-migrates older versions before validation if needed.
  */
 export function validateFlowIR(ir: FlowIR): ValidationResult {
   const errors: ValidationError[] = [];
+
+  // ── Guard: reject null/undefined/malformed input ──
+  if (!ir || typeof ir !== "object") {
+    return {
+      valid: false,
+      errors: [{ code: "INVALID_INPUT", message: "IR input must be a non-null object" }],
+    };
+  }
+
+  if (!Array.isArray(ir.nodes)) {
+    return {
+      valid: false,
+      errors: [{ code: "MISSING_NODES", message: "IR is missing required 'nodes' array" }],
+    };
+  }
+
+  if (!Array.isArray(ir.edges)) {
+    return {
+      valid: false,
+      errors: [{ code: "MISSING_EDGES", message: "IR is missing required 'edges' array" }],
+    };
+  }
+
   const nodeMap = new Map<NodeId, FlowNode>(ir.nodes.map((n) => [n.id, n]));
 
-  // 1. 版本處理：自動遷移
+  // 1. Version handling: auto-migrate
   let workingIR = ir;
   let migrated = false;
   let migrationLog: string[] | undefined;
@@ -62,78 +85,78 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
       if (err instanceof MigrationError) {
         errors.push({
           code: "MIGRATION_FAILED",
-          message: `IR 版本遷移失敗: ${err.message}`,
+          message: `IR version migration failed: ${err.message}`,
         });
       } else {
         errors.push({
           code: "INVALID_VERSION",
-          message: `不支援的 IR 版本: ${ir.version}`,
+          message: `Unsupported IR version: ${ir.version}`,
         });
       }
     }
   }
 
-  // 驗證遷移後（或原始）的版本
+  // Validate version after migration
   if (!migrated && workingIR.version !== CURRENT_IR_VERSION) {
     errors.push({
       code: "INVALID_VERSION",
-      message: `不支援的 IR 版本: ${workingIR.version}（目前支援: ${CURRENT_IR_VERSION}）`,
+      message: `Unsupported IR version: ${workingIR.version} (current: ${CURRENT_IR_VERSION})`,
     });
   }
 
-  // 2. 檢查必須有且僅有一個 Trigger
+  // 2. Must have exactly one Trigger
   const triggers = ir.nodes.filter(
     (n) => n.category === NodeCategory.TRIGGER
   );
   if (triggers.length === 0) {
     errors.push({
       code: "NO_TRIGGER",
-      message: "工作流必須包含至少一個觸發器節點",
+      message: "Workflow must contain at least one trigger node",
     });
   }
   if (triggers.length > 1) {
     errors.push({
       code: "MULTIPLE_TRIGGERS",
-      message: `工作流只能有一個觸發器，目前有 ${triggers.length} 個`,
+      message: `Workflow must have exactly one trigger, found ${triggers.length}`,
     });
   }
 
-  // 3. 檢查節點 ID 唯一性
+  // 3. Check node ID uniqueness
   const idSet = new Set<string>();
   for (const node of ir.nodes) {
     if (idSet.has(node.id)) {
       errors.push({
         code: "DUPLICATE_NODE_ID",
-        message: `重複的節點 ID: ${node.id}`,
+        message: `Duplicate node ID: ${node.id}`,
         nodeId: node.id,
       });
     }
     idSet.add(node.id);
   }
 
-  // 4. 驗證所有 Edge 的端點
+  // 4. Validate all edge endpoints
   for (const edge of ir.edges) {
     if (!nodeMap.has(edge.sourceNodeId)) {
       errors.push({
         code: "INVALID_EDGE_SOURCE",
-        message: `Edge "${edge.id}" 的來源節點 "${edge.sourceNodeId}" 不存在`,
+        message: `Edge "${edge.id}" references non-existent source node "${edge.sourceNodeId}"`,
         edgeId: edge.id,
       });
     }
     if (!nodeMap.has(edge.targetNodeId)) {
       errors.push({
         code: "INVALID_EDGE_TARGET",
-        message: `Edge "${edge.id}" 的目標節點 "${edge.targetNodeId}" 不存在`,
+        message: `Edge "${edge.id}" references non-existent target node "${edge.targetNodeId}"`,
         edgeId: edge.id,
       });
     }
   }
 
-  // 5. 檢測環路 (Cycle Detection via DFS)
+  // 5. Cycle detection (DFS)
   const cycleErrors = detectCycles(ir.nodes, ir.edges);
   errors.push(...cycleErrors);
 
-  // 6. 檢查孤立節點（沒有任何連線，且非 Trigger）
+  // 6. Check for orphan nodes (no edges, not a Trigger)
   const connectedNodes = new Set<NodeId>();
   for (const edge of ir.edges) {
     connectedNodes.add(edge.sourceNodeId);
@@ -146,7 +169,7 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
     ) {
       errors.push({
         code: "ORPHAN_NODE",
-        message: `節點 "${node.id}" (${node.label}) 未連接到任何其他節點`,
+        message: `Node "${node.id}" (${node.label}) is not connected to any other node`,
         nodeId: node.id,
       });
     }
@@ -162,7 +185,7 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
 }
 
 /**
- * 使用 DFS 檢測有向圖中的環路
+ * Detect cycles in a directed graph via DFS coloring.
  */
 function detectCycles(
   nodes: FlowNode[],
@@ -170,7 +193,7 @@ function detectCycles(
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  // 建立鄰接表
+  // Build adjacency list
   const adjacency = new Map<NodeId, NodeId[]>();
   for (const node of nodes) {
     adjacency.set(node.id, []);
@@ -179,9 +202,9 @@ function detectCycles(
     adjacency.get(edge.sourceNodeId)?.push(edge.targetNodeId);
   }
 
-  const WHITE = 0; // 未訪問
-  const GRAY = 1; // 正在訪問（在當前 DFS 路徑上）
-  const BLACK = 2; // 已完成
+  const WHITE = 0; // Unvisited
+  const GRAY = 1;  // In current DFS path
+  const BLACK = 2; // Completed
 
   const color = new Map<NodeId, number>();
   for (const node of nodes) {
@@ -195,7 +218,7 @@ function detectCycles(
       if (color.get(neighbor) === GRAY) {
         errors.push({
           code: "CYCLE_DETECTED",
-          message: `檢測到環路：節點 "${nodeId}" → "${neighbor}"`,
+          message: `Cycle detected: node "${nodeId}" → "${neighbor}"`,
           nodeId,
         });
         return true;

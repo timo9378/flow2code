@@ -1,22 +1,22 @@
 /**
  * Flow2Code Expression Parser
  *
- * 替代脆弱的 Regex 解析，使用 Recursive Descent Parser 正確處理模板表達式。
+ * Replaces fragile Regex parsing with a Recursive Descent Parser for template expressions.
  *
- * 支援語法：
+ * Supported syntax:
  *   {{nodeId}}                → flowState['nodeId']
  *   {{nodeId.path.to.value}}  → flowState['nodeId'].path.to.value
  *   {{nodeId.arr[0].name}}    → flowState['nodeId'].arr[0].name
- *   {{$input}}                → 自動解析上游非觸發器節點
- *   {{$input.data.items}}     → 同上，帶子路徑
- *   {{$trigger}}              → 觸發器節點的 flowState
+ *   {{$input}}                → auto-resolves upstream non-trigger node
+ *   {{$input.data.items}}     → same, with sub-path
+ *   {{$trigger}}              → trigger node's flowState
  *   {{$trigger.body.userId}}  → flowState['triggerId'].body.userId
  *
- * 與 Regex 版的差異：
- *   - 正確處理嵌套括號 e.g. {{node.arr[items[0]]}}
- *   - 正確處理空白 e.g. {{ $input.data }}
- *   - 報錯訊息清晰，不會靜默 fallthrough
- *   - 支援逃脫序列 \\{{ 輸出字面 {{
+ * Differences from Regex version:
+ *   - Correctly handles nested brackets e.g. {{node.arr[items[0]]}}
+ *   - Correctly handles whitespace e.g. {{ $input.data }}
+ *   - Clear error messages, no silent fallthrough
+ *   - Supports escape sequences \\{{ to output literal {{
  */
 
 import type { FlowIR, FlowNode, NodeId } from "../ir/types";
@@ -28,35 +28,37 @@ import type { SymbolTable } from "./symbol-table";
 // ============================================================
 
 /**
- * Scope Entry：描述當前代碼生成所處的作用域
- * 例如在 for-loop 內，loop 節點的 ID 應解析到 _loopScope 而非 flowState
+ * Scope Entry: describes the current scope during code generation.
+ * For example, inside a for-loop, the loop node's ID should resolve
+ * to _loopScope instead of flowState.
  */
 export interface ScopeEntry {
-  /** 此作用域映射的節點 ID */
+  /** Node ID mapped by this scope */
   nodeId: NodeId;
-  /** 生成代碼中對應的變數名稱（如 _loopScope） */
+  /** Variable name in generated code (e.g. _loopScope) */
   scopeVar: string;
 }
 
 export interface ExpressionContext {
-  /** 當前 IR */
+  /** Current IR */
   ir: FlowIR;
-  /** 節點 ID → FlowNode 映射 */
+  /** Node ID → FlowNode mapping */
   nodeMap: Map<NodeId, FlowNode>;
-  /** 當前節點 ID（用於解析 $input） */
+  /** Current node ID (used for resolving $input) */
   currentNodeId?: NodeId;
-  /** Symbol Table：啟用後表達式會使用命名變數取代 flowState['nodeId'] */
+  /** Symbol Table: when enabled, expressions use named variables instead of flowState['nodeId'] */
   symbolTable?: SymbolTable;
   /**
-   * Scope Stack：由外到內的作用域堆疊
-   * 當參照的 base 與某個 scope 的 nodeId 相符時，
-   * 解析為 scopeVar['nodeId'] 而非 flowState['nodeId']
+   * Scope Stack: outermost to innermost scope entries.
+   * When a reference's base matches a scope's nodeId,
+   * it resolves to scopeVar['nodeId'] instead of flowState['nodeId'].
    */
   scopeStack?: ScopeEntry[];
   /**
-   * Block-scoped node IDs：這些節點是在子區塊（if/else、try/catch、for-loop 內部）
-   * 生成的，其 Symbol Table 別名不在外層作用域中可見。
-   * 表達式解析必須 fallback 到 flowState['nodeId']。
+   * Block-scoped node IDs: these nodes are generated inside sub-blocks
+   * (if/else, try/catch, for-loop body), and their Symbol Table aliases
+   * are not visible in the outer scope.
+   * Expression parsing must fallback to flowState['nodeId'].
    */
   blockScopedNodeIds?: Set<NodeId>;
 }
@@ -67,9 +69,9 @@ interface ParsedToken {
 }
 
 interface ParsedReference {
-  /** 基底引用：nodeId, "$input", "$trigger" */
+  /** Base reference: nodeId, "$input", or "$trigger" */
   base: string;
-  /** 子路徑（含 . 前綴），例如 ".data.items[0].name" */
+  /** Sub-path (with . prefix), e.g. ".data.items[0].name" */
   path: string;
 }
 
@@ -78,11 +80,12 @@ interface ParsedReference {
 // ============================================================
 
 /**
- * 解析表達式字串中所有 {{...}} 引用，替換為對應的 flowState 存取。
+ * Parses all {{...}} references in an expression string and replaces them
+ * with the corresponding flowState access expressions.
  *
- * @param expr - 原始表達式（可含 {{...}} 模板語法）
- * @param context - 編譯器上下文
- * @returns 解析後的 TypeScript 表達式
+ * @param expr - Raw expression (may contain {{...}} template syntax)
+ * @param context - Compiler context
+ * @returns Parsed TypeScript expression
  */
 export function parseExpression(
   expr: string,
@@ -102,11 +105,11 @@ export function parseExpression(
 // ============================================================
 
 /**
- * 將含 {{...}} 的字串切割為 literal 和 reference tokens。
- * 正確處理：
- *   - 嵌套中括號 {{a.b[c[0]]}}
- *   - 逃脫序列 \\{{ → 字面 {{
- *   - 未關閉的 {{ → 報錯
+ * Splits a string containing {{...}} into literal and reference tokens.
+ * Correctly handles:
+ *   - Nested brackets {{a.b[c[0]]}}
+ *   - Escape sequences \\{{ → literal {{
+ *   - Unclosed {{ → error
  */
 function tokenize(input: string): ParsedToken[] {
   const tokens: ParsedToken[] = [];
@@ -114,14 +117,14 @@ function tokenize(input: string): ParsedToken[] {
   let literalBuf = "";
 
   while (i < input.length) {
-    // 逃脫序列 \{{ → 字面 {{
+    // Escape sequence \{{ → literal {{
     if (input[i] === "\\" && input[i + 1] === "{" && input[i + 2] === "{") {
       literalBuf += "{{";
       i += 3;
       continue;
     }
 
-    // 偵測 {{ 開頭
+    // Detect {{ opening
     if (input[i] === "{" && input[i + 1] === "{") {
       // flush literal
       if (literalBuf) {
@@ -133,7 +136,7 @@ function tokenize(input: string): ParsedToken[] {
       const refStart = i;
       let bracketDepth = 0;
 
-      // 查找對應的 }}，同時追蹤中括號深度
+      // Find matching }}, tracking bracket depth
       while (i < input.length) {
         if (input[i] === "[") {
           bracketDepth++;
@@ -154,7 +157,7 @@ function tokenize(input: string): ParsedToken[] {
 
       if (i >= input.length) {
         throw new ExpressionParseError(
-          `未關閉的模板表達式：找不到對應的 '}}' (位置 ${refStart - 2})`,
+          `Unclosed template expression: missing matching '}}' (at position ${refStart - 2})`,
           input,
           refStart - 2
         );
@@ -163,7 +166,7 @@ function tokenize(input: string): ParsedToken[] {
       const refContent = input.slice(refStart, i).trim();
       if (!refContent) {
         throw new ExpressionParseError(
-          "空的模板表達式 {{}}",
+          "Empty template expression {{}}",
           input,
           refStart - 2
         );
@@ -190,17 +193,17 @@ function tokenize(input: string): ParsedToken[] {
 // ============================================================
 
 /**
- * 解析引用字串為 base + path。
- * 例如：
+ * Parses a reference string into base + path.
+ * Examples:
  *   "$input.data.items[0]" → { base: "$input", path: ".data.items[0]" }
  *   "nodeId"               → { base: "nodeId", path: "" }
  *   "$trigger.body.name"   → { base: "$trigger", path: ".body.name" }
  */
 function parseReference(ref: string): ParsedReference {
-  // 允許開頭有 $ 前綴（特殊變數）
+  // Allow leading $ prefix (special variables)
   const match = ref.match(/^(\$?\w+)((?:\.[\w]+|\[.+?\])*)$/);
   if (!match) {
-    // 更寬鬆的匹配：支援複雜路徑
+    // More lenient matching: support complex paths
     const dotIndex = ref.indexOf(".");
     const bracketIndex = ref.indexOf("[");
     let splitAt = -1;
@@ -234,7 +237,7 @@ function parseReference(ref: string): ParsedReference {
 // ============================================================
 
 /**
- * 將 ParsedReference 解析為 TypeScript 表達式。
+ * Resolves a ParsedReference into a TypeScript expression.
  */
 function resolveReference(
   ref: ParsedReference,
@@ -242,19 +245,19 @@ function resolveReference(
 ): string {
   const { base, path } = ref;
 
-  // ── 特殊變數 $input：解析上一個連入的非觸發器節點 ──
+  // ── Special variable $input: resolves upstream non-trigger node ──
   if (base === "$input") {
     return resolveInputRef(path, context);
   }
 
-  // ── 特殊變數 $trigger：解析觸發器節點 ──
+  // ── Special variable $trigger: resolves trigger node ──
   if (base === "$trigger") {
     return resolveTriggerRef(path, context);
   }
 
-  // ── 檢查 Scope Stack：若 base 在某個局部作用域中，優先使用該 scope ──
+  // ── Check Scope Stack: if base matches a local scope, use that scope first ──
   if (context.scopeStack) {
-    // 從內到外搜尋（陣列末尾 = 最內層）
+    // Search from innermost to outermost (array end = innermost)
     for (let i = context.scopeStack.length - 1; i >= 0; i--) {
       const scope = context.scopeStack[i];
       if (scope.nodeId === base) {
@@ -263,12 +266,12 @@ function resolveReference(
     }
   }
 
-  // ── Block-scoped 節點：強制 fallback 到 flowState（其 Symbol Table 別名不在作用域內） ──
+  // ── Block-scoped nodes: force fallback to flowState (Symbol Table alias not in scope) ──
   if (context.blockScopedNodeIds?.has(base)) {
     return `flowState['${base}']${path}`;
   }
 
-  // ── 一般參照：若有 Symbol Table 則使用命名變數，否則 fallback flowState ──
+  // ── Normal reference: use named variable from Symbol Table if available, otherwise fallback to flowState ──
   if (context.symbolTable?.hasVar(base)) {
     return `${context.symbolTable.getVarName(base)}${path}`;
   }
@@ -289,7 +292,7 @@ function resolveInputRef(
     (e) => e.targetNodeId === context.currentNodeId
   );
 
-  // 優先選非觸發器的上游節點
+  // Prefer non-trigger upstream node
   const dataSource =
     incoming.find((e) => {
       const src = context.nodeMap.get(e.sourceNodeId);
@@ -298,7 +301,7 @@ function resolveInputRef(
 
   if (dataSource) {
     const srcId = dataSource.sourceNodeId;
-    // Block-scoped 節點必須 fallback 到 flowState
+    // Block-scoped nodes must fallback to flowState
     if (context.blockScopedNodeIds?.has(srcId)) {
       return `flowState['${srcId}']${path}`;
     }

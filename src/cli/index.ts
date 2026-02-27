@@ -2,11 +2,12 @@
 
 /**
  * Flow2Code CLI
- * 
- * 指令：
- *   flow2code compile <file>  - 編譯單一 .flow.json 檔案
- *   flow2code watch [dir]     - 監聽目錄，自動編譯 .flow.json 檔案
- *   flow2code init             - 在當前專案初始化 Flow2Code
+ *
+ * Commands:
+ *   flow2code compile <file>  - Compile a .flow.json file
+ *   flow2code audit <file>    - Decompile and audit any TypeScript file
+ *   flow2code watch [dir]     - Watch directory, auto-compile .flow.json files
+ *   flow2code init            - Initialize Flow2Code in current project
  */
 
 import { Command } from "commander";
@@ -27,53 +28,53 @@ const program = new Command();
 
 program
   .name("flow2code")
-  .description("Visual AST Compiler: 將 .flow.json 編譯為原生 TypeScript")
+  .description("Visual AST Compiler: Compile .flow.json into native TypeScript")
   .version("0.1.0");
 
 // ============================================================
-// compile 指令
+// compile command
 // ============================================================
 
 program
   .command("compile <file>")
-  .description("編譯 .flow.json 或 YAML 目錄為 TypeScript（自動偵測格式）")
-  .option("-o, --output <path>", "指定輸出路徑（覆蓋自動偵測）")
-  .option("--platform <name>", "目標平台: nextjs | express | cloudflare", "nextjs")
-  .option("--dry-run", "僅顯示生成的代碼，不寫入檔案")
-  .option("--source-map", "生成 Source Map 映射檔 (.flow.map.json)")
+  .description("Compile .flow.json or YAML directory to TypeScript (auto-detects format)")
+  .option("-o, --output <path>", "Specify output path (overrides auto-detection)")
+  .option("--platform <name>", "Target platform: nextjs | express | cloudflare", "nextjs")
+  .option("--dry-run", "Display generated code without writing to file")
+  .option("--source-map", "Generate Source Map mapping file (.flow.map.json)")
   .action((file: string, options: { output?: string; platform?: string; dryRun?: boolean; sourceMap?: boolean }) => {
     const filePath = resolve(file);
 
     if (!existsSync(filePath)) {
-      console.error(`❌ 檔案/目錄不存在: ${filePath}`);
+      console.error(`❌ File/directory not found: ${filePath}`);
       process.exit(1);
     }
 
-    // ── 自動偵測格式（支援 .flow.json 和 YAML 目錄） ──
+    // ── Auto-detect format (supports .flow.json and YAML directories) ──
     let ir: FlowIR;
     try {
       const project = loadFlowProject(filePath);
       ir = project.ir;
-      console.log(`📄 讀取: ${project.path} (${project.format === "split" ? "YAML 目錄" : "JSON"})`);
+      console.log(`📄 Reading: ${project.path} (${project.format === "split" ? "YAML directory" : "JSON"})`);
     } catch (err) {
-      console.error(`❌ 載入失敗: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`❌ Load failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
 
-    // 驗證
+    // Validate
     const validation = validateFlowIR(ir);
     if (!validation.valid) {
-      console.error("❌ IR 驗證失敗:");
+      console.error("❌ IR validation failed:");
       for (const err of validation.errors) {
         console.error(`  [${err.code}] ${err.message}`);
       }
       process.exit(1);
     }
 
-    // 編譯
+    // Compile
     const result = compile(ir, { platform: (options.platform ?? "nextjs") as PlatformName });
     if (!result.success) {
-      console.error("❌ 編譯失敗:");
+      console.error("❌ Compilation failed:");
       result.errors?.forEach((e) => console.error(`  ${e}`));
       process.exit(1);
     }
@@ -84,9 +85,9 @@ program
       return;
     }
 
-    // 輸出
+    // Output
     if (!result.code || !(options.output ?? result.filePath)) {
-      console.error("❌ 編譯結果缺少 code 或 filePath");
+      console.error("❌ Compile result missing code or filePath");
       process.exit(1);
     }
     const outputPath = options.output ?? result.filePath!;
@@ -98,16 +99,16 @@ program
     }
 
     writeFileSync(fullOutputPath, result.code, "utf-8");
-    console.log(`✅ 編譯成功: ${fullOutputPath}`);
+    console.log(`✅ Compiled successfully: ${fullOutputPath}`);
 
-    // 生成 Source Map
+    // Generate Source Map
     if (options.sourceMap && result.sourceMap) {
       const mapPath = fullOutputPath.replace(/\.ts$/, ".flow.map.json");
       writeFileSync(mapPath, JSON.stringify(result.sourceMap, null, 2), "utf-8");
       console.log(`🗺️ Source Map: ${mapPath}`);
     }
 
-    // 依賴套件檢查
+    // Dependency check
     if (result.dependencies && result.dependencies.all.length > 0) {
       const projectPkgPath = resolve("package.json");
       if (existsSync(projectPkgPath)) {
@@ -119,17 +120,17 @@ program
           ]);
           const missing = result.dependencies.all.filter((pkg) => !installed.has(pkg));
           if (missing.length > 0) {
-            console.log(`\n⚠️  缺少的套件:`);
+            console.log(`\n⚠️  Missing packages:`);
             missing.forEach((pkg) => console.log(`   - ${pkg}`));
-            console.log(`   執行: npm install ${missing.join(" ")}`);
+            console.log(`   Run: npm install ${missing.join(" ")}`);
           }
         } catch {
-          // 忽略 package.json 解析錯誤
+          // Ignore package.json parse errors
         }
       }
     }
 
-    // 檢查並生成 .env.example
+    // Check and generate .env.example
     generateEnvExample();
   });
 
@@ -155,7 +156,7 @@ program
 
     const code = readFileSync(filePath, "utf-8");
     const result = decompile(code, {
-      fileName: basename(filePath),
+      fileName: filePath,
       functionName: options.function,
       audit: options.auditHints !== false,
     });
@@ -238,17 +239,17 @@ function irToMermaid(ir: FlowIR): string {
 
 program
   .command("watch [dir]")
-  .description("監聽目錄，自動編譯 .flow.json 和 YAML 目錄變動")
-  .option("-p, --project <path>", "Next.js 專案根目錄", ".")
+  .description("Watch directory, auto-compile .flow.json and YAML directory changes")
+  .option("-p, --project <path>", "Next.js project root directory", ".")
   .action((dir: string = ".", options: { project?: string }) => {
     const watchDir = resolve(dir);
     const projectRoot = resolve(options.project ?? ".");
 
-    console.log(`👀 監聽中: ${watchDir}/**/*.flow.json + **/*.yaml`);
-    console.log(`📁 輸出至: ${projectRoot}`);
-    console.log("按 Ctrl+C 停止\n");
+    console.log(`👀 Watching: ${watchDir}/**/*.flow.json + **/*.yaml`);
+    console.log(`📁 Output to: ${projectRoot}`);
+    console.log("Press Ctrl+C to stop\n");
 
-    // 同時監聽 .flow.json 和 YAML（split 目錄格式）
+    // Watch both .flow.json and YAML (split directory format)
     const watcher = watch(
       [join(watchDir, "**/*.flow.json"), join(watchDir, "**/meta.yaml"), join(watchDir, "**/nodes/*.yaml"), join(watchDir, "**/edges.yaml")],
       {
@@ -257,12 +258,12 @@ program
       }
     );
 
-    /** 判斷檔案所屬的 flow 專案並編譯 */
+    /** Determine the file's flow project and compile */
     const handleChange = (filePath: string) => {
       if (filePath.endsWith(".flow.json")) {
         compileFile(filePath, projectRoot);
       } else if (filePath.endsWith(".yaml")) {
-        // 找到 flow 根目錄（含 meta.yaml 的目錄）
+        // Find the flow root directory (directory containing meta.yaml)
         let dir = dirname(filePath);
         if (basename(dir) === "nodes") dir = dirname(dir);
         const metaPath = join(dir, "meta.yaml");
@@ -276,19 +277,19 @@ program
     watcher.on("add", handleChange);
 
     watcher.on("error", (error: unknown) => {
-      console.error("❌ 監聽錯誤:", error instanceof Error ? error.message : String(error));
+      console.error("❌ Watch error:", error instanceof Error ? error.message : String(error));
     });
   });
 
 // ============================================================
-// init 指令
+// init command
 // ============================================================
 
 program
   .command("init")
-  .description("在當前專案初始化 Flow2Code（Zero Pollution 模式）")
+  .description("Initialize Flow2Code in current project (Zero Pollution mode)")
   .action(() => {
-    // ── Zero Pollution：所有 flow2code 檔案存放在 .flow2code/ ──
+    // ── Zero Pollution: all flow2code files stored in .flow2code/ ──
     const flow2codeDir = resolve(".flow2code");
     const flowsDir = join(flow2codeDir, "flows");
 
@@ -299,7 +300,7 @@ program
       mkdirSync(flowsDir, { recursive: true });
     }
 
-    // 建立 .flow2code/config.json
+    // Create .flow2code/config.json
     const configPath = join(flow2codeDir, "config.json");
     if (!existsSync(configPath)) {
       const config = {
@@ -310,10 +311,10 @@ program
         port: 3003,
       };
       writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-      console.log("⚙️  已建立 .flow2code/config.json");
+      console.log("⚙️  Created .flow2code/config.json");
     }
 
-    // 建立範例 flow.json
+    // Create example flow.json
     const exampleFlow = {
       version: "1.0.0",
       meta: {
@@ -363,10 +364,10 @@ program
     const examplePath = join(flowsDir, "hello.flow.json");
     if (!existsSync(examplePath)) {
       writeFileSync(examplePath, JSON.stringify(exampleFlow, null, 2), "utf-8");
-      console.log(`📄 已建立範例: ${examplePath}`);
+      console.log(`📄 Created example: ${examplePath}`);
     }
 
-    // 確保 .gitignore 包含 .flow2code/
+    // Ensure .gitignore includes .flow2code/
     const gitignorePath = resolve(".gitignore");
     if (existsSync(gitignorePath)) {
       const content = readFileSync(gitignorePath, "utf-8");
@@ -376,30 +377,30 @@ program
           content.trimEnd() + "\n\n# Flow2Code\n.flow2code/\n",
           "utf-8"
         );
-        console.log("📝 已將 .flow2code/ 加入 .gitignore");
+        console.log("📝 Added .flow2code/ to .gitignore");
       }
     }
 
-    console.log("\n🎉 Zero Pollution 初始化完成！");
-    console.log("  所有 Flow2Code 檔案存放在 .flow2code/ 目錄中");
-    console.log("  執行以下指令開始：");
+    console.log("\n🎉 Zero Pollution init complete!");
+    console.log("  All Flow2Code files are stored in .flow2code/ directory");
+    console.log("  Get started with:");
     console.log("  npx flow2code compile .flow2code/flows/hello.flow.json --dry-run");
     console.log("  npx flow2code watch .flow2code/flows/");
   });
 
 // ============================================================
-// split 指令
+// split command
 // ============================================================
 
 program
   .command("split <file>")
-  .description("將 .flow.json 拆分為 Git-friendly 的 YAML 目錄結構")
-  .option("-o, --output <dir>", "指定輸出目錄（預設為同名目錄）")
+  .description("Split .flow.json into a Git-friendly YAML directory structure")
+  .option("-o, --output <dir>", "Specify output directory (default: same name as file)")
   .action((file: string, options: { output?: string }) => {
     const filePath = resolve(file);
 
     if (!existsSync(filePath)) {
-      console.error(`❌ 檔案不存在: ${filePath}`);
+      console.error(`❌ File not found: ${filePath}`);
       process.exit(1);
     }
 
@@ -408,7 +409,7 @@ program
     try {
       ir = JSON.parse(raw) as FlowIR;
     } catch {
-      console.error("❌ JSON 解析失敗");
+      console.error("❌ JSON parse failed");
       process.exit(1);
     }
 
@@ -421,23 +422,23 @@ program
       { join }
     );
 
-    console.log(`✅ 已拆分為 ${written.length} 個檔案:`);
+    console.log(`✅ Split into ${written.length} files:`);
     written.forEach((f) => console.log(`  📄 ${f}`));
   });
 
 // ============================================================
-// merge 指令
+// merge command
 // ============================================================
 
 program
   .command("merge <dir>")
-  .description("將 YAML 目錄結構合併為 .flow.json")
-  .option("-o, --output <file>", "指定輸出檔案路徑")
+  .description("Merge YAML directory structure into a .flow.json")
+  .option("-o, --output <file>", "Specify output file path")
   .action((dir: string, options: { output?: string }) => {
     const dirPath = resolve(dir);
 
     if (!existsSync(dirPath)) {
-      console.error(`❌ 目錄不存在: ${dirPath}`);
+      console.error(`❌ Directory not found: ${dirPath}`);
       process.exit(1);
     }
 
@@ -450,56 +451,56 @@ program
 
       const outputFile = options.output ?? `${dirPath}.flow.json`;
       writeFileSync(resolve(outputFile), JSON.stringify(ir, null, 2), "utf-8");
-      console.log(`✅ 已合併為: ${outputFile}`);
-      console.log(`   ${ir.nodes.length} 個節點, ${ir.edges.length} 條連線`);
+      console.log(`✅ Merged to: ${outputFile}`);
+      console.log(`   ${ir.nodes.length} nodes, ${ir.edges.length} edges`);
     } catch (err) {
-      console.error(`❌ 合併失敗: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`❌ Merge failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });
 
 // ============================================================
-// trace 指令（Source Map 除錯）
+// trace command (Source Map debugging)
 // ============================================================
 
 program
   .command("migrate <file>")
-  .description("將 .flow.json 遷移為 Git-friendly 的 YAML 目錄（保留原始檔案）")
-  .option("--delete-json", "遷移成功後刪除原始 .flow.json")
+  .description("Migrate .flow.json to Git-friendly YAML directory (preserves original file)")
+  .option("--delete-json", "Delete original .flow.json after successful migration")
   .action((file: string, options: { deleteJson?: boolean }) => {
     const filePath = resolve(file);
 
     if (!existsSync(filePath)) {
-      console.error(`❌ 檔案不存在: ${filePath}`);
+      console.error(`❌ File not found: ${filePath}`);
       process.exit(1);
     }
 
     try {
       const written = migrateToSplit(filePath);
-      console.log(`✅ 已遷移為 YAML 目錄 (${written.length} 個檔案):`);
+      console.log(`✅ Migrated to YAML directory (${written.length} files):`);
       written.forEach((f) => console.log(`  📄 ${f}`));
 
       if (options.deleteJson) {
         rmSync(filePath);
-        console.log(`🗑️  已刪除原始檔案: ${filePath}`);
+        console.log(`🗑️  Deleted original file: ${filePath}`);
       } else {
-        console.log(`💡 原始 .flow.json 已保留，確認無誤後可手動刪除`);
+        console.log(`💡 Original .flow.json preserved. Delete manually after verification.`);
       }
     } catch (err) {
-      console.error(`❌ 遷移失敗: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`❌ Migration failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });
 
 program
   .command("trace <file> <line>")
-  .description("根據生成的程式碼行號，追溯對應的畫布節點 (Source Map)")
+  .description("Trace a generated code line number back to its canvas node (Source Map)")
   .action((file: string, lineStr: string) => {
     const filePath = resolve(file);
     const lineNum = parseInt(lineStr, 10);
 
     if (isNaN(lineNum) || lineNum < 1) {
-      console.error("❌ 行號必須為正整數");
+      console.error("❌ Line number must be a positive integer");
       process.exit(1);
     }
 
@@ -507,9 +508,9 @@ program
     const mapPath = filePath.replace(/\.ts$/, ".flow.map.json");
 
     if (!existsSync(mapPath)) {
-      // 嘗試從原始碼重新編譯生成 source map
-      console.log(`🔍 未找到 Source Map (${mapPath})`);
-      console.log("   提示: 使用 flow2code compile 搭配 --source-map 生成映射檔");
+      // Try to find the corresponding .flow.map.json
+      console.log(`🔍 Source Map not found (${mapPath})`);
+      console.log("   Hint: Use flow2code compile with --source-map to generate mapping file");
       process.exit(1);
     }
 
@@ -519,36 +520,36 @@ program
 
       const result = traceLineToNode(sourceMap, lineNum);
       if (result) {
-        console.log(`🎯 第 ${lineNum} 行對應的節點:`);
+        console.log(`🎯 Node mapped to line ${lineNum}:`);
         console.log(`   Node ID:    ${result.nodeId}`);
-        console.log(`   行範圍:     ${result.startLine}-${result.endLine}`);
+        console.log(`   Line range: ${result.startLine}-${result.endLine}`);
       } else {
-        console.log(`❓ 第 ${lineNum} 行沒有對應到任何節點`);
-        console.log("   可能是匯入語句或框架生成的程式碼");
+        console.log(`❓ Line ${lineNum} does not map to any node`);
+        console.log("   It may be an import statement or framework-generated code");
       }
     } catch (err) {
-      console.error(`❌ 解析 Source Map 失敗: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`❌ Failed to parse Source Map: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });
 
 // ============================================================
-// diff 指令 — 語意化差異比較
+// diff command — Semantic diff comparison
 // ============================================================
 
 program
   .command("diff <before> <after>")
-  .description("比較兩個 .flow.json 的語意化差異")
+  .description("Compare semantic differences between two .flow.json files")
   .action((beforeFile: string, afterFile: string) => {
     const beforePath = resolve(beforeFile);
     const afterPath = resolve(afterFile);
 
     if (!existsSync(beforePath)) {
-      console.error(`❌ 檔案不存在: ${beforePath}`);
+      console.error(`❌ File not found: ${beforePath}`);
       process.exit(1);
     }
     if (!existsSync(afterPath)) {
-      console.error(`❌ 檔案不存在: ${afterPath}`);
+      console.error(`❌ File not found: ${afterPath}`);
       process.exit(1);
     }
 
@@ -558,7 +559,7 @@ program
       beforeIR = JSON.parse(readFileSync(beforePath, "utf-8")) as FlowIR;
       afterIR = JSON.parse(readFileSync(afterPath, "utf-8")) as FlowIR;
     } catch {
-      console.error("❌ JSON 解析失敗");
+      console.error("❌ JSON parse failed");
       process.exit(1);
     }
 
@@ -567,19 +568,19 @@ program
   });
 
 // ============================================================
-// env-check 指令 — 環境變數驗證
+// env-check command — Environment variable validation
 // ============================================================
 
 program
   .command("env-check <file>")
-  .description("驗證 .flow.json 中引用的環境變數是否已宣告")
-  .option("-e, --env <envFile>", "指定 .env 檔案路徑", ".env")
+  .description("Validate that environment variables referenced in .flow.json are declared")
+  .option("-e, --env <envFile>", "Specify .env file path", ".env")
   .action((file: string, options: { env: string }) => {
     const filePath = resolve(file);
     const envPath = resolve(options.env);
 
     if (!existsSync(filePath)) {
-      console.error(`❌ 檔案不存在: ${filePath}`);
+      console.error(`❌ File not found: ${filePath}`);
       process.exit(1);
     }
 
@@ -587,24 +588,24 @@ program
     try {
       ir = JSON.parse(readFileSync(filePath, "utf-8")) as FlowIR;
     } catch {
-      console.error("❌ JSON 解析失敗");
+      console.error("❌ JSON parse failed");
       process.exit(1);
     }
 
-    // 嘗試載入 .env 檔案
+    // Try to load .env file
     let declaredVars: string[] = [];
     if (existsSync(envPath)) {
       const envContent = readFileSync(envPath, "utf-8");
       declaredVars = parseEnvFile(envContent);
     } else {
-      // 也嘗試 .env.example
+      // Also try .env.example
       const examplePath = resolve(".env.example");
       if (existsSync(examplePath)) {
         const envContent = readFileSync(examplePath, "utf-8");
         declaredVars = parseEnvFile(envContent);
-        console.log(`ℹ️  未找到 ${options.env}，使用 .env.example 作為參考\n`);
+        console.log(`ℹ️  ${options.env} not found, using .env.example as reference\n`);
       } else {
-        console.log(`⚠️  未找到 .env 或 .env.example，將報告所有使用的環境變數\n`);
+        console.log(`⚠️  No .env or .env.example found, will report all referenced env vars\n`);
       }
     }
 
@@ -617,12 +618,12 @@ program
   });
 
 // ============================================================
-// dev 指令 — 啟動 standalone server
+// dev command — Start standalone server
 // ============================================================
 
 async function startDevServer(options: { port: string; open: boolean }) {
   const port = parseInt(options.port, 10);
-  // 動態 import — 僅在 dev/ui 指令時載入 server
+  // Dynamic import — only loads server when dev/ui command is used
   const { startServer } = await import("../server/index.js");
 
   startServer({
@@ -634,7 +635,7 @@ async function startDevServer(options: { port: string; open: boolean }) {
       console.log(`  └─ Project: ${process.cwd()}\n`);
 
       if (options.open) {
-        // 跨平台開啟瀏覽器
+        // Cross-platform browser open
         const openCmd =
           process.platform === "darwin"
             ? "open"
@@ -649,20 +650,20 @@ async function startDevServer(options: { port: string; open: boolean }) {
 
 program
   .command("dev")
-  .description("啟動 Flow2Code 視覺化編輯器 (standalone dev server)")
-  .option("-p, --port <port>", "伺服器埠號", "3100")
-  .option("--no-open", "不自動開啟瀏覽器")
+  .description("Start Flow2Code visual editor (standalone dev server)")
+  .option("-p, --port <port>", "Server port", "3100")
+  .option("--no-open", "Do not auto-open browser")
   .action(startDevServer);
 
 program
   .command("ui")
-  .description("啟動 Flow2Code 視覺化編輯器 (dev 的別名)")
-  .option("-p, --port <port>", "伺服器埠號", "3100")
-  .option("--no-open", "不自動開啟瀏覽器")
+  .description("Start Flow2Code visual editor (alias for dev)")
+  .option("-p, --port <port>", "Server port", "3100")
+  .option("--no-open", "Do not auto-open browser")
   .action(startDevServer);
 
 // ============================================================
-// 輔助函式
+// Helper Functions
 // ============================================================
 
 function compileFile(filePath: string, projectRoot: string): void {
@@ -674,20 +675,20 @@ function compileFile(filePath: string, projectRoot: string): void {
 
     const validation = validateFlowIR(ir);
     if (!validation.valid) {
-      console.error(`❌ [${filePath}] 驗證失敗:`);
+      console.error(`❌ [${filePath}] Validation failed:`);
       validation.errors.forEach((e) => console.error(`  ${e.message}`));
       return;
     }
 
     const result = compile(ir);
     if (!result.success) {
-      console.error(`❌ [${filePath}] 編譯失敗:`);
+      console.error(`❌ [${filePath}] Compilation failed:`);
       result.errors?.forEach((e) => console.error(`  ${e}`));
       return;
     }
 
     if (!result.code || !result.filePath) {
-      console.error(`❌ [${filePath}] 編譯結果缺少 code 或 filePath`);
+      console.error(`❌ [${filePath}] Compile result missing code or filePath`);
       return;
     }
     const outputPath = join(projectRoot, result.filePath);
@@ -703,12 +704,12 @@ function compileFile(filePath: string, projectRoot: string): void {
     console.log(`✅ [${elapsed}ms] ${filePath} → ${outputPath}`);
   } catch (err) {
     console.error(
-      `❌ [${filePath}] 錯誤: ${err instanceof Error ? err.message : String(err)}`
+      `❌ [${filePath}] Error: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 }
 
-/** 從 YAML 目錄編譯 — 供 watch 使用 */
+/** Compile from YAML directory — used by watch */
 function compileFlowDir(dirPath: string, projectRoot: string): void {
   const startTime = Date.now();
   try {
@@ -717,20 +718,20 @@ function compileFlowDir(dirPath: string, projectRoot: string): void {
 
     const validation = validateFlowIR(ir);
     if (!validation.valid) {
-      console.error(`❌ [${dirPath}] 驗證失敗:`);
+      console.error(`❌ [${dirPath}] Validation failed:`);
       validation.errors.forEach((e) => console.error(`  ${e.message}`));
       return;
     }
 
     const result = compile(ir);
     if (!result.success) {
-      console.error(`❌ [${dirPath}] 編譯失敗:`);
+      console.error(`❌ [${dirPath}] Compilation failed:`);
       result.errors?.forEach((e) => console.error(`  ${e}`));
       return;
     }
 
     if (!result.code || !result.filePath) {
-      console.error(`❌ [${dirPath}] 編譯結果缺少 code 或 filePath`);
+      console.error(`❌ [${dirPath}] Compile result missing code or filePath`);
       return;
     }
     const outputPath = join(projectRoot, result.filePath);
@@ -746,7 +747,7 @@ function compileFlowDir(dirPath: string, projectRoot: string): void {
     console.log(`✅ [${elapsed}ms] ${dirPath}/ → ${outputPath}`);
   } catch (err) {
     console.error(
-      `❌ [${dirPath}] 錯誤: ${err instanceof Error ? err.message : String(err)}`
+      `❌ [${dirPath}] Error: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 }
@@ -756,15 +757,15 @@ function generateEnvExample(): void {
   if (!existsSync(envExamplePath)) {
     writeFileSync(
       envExamplePath,
-      "# Flow2Code 環境變數\n# 在此定義 API 金鑰與敏感資訊\n",
+      "# Flow2Code environment variables\n# Define API keys and sensitive information here\n",
       "utf-8"
     );
-    console.log("📝 已生成 .env.example");
+    console.log("📝 Generated .env.example");
   }
 }
 
 // ============================================================
-// 執行
+// Execute
 // ============================================================
 
 program.parse();
