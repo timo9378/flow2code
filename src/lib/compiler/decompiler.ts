@@ -1,21 +1,53 @@
 /**
- * Flow2Code Decompiler — TypeScript → FlowIR
+ * Flow2Code Universal Decompiler — TypeScript → FlowIR
  *
- * 反向解析 Flow2Code 編譯器產生的 TypeScript 代碼，
- * 將其還原為 FlowIR 中間表示形式。
+ * Reverse-parses **any** TypeScript source code into FlowIR intermediate representation.
+ * Designed for AI Code Audit: accepts AI-generated TypeScript and visualizes its logic flow.
  *
- * 策略：
- *   1. Source Map 註解優先：利用編譯器生成的 `// --- node_label [nodeId] ---` 標記
- *   2. AST 分析：使用 ts-morph 解析 TypeScript AST
- *   3. Pattern Matching：識別常見 code pattern（fetch、if/else、for 等）
+ * Strategy:
+ *   1. AST Analysis (primary): ts-morph parses TS AST, pattern-matches known constructs
+ *   2. Data Flow Tracking: variable def-use chains build real edges (not linear chaining)
+ *   3. Source Map Hints (optional): if `// --- label [nodeType] [nodeId] ---` markers exist,
+ *      they enhance node labeling but are NOT required
  *
- * 限制：
- *   - 僅支援 Flow2Code 編譯器生成的代碼（非任意 TypeScript）
- *   - 手動修改後的代碼可能只能部分還原
- *   - 複雜的 custom_code 區塊會作為 opaque 節點保留
+ * Supported patterns:
+ *   - Export functions / arrow functions / class methods → Triggers
+ *   - `await fetch(...)` → Fetch API nodes
+ *   - `if/else` → If/Else logic nodes
+ *   - `for...of` / `for...in` / `for` → Loop nodes
+ *   - `try/catch` → TryCatch nodes
+ *   - Variable declarations → Variable nodes
+ *   - Generic `await expr` → Custom code action nodes
+ *   - Return / Response statements → Output nodes
+ *
+ * Edge building:
+ *   - Data flow edges: tracks which variables are produced and consumed by each node
+ *   - Control flow edges: if/else branches, loop bodies, try/catch blocks
+ *   - Sequential edges: statements in the same scope with no explicit data dependency
  */
 
-import { Project, SyntaxKind, type SourceFile, type Node as TSNode } from "ts-morph";
+import {
+  Project,
+  SyntaxKind,
+  type SourceFile,
+  type Node as TSNode,
+  type FunctionDeclaration,
+  type ArrowFunction,
+  type MethodDeclaration,
+  type Block,
+  type Statement,
+  type VariableStatement,
+  type VariableDeclaration,
+  type IfStatement,
+  type ForOfStatement,
+  type ForInStatement,
+  type ForStatement,
+  type TryStatement,
+  type ReturnStatement,
+  type ExpressionStatement,
+  type AwaitExpression,
+  type CallExpression,
+} from "ts-morph";
 import type {
   FlowIR,
   FlowNode,
@@ -30,10 +62,8 @@ import type {
   ForLoopParams,
   TryCatchParams,
   CustomCodeParams,
-  SqlQueryParams,
   DeclareVariableParams,
   TransformParams,
-  CronJobParams,
   ManualTriggerParams,
 } from "../ir/types";
 import {
@@ -54,142 +84,102 @@ export interface DecompileResult {
   success: boolean;
   ir?: FlowIR;
   errors?: string[];
-  /** 信心分數 0-1，表示還原準確度 */
+  /** Confidence score 0-1 indicating decompilation accuracy */
   confidence: number;
+  /** Audit hints: detected issues or notable patterns */
+  audit?: AuditHint[];
+}
+
+/** Audit hint: a detected issue or notable pattern in the code */
+export interface AuditHint {
+  nodeId: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  /** Source line number (1-indexed) */
+  line?: number;
+}
+
+export interface DecompileOptions {
+  fileName?: string;
+  /** Target function name to decompile (omit to auto-detect) */
+  functionName?: string;
+  /** Enable audit hints (default: true) */
+  audit?: boolean;
 }
 
 /**
- * 將 Flow2Code 編譯器生成的 TypeScript 代碼反向解析為 FlowIR。
+ * Decompiles any TypeScript source code into FlowIR.
  *
- * @param code - TypeScript 原始碼
- * @param options - 可選設定
- * @returns DecompileResult
+ * @param code - TypeScript source code (arbitrary, not limited to flow2code output)
+ * @param options - Optional settings
+ * @returns DecompileResult with IR, confidence, and optional audit hints
  */
 export function decompile(
   code: string,
-  options: { fileName?: string } = {}
+  options: DecompileOptions = {}
 ): DecompileResult {
   const errors: string[] = [];
-  const { fileName = "route.ts" } = options;
+  const { fileName = "input.ts", audit: enableAudit = true } = options;
 
   try {
     const project = new Project({ useInMemoryFileSystem: true });
     const sourceFile = project.createSourceFile(fileName, code);
 
-    // Step 1: 嘗試從 Source Map 註解還原
-    const sourceMapNodes = extractFromSourceMapComments(code);
-
-    // Step 2: AST 分析
-    const astAnalysis = analyzeAST(sourceFile);
-
-    // Step 3: 合併結果
-    const nodes: FlowNode[] = [];
-    const edges: FlowEdge[] = [];
-    let edgeCounter = 0;
-
-    // 解析觸發器
-    const trigger = astAnalysis.trigger ?? detectTriggerFromExport(sourceFile);
-    if (trigger) {
-      nodes.push(trigger);
-    } else {
-      errors.push("無法偵測到觸發器節點（export function / export default）");
+    // Step 1: Find the target function to decompile
+    const targetFn = findTargetFunction(sourceFile, options.functionName);
+    if (!targetFn) {
+      errors.push("No exported function found to decompile");
+      return { success: false, errors, confidence: 0 };
     }
 
-    // 解析 flowState 指派
-    const flowStateAssignments = extractFlowStateAssignments(code);
+    // Step 2: Create decompile context
+    const ctx = createDecompileContext();
 
-    // 合併 Source Map 節點和 AST 偵測
-    const nodeMap = new Map<string, FlowNode>();
-    for (const n of sourceMapNodes) {
-      nodeMap.set(n.id, n);
+    // Step 3: Create trigger node from the function signature
+    const trigger = createTriggerFromFunction(targetFn, sourceFile, ctx);
+    ctx.addNode(trigger);
+
+    // Step 4: Walk the function body and extract nodes
+    const body = targetFn.fn.getBody();
+    if (body && body.getKind() === SyntaxKind.Block) {
+      walkBlock(body as Block, trigger.id, ctx);
     }
 
-    // 從 flowState 指派推斷節點
-    for (const assignment of flowStateAssignments) {
-      if (nodeMap.has(assignment.nodeId)) continue;
+    // Step 5: Build edges from data flow tracking
+    buildEdges(ctx);
 
-      const node = inferNodeFromAssignment(assignment, code);
-      if (node) {
-        nodeMap.set(node.id, node);
-      }
-    }
+    // Step 6: Compute audit hints
+    const auditHints = enableAudit ? computeAuditHints(ctx) : [];
 
-    // 加入 AST 偵測的 fetch 呼叫
-    for (const fetchNode of astAnalysis.fetchCalls) {
-      if (!nodeMap.has(fetchNode.id)) {
-        nodeMap.set(fetchNode.id, fetchNode);
-      }
-    }
-
-    // 加入 AST 偵測的 if/else
-    for (const ifNode of astAnalysis.ifStatements) {
-      if (!nodeMap.has(ifNode.id)) {
-        nodeMap.set(ifNode.id, ifNode);
-      }
-    }
-
-    // 加入 AST 偵測的 for 迴圈
-    for (const forNode of astAnalysis.forLoops) {
-      if (!nodeMap.has(forNode.id)) {
-        nodeMap.set(forNode.id, forNode);
-      }
-    }
-
-    // 加入 response 節點
-    for (const respNode of astAnalysis.responses) {
-      if (!nodeMap.has(respNode.id)) {
-        nodeMap.set(respNode.id, respNode);
-      }
-    }
-
-    // 加入所有非觸發器節點
-    for (const [, node] of nodeMap) {
-      if (node.category !== NodeCategory.TRIGGER) {
-        nodes.push(node);
-      }
-    }
-
-    // 從執行順序推斷邊
-    const orderedIds = nodes.map((n) => n.id);
-    for (let i = 0; i < orderedIds.length - 1; i++) {
-      const sourceNode = nodes.find((n) => n.id === orderedIds[i])!;
-      const targetNode = nodes.find((n) => n.id === orderedIds[i + 1])!;
-
-      const sourcePortId = sourceNode.outputs[0]?.id ?? "output";
-      const targetPortId = targetNode.inputs[0]?.id ?? "input";
-
-      edges.push({
-        id: `e${++edgeCounter}`,
-        sourceNodeId: sourceNode.id,
-        sourcePortId,
-        targetNodeId: targetNode.id,
-        targetPortId,
-      });
-    }
-
+    // Step 7: Assemble IR
     const now = new Date().toISOString();
     const ir: FlowIR = {
       version: CURRENT_IR_VERSION,
       meta: {
-        name: astAnalysis.functionName ?? fileName.replace(/\.(ts|js)$/, ""),
+        name: targetFn.name ?? fileName.replace(/\.(ts|tsx|js|jsx)$/, ""),
         description: `Decompiled from ${fileName}`,
         createdAt: now,
         updatedAt: now,
       },
-      nodes,
-      edges,
+      nodes: ctx.getNodes(),
+      edges: ctx.getEdges(),
     };
 
-    // 計算信心分數
-    const hasSourceMaps = sourceMapNodes.length > 0;
-    const hasAllNodes = nodes.length >= 2; // 至少觸發器 + 一個節點
-    const confidence = hasSourceMaps
-      ? Math.min(0.95, 0.5 + sourceMapNodes.length * 0.1)
-      : hasAllNodes
-        ? Math.min(0.7, 0.3 + nodes.length * 0.1)
-        : 0.2;
+    // Confidence based on how many nodes we extracted
+    const nodeCount = ir.nodes.length;
+    const hasControlFlow = ir.nodes.some(n => n.category === NodeCategory.LOGIC);
+    const confidence = Math.min(
+      0.95,
+      0.3 + nodeCount * 0.08 + (hasControlFlow ? 0.15 : 0)
+    );
 
-    return { success: true, ir, errors: errors.length > 0 ? errors : undefined, confidence };
+    return {
+      success: true,
+      ir,
+      errors: errors.length > 0 ? errors : undefined,
+      confidence,
+      audit: auditHints.length > 0 ? auditHints : undefined,
+    };
   } catch (err) {
     return {
       success: false,
@@ -200,270 +190,166 @@ export function decompile(
 }
 
 // ============================================================
-// Source Map Comment Extraction
+// Decompile Context (tracks nodes, edges, data flow)
 // ============================================================
 
-function extractFromSourceMapComments(code: string): FlowNode[] {
-  const nodes: FlowNode[] = [];
-  // 匹配 // --- label [nodeType] [nodeId] --- 格式
-  const commentRegex = /\/\/\s*---\s*(.+?)\s+\[([a-z_]+)\]\s+\[([a-zA-Z0-9_]+)\]\s*---/g;
-  let match;
-
-  while ((match = commentRegex.exec(code)) !== null) {
-    const label = match[1].trim();
-    const nodeType = match[2] as NodeType;
-    const nodeId = match[3];
-
-    const node = createNodeFromType(nodeId, nodeType, label);
-    if (node) nodes.push(node);
-  }
-
-  return nodes;
-}
-
-// ============================================================
-// AST Analysis
-// ============================================================
-
-interface ASTAnalysis {
-  trigger?: FlowNode;
-  fetchCalls: FlowNode[];
-  ifStatements: FlowNode[];
-  forLoops: FlowNode[];
-  responses: FlowNode[];
-  functionName?: string;
-}
-
-function analyzeAST(sourceFile: SourceFile): ASTAnalysis {
-  const result: ASTAnalysis = {
-    fetchCalls: [],
-    ifStatements: [],
-    forLoops: [],
-    responses: [],
-  };
-
-  let fetchCounter = 0;
-  let ifCounter = 0;
-  let forCounter = 0;
-  let responseCounter = 0;
-
-  // 偵測 export function → HTTP Trigger
-  const exportedFunctions = sourceFile.getFunctions().filter((f) => f.isExported());
-  for (const fn of exportedFunctions) {
-    const name = fn.getName() ?? "";
-    const httpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-
-    if (httpMethods.includes(name.toUpperCase())) {
-      result.functionName = name;
-      const params = fn.getParameters();
-      const hasReqParam = params.some((p) => {
-        const typeText = p.getType().getText();
-        return typeText.includes("Request") || typeText.includes("NextRequest");
-      });
-
-      result.trigger = createTriggerNode(
-        "trigger_1",
-        name.toUpperCase() as HttpWebhookParams["method"],
-        inferRoutePath(sourceFile),
-        hasReqParam
-      );
-      break;
-    }
-  }
-
-  // 偵測 export default — Cloudflare style
-  if (!result.trigger) {
-    const exportDefault = sourceFile.getDefaultExportSymbol();
-    if (exportDefault) {
-      result.trigger = createTriggerNode("trigger_1", "GET", "/", true);
-    }
-  }
-
-  // 偵測 export async function handler — Express/manual
-  if (!result.trigger) {
-    for (const fn of exportedFunctions) {
-      if (fn.getName() && !["GET", "POST", "PUT", "PATCH", "DELETE"].includes(fn.getName()!.toUpperCase())) {
-        result.functionName = fn.getName();
-        // 可能是 cron 或 manual
-        const fnText = fn.getText();
-        if (fnText.includes("cron") || fnText.includes("schedule")) {
-          result.trigger = {
-            id: "trigger_1",
-            nodeType: TriggerType.CRON_JOB,
-            category: NodeCategory.TRIGGER,
-            label: "Cron Job",
-            params: { schedule: "*/5 * * * *", functionName: fn.getName()! } as CronJobParams,
-            inputs: [],
-            outputs: [{ id: "output", label: "Output", dataType: "any" }],
-          };
-        } else {
-          result.trigger = {
-            id: "trigger_1",
-            nodeType: TriggerType.MANUAL,
-            category: NodeCategory.TRIGGER,
-            label: fn.getName() ?? "Manual Trigger",
-            params: { functionName: fn.getName()!, args: [] } as ManualTriggerParams,
-            inputs: [],
-            outputs: [{ id: "output", label: "Output", dataType: "any" }],
-          };
-        }
-        break;
-      }
-    }
-  }
-
-  // 遍歷 AST 尋找 pattern
-  sourceFile.forEachDescendant((node) => {
-    const kind = node.getKind();
-
-    // Fetch calls
-    if (kind === SyntaxKind.CallExpression) {
-      const text = node.getText();
-      if (text.startsWith("fetch(") || text.startsWith("await fetch(")) {
-        fetchCounter++;
-        const fetchNode = parseFetchCall(text, `fetch_${fetchCounter}`);
-        if (fetchNode) result.fetchCalls.push(fetchNode);
-      }
-    }
-
-    // If statements
-    if (kind === SyntaxKind.IfStatement) {
-      ifCounter++;
-      const ifText = node.getText();
-      const condMatch = ifText.match(/if\s*\((.+?)\)\s*\{/);
-      const condition = condMatch?.[1] ?? "true";
-
-      result.ifStatements.push({
-        id: `if_${ifCounter}`,
-        nodeType: LogicType.IF_ELSE,
-        category: NodeCategory.LOGIC,
-        label: `Condition ${ifCounter}`,
-        params: { condition } as IfElseParams,
-        inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
-        outputs: [
-          { id: "true", label: "True", dataType: "any" },
-          { id: "false", label: "False", dataType: "any" },
-        ],
-      });
-    }
-
-    // For loops
-    if (kind === SyntaxKind.ForOfStatement) {
-      forCounter++;
-      const forText = node.getText();
-      const forMatch = forText.match(/for\s*\(\s*const\s+(\w+)\s+of\s+(.+?)\)\s*\{/);
-      result.forLoops.push({
-        id: `for_${forCounter}`,
-        nodeType: LogicType.FOR_LOOP,
-        category: NodeCategory.LOGIC,
-        label: `Loop ${forCounter}`,
-        params: {
-          iterableExpression: forMatch?.[2]?.trim() ?? "[]",
-          itemVariable: forMatch?.[1] ?? "item",
-        } as ForLoopParams,
-        inputs: [{ id: "iterable", label: "Iterable", dataType: "array", required: true }],
-        outputs: [
-          { id: "item", label: "Item", dataType: "any" },
-          { id: "result", label: "Result", dataType: "array" },
-        ],
-      });
-    }
-
-    // Return responses
-    if (kind === SyntaxKind.ReturnStatement) {
-      const returnText = node.getText();
-      if (returnText.includes("NextResponse.json") || returnText.includes("Response(") || returnText.includes("json(")) {
-        responseCounter++;
-        const statusMatch = returnText.match(/status:\s*(\d+)/);
-        const bodyMatch = returnText.match(/\.json\((.+?)(?:,|\))/s);
-
-        result.responses.push({
-          id: `response_${responseCounter}`,
-          nodeType: OutputType.RETURN_RESPONSE,
-          category: NodeCategory.OUTPUT,
-          label: `Response ${responseCounter}`,
-          params: {
-            statusCode: statusMatch ? parseInt(statusMatch[1]) : 200,
-            bodyExpression: bodyMatch?.[1]?.trim() ?? "{}",
-          } as ReturnResponseParams,
-          inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
-          outputs: [],
-        });
-      }
-    }
-  });
-
-  return result;
-}
-
-// ============================================================
-// Helper Functions
-// ============================================================
-
-interface FlowStateAssignment {
+interface VariableDef {
   nodeId: string;
-  expression: string;
-  lineNumber: number;
+  portId: string;
+  varName: string;
 }
 
-function extractFlowStateAssignments(code: string): FlowStateAssignment[] {
-  const assignments: FlowStateAssignment[] = [];
-  const regex = /flowState\['([^']+)'\]\s*=\s*(.+?);/g;
-  let match;
-  const lines = code.split("\n");
+interface VariableUse {
+  nodeId: string;
+  portId: string;
+  varName: string;
+}
 
-  while ((match = regex.exec(code)) !== null) {
-    const lineNumber = code.substring(0, match.index).split("\n").length;
-    assignments.push({
-      nodeId: match[1],
-      expression: match[2].trim(),
-      lineNumber,
-    });
+interface DecompileContext {
+  nodes: Map<string, FlowNode>;
+  edgeList: FlowEdge[];
+  /** Variable definitions: var name → producing node */
+  varDefs: Map<string, VariableDef>;
+  /** Variable uses: consuming node → used variables */
+  varUses: Map<string, VariableUse[]>;
+  /** Sequential predecessors: nodeId → previous nodeId in same scope */
+  seqPredecessors: Map<string, string>;
+  /** Control flow edges: parent logic node → child nodes by port */
+  controlFlowChildren: Map<string, { portId: string; nodeId: string }[]>;
+  /** Audit data: nodes with potential issues */
+  auditData: AuditHint[];
+  /** Counters for unique IDs */
+  counters: Record<string, number>;
+  /** Source line tracking */
+  nodeLines: Map<string, number>;
+
+  addNode(node: FlowNode, line?: number): void;
+  getNodes(): FlowNode[];
+  getEdges(): FlowEdge[];
+  nextId(prefix: string): string;
+}
+
+function createDecompileContext(): DecompileContext {
+  const ctx: DecompileContext = {
+    nodes: new Map(),
+    edgeList: [],
+    varDefs: new Map(),
+    varUses: new Map(),
+    seqPredecessors: new Map(),
+    controlFlowChildren: new Map(),
+    auditData: [],
+    counters: {},
+    nodeLines: new Map(),
+
+    addNode(node: FlowNode, line?: number) {
+      ctx.nodes.set(node.id, node);
+      if (line !== undefined) ctx.nodeLines.set(node.id, line);
+    },
+
+    getNodes(): FlowNode[] {
+      return Array.from(ctx.nodes.values());
+    },
+
+    getEdges(): FlowEdge[] {
+      return ctx.edgeList;
+    },
+
+    nextId(prefix: string): string {
+      ctx.counters[prefix] = (ctx.counters[prefix] ?? 0) + 1;
+      return `${prefix}_${ctx.counters[prefix]}`;
+    },
+  };
+  return ctx;
+}
+
+// ============================================================
+// Function Discovery
+// ============================================================
+
+interface TargetFunction {
+  name: string | undefined;
+  fn: FunctionDeclaration | ArrowFunction | MethodDeclaration;
+  httpMethod?: string;
+  isExported: boolean;
+}
+
+function findTargetFunction(
+  sourceFile: SourceFile,
+  targetName?: string
+): TargetFunction | null {
+  const httpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+  // Priority 1: Named export matching HTTP method (Next.js App Router style)
+  for (const fn of sourceFile.getFunctions()) {
+    if (!fn.isExported()) continue;
+    const name = fn.getName();
+    if (name && httpMethods.includes(name.toUpperCase())) {
+      return { name, fn, httpMethod: name.toUpperCase(), isExported: true };
+    }
   }
 
-  return assignments;
-}
+  // Priority 2: Specific target function name
+  if (targetName) {
+    const fn = sourceFile.getFunction(targetName);
+    if (fn) {
+      return { name: targetName, fn, isExported: fn.isExported() };
+    }
+  }
 
-function inferNodeFromAssignment(
-  assignment: FlowStateAssignment,
-  code: string
-): FlowNode | null {
-  const { nodeId, expression } = assignment;
+  // Priority 3: Any exported function
+  for (const fn of sourceFile.getFunctions()) {
+    if (fn.isExported()) {
+      return { name: fn.getName(), fn, isExported: true };
+    }
+  }
 
-  // 跳過觸發器（已經處理）
-  if (nodeId.startsWith("trigger")) return null;
+  // Priority 4: Any function at all
+  const allFns = sourceFile.getFunctions();
+  if (allFns.length > 0) {
+    const fn = allFns[0];
+    return { name: fn.getName(), fn, isExported: fn.isExported() };
+  }
 
-  // Custom code: 檢查是否有對應的 Source Map 註解
-  // Transform: 簡單賦值
-  if (!expression.startsWith("await") && !expression.startsWith("{")) {
-    return {
-      id: nodeId,
-      nodeType: VariableType.TRANSFORM,
-      category: NodeCategory.VARIABLE,
-      label: nodeId.replace(/_/g, " "),
-      params: { expression } as TransformParams,
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
-      outputs: [{ id: "output", label: "Output", dataType: "any" }],
-    };
+  // Priority 5: Exported arrow function (const handler = async () => {...})
+  for (const stmt of sourceFile.getVariableStatements()) {
+    if (!stmt.isExported()) continue;
+    for (const decl of stmt.getDeclarations()) {
+      const init = decl.getInitializer();
+      if (init && init.getKind() === SyntaxKind.ArrowFunction) {
+        return {
+          name: decl.getName(),
+          fn: init as ArrowFunction,
+          isExported: true,
+        };
+      }
+    }
   }
 
   return null;
 }
 
-function detectTriggerFromExport(sourceFile: SourceFile): FlowNode | null {
-  // Fallback: 如果沒有偵測到任何 trigger，建立一個預設的
-  const functions = sourceFile.getFunctions();
-  if (functions.length > 0) {
+// ============================================================
+// Trigger Creation
+// ============================================================
+
+function createTriggerFromFunction(
+  target: TargetFunction,
+  sourceFile: SourceFile,
+  ctx: DecompileContext
+): FlowNode {
+  const id = ctx.nextId("trigger");
+
+  if (target.httpMethod) {
+    const routePath = inferRoutePath(sourceFile);
+    const method = target.httpMethod as HttpWebhookParams["method"];
+    const parseBody = method !== "GET";
+
     return {
-      id: "trigger_1",
+      id,
       nodeType: TriggerType.HTTP_WEBHOOK,
       category: NodeCategory.TRIGGER,
-      label: "HTTP Webhook Trigger",
-      params: {
-        method: "GET",
-        routePath: "/api/unknown",
-        parseBody: false,
-      } as HttpWebhookParams,
+      label: `${method} ${routePath}`,
+      params: { method, routePath, parseBody } as HttpWebhookParams,
       inputs: [],
       outputs: [
         { id: "request", label: "Request", dataType: "object" },
@@ -472,68 +358,682 @@ function detectTriggerFromExport(sourceFile: SourceFile): FlowNode | null {
       ],
     };
   }
-  return null;
-}
 
-function createTriggerNode(
-  id: string,
-  method: HttpWebhookParams["method"],
-  routePath: string,
-  parseBody: boolean
-): FlowNode {
+  // Non-HTTP: manual trigger
   return {
     id,
-    nodeType: TriggerType.HTTP_WEBHOOK,
+    nodeType: TriggerType.MANUAL,
     category: NodeCategory.TRIGGER,
-    label: "HTTP Webhook Trigger",
-    params: { method, routePath, parseBody: parseBody && method !== "GET" } as HttpWebhookParams,
+    label: target.name ?? "Entry Point",
+    params: {
+      functionName: target.name ?? "handler",
+      args: target.fn.getParameters?.()
+        ? target.fn.getParameters().map((p) => ({
+          name: p.getName(),
+          type: inferDataType(p.getType().getText()),
+        }))
+        : [],
+    } as ManualTriggerParams,
     inputs: [],
-    outputs: [
-      { id: "request", label: "Request", dataType: "object" },
-      { id: "body", label: "Body", dataType: "object" },
-      { id: "query", label: "Query", dataType: "object" },
-    ],
+    outputs: [{ id: "output", label: "Output", dataType: "any" }],
   };
 }
 
-function inferRoutePath(sourceFile: SourceFile): string {
-  // 嘗試從檔案路徑推斷
-  const filePath = sourceFile.getFilePath();
-  const apiMatch = filePath.match(/\/app\/api\/(.+?)\/route\.(ts|js)/);
-  if (apiMatch) return `/api/${apiMatch[1]}`;
+// ============================================================
+// Block Walker (core recursive AST traversal)
+// ============================================================
 
-  // 嘗試從註解推斷
-  const fullText = sourceFile.getFullText();
-  const routeMatch = fullText.match(/\/api\/\S+/);
-  if (routeMatch) return routeMatch[0];
+function walkBlock(
+  block: Block,
+  parentNodeId: string,
+  ctx: DecompileContext,
+  controlFlowPort?: string
+): void {
+  const statements = block.getStatements();
+  let lastNodeId = parentNodeId;
 
-  return "/api/unknown";
+  for (const stmt of statements) {
+    const nodeId = processStatement(stmt, lastNodeId, ctx);
+    if (nodeId) {
+      // Register sequential connection
+      if (lastNodeId !== parentNodeId || !controlFlowPort) {
+        ctx.seqPredecessors.set(nodeId, lastNodeId);
+      }
+      // Register control flow connection
+      if (lastNodeId === parentNodeId && controlFlowPort) {
+        if (!ctx.controlFlowChildren.has(parentNodeId)) {
+          ctx.controlFlowChildren.set(parentNodeId, []);
+        }
+        ctx.controlFlowChildren.get(parentNodeId)!.push({
+          portId: controlFlowPort,
+          nodeId,
+        });
+      }
+      lastNodeId = nodeId;
+    }
+  }
 }
 
-function parseFetchCall(text: string, nodeId: string): FlowNode | null {
-  // 提取 URL
+function processStatement(
+  stmt: Statement,
+  prevNodeId: string,
+  ctx: DecompileContext
+): string | null {
+  const kind = stmt.getKind();
+  const line = stmt.getStartLineNumber();
+
+  switch (kind) {
+    case SyntaxKind.VariableStatement:
+      return processVariableStatement(stmt as VariableStatement, prevNodeId, ctx, line);
+
+    case SyntaxKind.IfStatement:
+      return processIfStatement(stmt as IfStatement, prevNodeId, ctx, line);
+
+    case SyntaxKind.ForOfStatement:
+      return processForOfStatement(stmt as ForOfStatement, prevNodeId, ctx, line);
+
+    case SyntaxKind.ForInStatement:
+      return processForInStatement(stmt as ForInStatement, prevNodeId, ctx, line);
+
+    case SyntaxKind.ForStatement:
+      return processForStatement(stmt as ForStatement, prevNodeId, ctx, line);
+
+    case SyntaxKind.TryStatement:
+      return processTryStatement(stmt as TryStatement, prevNodeId, ctx, line);
+
+    case SyntaxKind.ReturnStatement:
+      return processReturnStatement(stmt as ReturnStatement, prevNodeId, ctx, line);
+
+    case SyntaxKind.ExpressionStatement:
+      return processExpressionStatement(stmt as ExpressionStatement, prevNodeId, ctx, line);
+
+    default:
+      return null;
+  }
+}
+
+// ============================================================
+// Statement Processors
+// ============================================================
+
+function processVariableStatement(
+  stmt: VariableStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string | null {
+  const declarations = stmt.getDeclarations();
+  if (declarations.length === 0) return null;
+
+  // Process the first declaration (most common case)
+  const decl = declarations[0];
+  return processVariableDeclaration(decl, ctx, line);
+}
+
+function processVariableDeclaration(
+  decl: VariableDeclaration,
+  ctx: DecompileContext,
+  line: number
+): string | null {
+  const varName = decl.getName();
+  const init = decl.getInitializer();
+  if (!init) return null;
+
+  const initText = init.getText();
+
+  // Pattern: await fetch(...) → Fetch API node
+  if (isFetchCall(init)) {
+    const nodeId = ctx.nextId("fetch");
+    const node = parseFetchNode(nodeId, initText, varName);
+    ctx.addNode(node, line);
+    ctx.varDefs.set(varName, { nodeId, portId: "data", varName });
+    return nodeId;
+  }
+
+  // Pattern: await someAsyncCall(...) → Custom Code node
+  if (hasAwaitExpression(init)) {
+    const nodeId = ctx.nextId("async_op");
+    const awaitedCode = extractAwaitedExpression(init);
+    ctx.addNode({
+      id: nodeId,
+      nodeType: ActionType.CUSTOM_CODE,
+      category: NodeCategory.ACTION,
+      label: inferLabel(awaitedCode, varName),
+      params: { code: awaitedCode, returnVariable: varName } as CustomCodeParams,
+      inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
+      outputs: [{ id: "result", label: "Result", dataType: "any" }],
+    }, line);
+    ctx.varDefs.set(varName, { nodeId, portId: "result", varName });
+    trackVariableUses(nodeId, initText, ctx);
+    return nodeId;
+  }
+
+  // Pattern: const x = expression → Variable Declare or Transform
+  if (isSimpleDeclaration(init)) {
+    const nodeId = ctx.nextId("var");
+    const dataType = inferDataType(decl.getType().getText());
+    const isConst = decl.getVariableStatement()?.getDeclarationKind()?.toString() === "const";
+    ctx.addNode({
+      id: nodeId,
+      nodeType: VariableType.DECLARE,
+      category: NodeCategory.VARIABLE,
+      label: varName,
+      params: {
+        name: varName,
+        dataType,
+        initialValue: initText,
+        isConst: isConst ?? true,
+      } as DeclareVariableParams,
+      inputs: [],
+      outputs: [{ id: "value", label: "Value", dataType }],
+    }, line);
+    ctx.varDefs.set(varName, { nodeId, portId: "value", varName });
+    trackVariableUses(nodeId, initText, ctx);
+    return nodeId;
+  }
+
+  // Pattern: const x = someTransformation → Transform node
+  const nodeId = ctx.nextId("transform");
+  ctx.addNode({
+    id: nodeId,
+    nodeType: VariableType.TRANSFORM,
+    category: NodeCategory.VARIABLE,
+    label: varName,
+    params: { expression: initText } as TransformParams,
+    inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
+    outputs: [{ id: "output", label: "Output", dataType: "any" }],
+  }, line);
+  ctx.varDefs.set(varName, { nodeId, portId: "output", varName });
+  trackVariableUses(nodeId, initText, ctx);
+  return nodeId;
+}
+
+function processIfStatement(
+  stmt: IfStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string {
+  const nodeId = ctx.nextId("if");
+  const condition = stmt.getExpression().getText();
+
+  ctx.addNode({
+    id: nodeId,
+    nodeType: LogicType.IF_ELSE,
+    category: NodeCategory.LOGIC,
+    label: `if (${truncate(condition, 40)})`,
+    params: { condition } as IfElseParams,
+    inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
+    outputs: [
+      { id: "true", label: "True", dataType: "any" },
+      { id: "false", label: "False", dataType: "any" },
+    ],
+  }, line);
+
+  trackVariableUses(nodeId, condition, ctx);
+
+  // Walk true branch
+  const thenBlock = stmt.getThenStatement();
+  if (thenBlock.getKind() === SyntaxKind.Block) {
+    walkBlock(thenBlock as Block, nodeId, ctx, "true");
+  }
+
+  // Walk false/else branch
+  const elseStmt = stmt.getElseStatement();
+  if (elseStmt) {
+    if (elseStmt.getKind() === SyntaxKind.Block) {
+      walkBlock(elseStmt as Block, nodeId, ctx, "false");
+    } else if (elseStmt.getKind() === SyntaxKind.IfStatement) {
+      // else if → nested if
+      const nestedId = processIfStatement(elseStmt as IfStatement, nodeId, ctx, elseStmt.getStartLineNumber());
+      if (!ctx.controlFlowChildren.has(nodeId)) {
+        ctx.controlFlowChildren.set(nodeId, []);
+      }
+      ctx.controlFlowChildren.get(nodeId)!.push({ portId: "false", nodeId: nestedId });
+    }
+  }
+
+  // Audit: no else branch
+  if (!elseStmt) {
+    ctx.auditData.push({
+      nodeId,
+      severity: "info",
+      message: "If statement has no else branch — consider handling the negative case",
+      line,
+    });
+  }
+
+  return nodeId;
+}
+
+function processForOfStatement(
+  stmt: ForOfStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string {
+  const nodeId = ctx.nextId("loop");
+  const initText = stmt.getInitializer().getText();
+  const itemVar = initText.replace(/^(const|let|var)\s+/, "");
+  const iterableExpr = stmt.getExpression().getText();
+
+  ctx.addNode({
+    id: nodeId,
+    nodeType: LogicType.FOR_LOOP,
+    category: NodeCategory.LOGIC,
+    label: `for (${itemVar} of ${truncate(iterableExpr, 30)})`,
+    params: {
+      iterableExpression: iterableExpr,
+      itemVariable: itemVar,
+    } as ForLoopParams,
+    inputs: [{ id: "iterable", label: "Iterable", dataType: "array", required: true }],
+    outputs: [
+      { id: "item", label: "Item", dataType: "any" },
+      { id: "result", label: "Result", dataType: "array" },
+    ],
+  }, line);
+
+  trackVariableUses(nodeId, iterableExpr, ctx);
+
+  // Walk loop body
+  const body = stmt.getStatement();
+  if (body.getKind() === SyntaxKind.Block) {
+    walkBlock(body as Block, nodeId, ctx, "item");
+  }
+
+  return nodeId;
+}
+
+function processForInStatement(
+  stmt: ForInStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string {
+  const nodeId = ctx.nextId("loop");
+  const initText = stmt.getInitializer().getText();
+  const itemVar = initText.replace(/^(const|let|var)\s+/, "");
+  const iterableExpr = stmt.getExpression().getText();
+
+  ctx.addNode({
+    id: nodeId,
+    nodeType: LogicType.FOR_LOOP,
+    category: NodeCategory.LOGIC,
+    label: `for (${itemVar} in ${truncate(iterableExpr, 30)})`,
+    params: {
+      iterableExpression: `Object.keys(${iterableExpr})`,
+      itemVariable: itemVar,
+    } as ForLoopParams,
+    inputs: [{ id: "iterable", label: "Iterable", dataType: "array", required: true }],
+    outputs: [
+      { id: "item", label: "Item", dataType: "any" },
+      { id: "result", label: "Result", dataType: "array" },
+    ],
+  }, line);
+
+  trackVariableUses(nodeId, iterableExpr, ctx);
+
+  const body = stmt.getStatement();
+  if (body.getKind() === SyntaxKind.Block) {
+    walkBlock(body as Block, nodeId, ctx, "item");
+  }
+
+  return nodeId;
+}
+
+function processForStatement(
+  stmt: ForStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string {
+  const nodeId = ctx.nextId("loop");
+  const fullText = stmt.getText().split("{")[0].trim();
+
+  ctx.addNode({
+    id: nodeId,
+    nodeType: LogicType.FOR_LOOP,
+    category: NodeCategory.LOGIC,
+    label: truncate(fullText, 50),
+    params: {
+      iterableExpression: fullText,
+      itemVariable: "i",
+    } as ForLoopParams,
+    inputs: [{ id: "iterable", label: "Iterable", dataType: "array", required: true }],
+    outputs: [
+      { id: "item", label: "Item", dataType: "any" },
+      { id: "result", label: "Result", dataType: "array" },
+    ],
+  }, line);
+
+  const body = stmt.getStatement();
+  if (body.getKind() === SyntaxKind.Block) {
+    walkBlock(body as Block, nodeId, ctx, "item");
+  }
+
+  return nodeId;
+}
+
+function processTryStatement(
+  stmt: TryStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string {
+  const nodeId = ctx.nextId("trycatch");
+  const catchClause = stmt.getCatchClause();
+  const errorVar = catchClause?.getVariableDeclaration()?.getName() ?? "error";
+
+  ctx.addNode({
+    id: nodeId,
+    nodeType: LogicType.TRY_CATCH,
+    category: NodeCategory.LOGIC,
+    label: "Try / Catch",
+    params: { errorVariable: errorVar } as TryCatchParams,
+    inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
+    outputs: [
+      { id: "success", label: "Success", dataType: "any" },
+      { id: "error", label: "Error", dataType: "object" },
+    ],
+  }, line);
+
+  // Walk try block
+  const tryBlock = stmt.getTryBlock();
+  walkBlock(tryBlock, nodeId, ctx, "success");
+
+  // Walk catch block
+  if (catchClause) {
+    const catchBlock = catchClause.getBlock();
+    walkBlock(catchBlock, nodeId, ctx, "error");
+  }
+
+  return nodeId;
+}
+
+function processReturnStatement(
+  stmt: ReturnStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string {
+  const nodeId = ctx.nextId("response");
+  const returnExpr = stmt.getExpression();
+  const returnText = returnExpr?.getText() ?? "";
+
+  // Detect HTTP responses
+  const isHttpResponse =
+    returnText.includes("NextResponse") ||
+    returnText.includes("Response(") ||
+    returnText.includes(".json(") ||
+    returnText.includes("res.status") ||
+    returnText.includes("res.json");
+
+  if (isHttpResponse) {
+    const statusMatch = returnText.match(/status[:\s(]+(\d{3})/);
+    const bodyMatch = returnText.match(/\.json\((.+?)(?:,|\))/s);
+
+    ctx.addNode({
+      id: nodeId,
+      nodeType: OutputType.RETURN_RESPONSE,
+      category: NodeCategory.OUTPUT,
+      label: `Response ${statusMatch?.[1] ?? "200"}`,
+      params: {
+        statusCode: statusMatch ? parseInt(statusMatch[1]) : 200,
+        bodyExpression: bodyMatch?.[1]?.trim() ?? returnText,
+      } as ReturnResponseParams,
+      inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
+      outputs: [],
+    }, line);
+  } else {
+    ctx.addNode({
+      id: nodeId,
+      nodeType: OutputType.RETURN_RESPONSE,
+      category: NodeCategory.OUTPUT,
+      label: "Return",
+      params: {
+        statusCode: 200,
+        bodyExpression: returnText || "undefined",
+      } as ReturnResponseParams,
+      inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
+      outputs: [],
+    }, line);
+  }
+
+  trackVariableUses(nodeId, returnText, ctx);
+  return nodeId;
+}
+
+function processExpressionStatement(
+  stmt: ExpressionStatement,
+  _prevNodeId: string,
+  ctx: DecompileContext,
+  line: number
+): string | null {
+  const expr = stmt.getExpression();
+  const exprText = expr.getText();
+
+  // Pattern: await fetch(...) without assignment
+  if (isFetchCall(expr)) {
+    const nodeId = ctx.nextId("fetch");
+    const node = parseFetchNode(nodeId, exprText, undefined);
+    ctx.addNode(node, line);
+    return nodeId;
+  }
+
+  // Pattern: await someAsyncCall(...)
+  if (hasAwaitExpression(expr)) {
+    const nodeId = ctx.nextId("async_op");
+    const awaitedCode = extractAwaitedExpression(expr);
+    ctx.addNode({
+      id: nodeId,
+      nodeType: ActionType.CUSTOM_CODE,
+      category: NodeCategory.ACTION,
+      label: inferLabel(awaitedCode, undefined),
+      params: { code: awaitedCode } as CustomCodeParams,
+      inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
+      outputs: [{ id: "result", label: "Result", dataType: "any" }],
+    }, line);
+    trackVariableUses(nodeId, exprText, ctx);
+    return nodeId;
+  }
+
+  // Pattern: flowState['x'] = ... (flow2code-generated pattern)
+  const flowStateMatch = exprText.match(/flowState\['([^']+)'\]\s*=\s*(.+)/s);
+  if (flowStateMatch) {
+    return null; // Skip flow2code internal assignments
+  }
+
+  // Pattern: res.status(...).json(...) (Express-style response)
+  if (exprText.includes("res.status") || exprText.includes("res.json")) {
+    const nodeId = ctx.nextId("response");
+    const statusMatch = exprText.match(/status\((\d+)\)/);
+
+    ctx.addNode({
+      id: nodeId,
+      nodeType: OutputType.RETURN_RESPONSE,
+      category: NodeCategory.OUTPUT,
+      label: `Response ${statusMatch?.[1] ?? "200"}`,
+      params: {
+        statusCode: statusMatch ? parseInt(statusMatch[1]) : 200,
+        bodyExpression: exprText,
+      } as ReturnResponseParams,
+      inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
+      outputs: [],
+    }, line);
+    trackVariableUses(nodeId, exprText, ctx);
+    return nodeId;
+  }
+
+  return null;
+}
+
+// ============================================================
+// Edge Building (data flow + sequential + control flow)
+// ============================================================
+
+function buildEdges(ctx: DecompileContext): void {
+  let edgeCounter = 0;
+  const addEdge = (source: string, sourcePort: string, target: string, targetPort: string) => {
+    // Avoid duplicate edges
+    const exists = ctx.edgeList.some(
+      (e) => e.sourceNodeId === source && e.targetNodeId === target && e.sourcePortId === sourcePort
+    );
+    if (exists) return;
+    ctx.edgeList.push({
+      id: `e${++edgeCounter}`,
+      sourceNodeId: source,
+      sourcePortId: sourcePort,
+      targetNodeId: target,
+      targetPortId: targetPort,
+    });
+  };
+
+  const connectedTargets = new Set<string>();
+
+  // 1. Data flow edges (variable def-use chains)
+  for (const [nodeId, uses] of ctx.varUses) {
+    for (const use of uses) {
+      const def = ctx.varDefs.get(use.varName);
+      if (def && def.nodeId !== nodeId) {
+        addEdge(def.nodeId, def.portId, nodeId, use.portId);
+        connectedTargets.add(nodeId);
+      }
+    }
+  }
+
+  // 2. Control flow edges (if/else branches, loop bodies, try/catch)
+  for (const [parentId, children] of ctx.controlFlowChildren) {
+    for (const child of children) {
+      addEdge(parentId, child.portId, child.nodeId, "input");
+      connectedTargets.add(child.nodeId);
+    }
+  }
+
+  // 3. Sequential fallback edges (for nodes not yet connected)
+  for (const [nodeId, predId] of ctx.seqPredecessors) {
+    if (connectedTargets.has(nodeId)) continue;
+    const predNode = ctx.nodes.get(predId);
+    if (!predNode) continue;
+    const sourcePort = predNode.outputs[0]?.id ?? "output";
+    addEdge(predId, sourcePort, nodeId, "input");
+  }
+}
+
+// ============================================================
+// Audit Hints
+// ============================================================
+
+function computeAuditHints(ctx: DecompileContext): AuditHint[] {
+  const hints: AuditHint[] = [...ctx.auditData];
+
+  for (const [nodeId, node] of ctx.nodes) {
+    const line = ctx.nodeLines.get(nodeId);
+
+    // Audit: await without try/catch
+    if (node.nodeType === ActionType.CUSTOM_CODE || node.nodeType === ActionType.FETCH_API) {
+      const isInsideTryCatch = Array.from(ctx.controlFlowChildren.entries()).some(
+        ([parentId, children]) => {
+          const parent = ctx.nodes.get(parentId);
+          return parent?.nodeType === LogicType.TRY_CATCH &&
+            children.some((c) => c.nodeId === nodeId);
+        }
+      );
+
+      // Check sequential ancestors
+      let ancestorId = ctx.seqPredecessors.get(nodeId);
+      let foundTryCatch = isInsideTryCatch;
+      while (ancestorId && !foundTryCatch) {
+        const ancestor = ctx.nodes.get(ancestorId);
+        if (ancestor?.nodeType === LogicType.TRY_CATCH) foundTryCatch = true;
+        // Check if inside any try-catch's control flow
+        for (const [parentId, children] of ctx.controlFlowChildren) {
+          const parent = ctx.nodes.get(parentId);
+          if (parent?.nodeType === LogicType.TRY_CATCH && children.some(c => c.nodeId === nodeId)) {
+            foundTryCatch = true;
+          }
+        }
+        ancestorId = ctx.seqPredecessors.get(ancestorId);
+      }
+
+      if (!foundTryCatch) {
+        hints.push({
+          nodeId,
+          severity: "warning",
+          message: `Async operation "${node.label}" has no error handling (missing try/catch)`,
+          line,
+        });
+      }
+    }
+
+    // Audit: fetch without response.ok check
+    if (node.nodeType === ActionType.FETCH_API) {
+      hints.push({
+        nodeId,
+        severity: "info",
+        message: "Consider checking response.ok or response.status after fetch",
+        line,
+      });
+    }
+  }
+
+  return hints;
+}
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+function isFetchCall(node: TSNode): boolean {
+  const text = node.getText();
+  return text.includes("fetch(") && (text.includes("await") || node.getKind() === SyntaxKind.AwaitExpression);
+}
+
+function hasAwaitExpression(node: TSNode): boolean {
+  if (node.getKind() === SyntaxKind.AwaitExpression) return true;
+  return node.getText().startsWith("await ");
+}
+
+function extractAwaitedExpression(node: TSNode): string {
+  const text = node.getText();
+  if (text.startsWith("await ")) return text.slice(6);
+  return text;
+}
+
+function isSimpleDeclaration(node: TSNode): boolean {
+  const text = node.getText();
+  // Simple literals, new expressions, or short expressions without await
+  return (
+    !text.includes("await") &&
+    !text.includes("fetch(") &&
+    (node.getKind() === SyntaxKind.StringLiteral ||
+      node.getKind() === SyntaxKind.NumericLiteral ||
+      node.getKind() === SyntaxKind.TrueKeyword ||
+      node.getKind() === SyntaxKind.FalseKeyword ||
+      node.getKind() === SyntaxKind.NullKeyword ||
+      node.getKind() === SyntaxKind.ArrayLiteralExpression ||
+      node.getKind() === SyntaxKind.ObjectLiteralExpression ||
+      node.getKind() === SyntaxKind.NewExpression)
+  );
+}
+
+function parseFetchNode(nodeId: string, text: string, varName: string | undefined): FlowNode {
+  // Extract URL
   const urlMatch = text.match(/fetch\(([^,)]+)/);
   let url = urlMatch?.[1]?.trim() ?? '""';
-  // 去除外層引號或模板字面量符號
   url = url.replace(/^[`"']|[`"']$/g, "");
 
-  // 提取 method
+  // Extract method
   const methodMatch = text.match(/method:\s*["'](\w+)["']/);
   const method = (methodMatch?.[1]?.toUpperCase() ?? "GET") as FetchApiParams["method"];
 
-  // 提取 headers
+  // Extract headers
   const headerMatch = text.match(/headers:\s*(\{[^}]+\})/);
   let headers: Record<string, string> | undefined;
   if (headerMatch) {
-    try {
-      // 簡化解析
-      headers = {};
-      const headerPairs = headerMatch[1].matchAll(/"([^"]+)":\s*"([^"]+)"/g);
-      for (const pair of headerPairs) {
-        headers[pair[1]] = pair[2];
-      }
-    } catch {
-      // ignore
+    headers = {};
+    const headerPairs = headerMatch[1].matchAll(/"([^"]+)":\s*"([^"]+)"/g);
+    for (const pair of headerPairs) {
+      headers[pair[1]] = pair[2];
     }
   }
 
@@ -541,7 +1041,7 @@ function parseFetchCall(text: string, nodeId: string): FlowNode | null {
     id: nodeId,
     nodeType: ActionType.FETCH_API,
     category: NodeCategory.ACTION,
-    label: `Fetch ${nodeId.replace(/_/g, " ")}`,
+    label: `Fetch ${truncate(url, 30) || varName || "API"}`,
     params: {
       url,
       method,
@@ -556,131 +1056,93 @@ function parseFetchCall(text: string, nodeId: string): FlowNode | null {
   };
 }
 
-function createNodeFromType(
-  id: string,
-  nodeType: NodeType,
-  label: string
-): FlowNode | null {
-  const portMap: Record<string, { inputs: InputPort[]; outputs: OutputPort[] }> = {
-    [TriggerType.HTTP_WEBHOOK]: {
-      inputs: [],
-      outputs: [
-        { id: "request", label: "Request", dataType: "object" },
-        { id: "body", label: "Body", dataType: "object" },
-        { id: "query", label: "Query", dataType: "object" },
-      ],
-    },
-    [TriggerType.CRON_JOB]: {
-      inputs: [],
-      outputs: [{ id: "output", label: "Output", dataType: "any" }],
-    },
-    [TriggerType.MANUAL]: {
-      inputs: [],
-      outputs: [{ id: "output", label: "Output", dataType: "any" }],
-    },
-    [ActionType.FETCH_API]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
-      outputs: [
-        { id: "response", label: "Response", dataType: "object" },
-        { id: "data", label: "Data", dataType: "any" },
-      ],
-    },
-    [ActionType.SQL_QUERY]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
-      outputs: [{ id: "result", label: "Result", dataType: "array" }],
-    },
-    [ActionType.REDIS_CACHE]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
-      outputs: [{ id: "value", label: "Value", dataType: "any" }],
-    },
-    [ActionType.CUSTOM_CODE]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
-      outputs: [{ id: "result", label: "Result", dataType: "any" }],
-    },
-    [ActionType.CALL_SUBFLOW]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
-      outputs: [{ id: "result", label: "Result", dataType: "any" }],
-    },
-    [LogicType.IF_ELSE]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
-      outputs: [
-        { id: "true", label: "True", dataType: "any" },
-        { id: "false", label: "False", dataType: "any" },
-      ],
-    },
-    [LogicType.FOR_LOOP]: {
-      inputs: [{ id: "iterable", label: "Iterable", dataType: "array", required: true }],
-      outputs: [
-        { id: "item", label: "Item", dataType: "any" },
-        { id: "result", label: "Result", dataType: "array" },
-      ],
-    },
-    [LogicType.TRY_CATCH]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
-      outputs: [
-        { id: "success", label: "Success", dataType: "any" },
-        { id: "error", label: "Error", dataType: "object" },
-      ],
-    },
-    [VariableType.DECLARE]: {
-      inputs: [],
-      outputs: [{ id: "value", label: "Value", dataType: "any" }],
-    },
-    [VariableType.TRANSFORM]: {
-      inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
-      outputs: [{ id: "output", label: "Output", dataType: "any" }],
-    },
-    [OutputType.RETURN_RESPONSE]: {
-      inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
-      outputs: [],
-    },
-  };
+function inferRoutePath(sourceFile: SourceFile): string {
+  const filePath = sourceFile.getFilePath();
 
-  const ports = portMap[nodeType];
-  if (!ports) return null;
+  // Next.js App Router: /app/api/xxx/route.ts
+  const appRouterMatch = filePath.match(/\/app\/api\/(.+?)\/route\.(ts|js)/);
+  if (appRouterMatch) return `/api/${appRouterMatch[1]}`;
 
-  const categoryMap: Record<string, NodeCategory> = {
-    http_webhook: NodeCategory.TRIGGER,
-    cron_job: NodeCategory.TRIGGER,
-    manual: NodeCategory.TRIGGER,
-    fetch_api: NodeCategory.ACTION,
-    sql_query: NodeCategory.ACTION,
-    redis_cache: NodeCategory.ACTION,
-    custom_code: NodeCategory.ACTION,
-    call_subflow: NodeCategory.ACTION,
-    if_else: NodeCategory.LOGIC,
-    for_loop: NodeCategory.LOGIC,
-    try_catch: NodeCategory.LOGIC,
-    promise_all: NodeCategory.LOGIC,
-    declare: NodeCategory.VARIABLE,
-    transform: NodeCategory.VARIABLE,
-    return_response: NodeCategory.OUTPUT,
-  };
+  // Next.js Pages Router: /pages/api/xxx.ts
+  const pagesMatch = filePath.match(/\/pages\/api\/(.+?)\.(ts|js)/);
+  if (pagesMatch) return `/api/${pagesMatch[1]}`;
 
-  const defaultParams: Record<string, unknown> = {
-    [TriggerType.HTTP_WEBHOOK]: { method: "GET", routePath: "/api/unknown", parseBody: false },
-    [TriggerType.CRON_JOB]: { schedule: "*/5 * * * *", functionName: "job" },
-    [TriggerType.MANUAL]: { functionName: "main", args: [] },
-    [ActionType.FETCH_API]: { url: "", method: "GET", parseJson: true },
-    [ActionType.SQL_QUERY]: { orm: "raw", query: "" },
-    [ActionType.REDIS_CACHE]: { operation: "get", key: "" },
-    [ActionType.CUSTOM_CODE]: { code: "" },
-    [ActionType.CALL_SUBFLOW]: { flowPath: "", functionName: "", inputMapping: {} },
-    [LogicType.IF_ELSE]: { condition: "true" },
-    [LogicType.FOR_LOOP]: { iterableExpression: "[]", itemVariable: "item" },
-    [LogicType.TRY_CATCH]: { errorVariable: "error" },
-    [VariableType.DECLARE]: { name: "value", dataType: "any", isConst: true },
-    [VariableType.TRANSFORM]: { expression: "" },
-    [OutputType.RETURN_RESPONSE]: { statusCode: 200, bodyExpression: "{}" },
-  };
+  // Try to find in comments
+  const fullText = sourceFile.getFullText();
+  const routeMatch = fullText.match(/\/api\/\S+/);
+  if (routeMatch) return routeMatch[0];
 
-  return {
-    id,
-    nodeType,
-    category: categoryMap[nodeType] ?? NodeCategory.ACTION,
-    label,
-    params: (defaultParams[nodeType] ?? {}) as FlowNode["params"],
-    inputs: ports.inputs,
-    outputs: ports.outputs,
-  };
+  return "/api/handler";
+}
+
+function inferDataType(tsType: string): "string" | "number" | "boolean" | "object" | "array" | "any" {
+  if (tsType.includes("string")) return "string";
+  if (tsType.includes("number")) return "number";
+  if (tsType.includes("boolean")) return "boolean";
+  if (tsType.includes("[]") || tsType.includes("Array")) return "array";
+  if (tsType.includes("{") || tsType.includes("Record") || tsType.includes("object")) return "object";
+  return "any";
+}
+
+function inferLabel(code: string, varName: string | undefined): string {
+  // Try to extract a meaningful function call name
+  const callMatch = code.match(/^(\w+(?:\.\w+)*)\(/);
+  if (callMatch) return callMatch[1];
+  if (varName) return varName;
+  return truncate(code, 30);
+}
+
+function trackVariableUses(nodeId: string, expression: string, ctx: DecompileContext): void {
+  // Find identifiers that might reference previously defined variables
+  const identifiers = expression.match(/\b([a-zA-Z_]\w*)\b/g);
+  if (!identifiers) return;
+
+  const uses: VariableUse[] = [];
+  const seen = new Set<string>();
+
+  for (const ident of identifiers) {
+    // Skip keywords, common globals, and type names
+    if (SKIP_IDENTIFIERS.has(ident)) continue;
+    if (seen.has(ident)) continue;
+    seen.add(ident);
+
+    // Only track if this variable has a known definition
+    if (ctx.varDefs.has(ident)) {
+      uses.push({ nodeId, portId: "input", varName: ident });
+    }
+  }
+
+  if (uses.length > 0) {
+    const existing = ctx.varUses.get(nodeId) ?? [];
+    ctx.varUses.set(nodeId, [...existing, ...uses]);
+  }
+}
+
+const SKIP_IDENTIFIERS = new Set([
+  // JS keywords
+  "const", "let", "var", "function", "return", "if", "else", "for", "while",
+  "do", "switch", "case", "break", "continue", "throw", "try", "catch", "finally",
+  "new", "delete", "typeof", "void", "in", "of", "instanceof", "this", "super",
+  "class", "extends", "import", "export", "default", "from", "as", "async", "await",
+  "yield", "true", "false", "null", "undefined",
+  // Common globals
+  "console", "JSON", "Math", "Date", "Error", "Promise", "Array", "Object", "String",
+  "Number", "Boolean", "Map", "Set", "RegExp", "Symbol", "Buffer", "process",
+  "setTimeout", "setInterval", "clearTimeout", "clearInterval",
+  "fetch", "Response", "Request", "Headers", "URL", "URLSearchParams",
+  "NextResponse", "NextRequest",
+  // Common methods
+  "log", "error", "warn", "stringify", "parse", "json", "text", "toString",
+  "map", "filter", "reduce", "forEach", "find", "some", "every", "includes",
+  "push", "pop", "shift", "unshift", "slice", "splice", "concat", "join",
+  "keys", "values", "entries", "assign", "freeze",
+  "status", "ok", "headers", "body", "method", "url",
+  "length", "trim", "split", "replace", "match", "test", "exec",
+  "parseInt", "parseFloat", "isNaN", "isFinite",
+  "then", "catch", "finally",
+]);
+
+function truncate(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  return str.slice(0, maxLen - 3) + "...";
 }

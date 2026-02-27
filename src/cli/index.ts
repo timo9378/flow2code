@@ -134,7 +134,106 @@ program
   });
 
 // ============================================================
-// watch 指令
+// audit command — Universal TS Decompiler
+// ============================================================
+
+program
+  .command("audit <file>")
+  .description("Decompile any TypeScript file into a visual FlowIR for code auditing")
+  .option("-o, --output <path>", "Write IR JSON to file instead of stdout")
+  .option("--format <fmt>", "Output format: json | mermaid | summary", "summary")
+  .option("--function <name>", "Target function name to decompile")
+  .option("--no-audit-hints", "Disable audit hints")
+  .action(async (file: string, options: { output?: string; format?: string; function?: string; auditHints?: boolean }) => {
+    const { decompile } = await import("../lib/compiler/decompiler.js");
+    const filePath = resolve(file);
+
+    if (!existsSync(filePath)) {
+      console.error(`❌ File not found: ${filePath}`);
+      process.exit(1);
+    }
+
+    const code = readFileSync(filePath, "utf-8");
+    const result = decompile(code, {
+      fileName: basename(filePath),
+      functionName: options.function,
+      audit: options.auditHints !== false,
+    });
+
+    if (!result.success) {
+      console.error("❌ Decompile failed:");
+      result.errors?.forEach((e) => console.error(`  ${e}`));
+      process.exit(1);
+    }
+
+    const fmt = options.format ?? "summary";
+
+    if (fmt === "json") {
+      const output = JSON.stringify(result.ir, null, 2);
+      if (options.output) {
+        writeFileSync(resolve(options.output), output, "utf-8");
+        console.log(`✅ IR written to: ${options.output}`);
+      } else {
+        console.log(output);
+      }
+    } else if (fmt === "mermaid") {
+      console.log(irToMermaid(result.ir!));
+    } else {
+      // summary (default)
+      console.log(`\n🔍 Flow2Code Audit: ${filePath}`);
+      console.log(`   Confidence: ${(result.confidence * 100).toFixed(0)}%`);
+      console.log(`   Nodes: ${result.ir!.nodes.length}`);
+      console.log(`   Edges: ${result.ir!.edges.length}`);
+      console.log("");
+
+      // Node summary
+      for (const node of result.ir!.nodes) {
+        const icon = getCategoryIcon(node.category);
+        console.log(`   ${icon} [${node.id}] ${node.label} (${node.nodeType})`);
+      }
+
+      // Audit hints
+      if (result.audit && result.audit.length > 0) {
+        console.log("\n📋 Audit Hints:");
+        for (const hint of result.audit) {
+          const icon = hint.severity === "error" ? "🔴" : hint.severity === "warning" ? "🟠" : "🔵";
+          const lineInfo = hint.line ? ` (line ${hint.line})` : "";
+          console.log(`   ${icon} [${hint.nodeId}]${lineInfo}: ${hint.message}`);
+        }
+      }
+      console.log("");
+    }
+  });
+
+function getCategoryIcon(category: string): string {
+  switch (category) {
+    case "trigger": return "⚡";
+    case "action": return "🔧";
+    case "logic": return "🔀";
+    case "variable": return "📦";
+    case "output": return "📤";
+    default: return "▪️";
+  }
+}
+
+function irToMermaid(ir: FlowIR): string {
+  const lines: string[] = ["graph TD"];
+  for (const node of ir.nodes) {
+    const shape = node.category === "trigger" ? `{{"${node.label}"}}` :
+      node.category === "output" ? `(["${node.label}"])` :
+        node.category === "logic" ? `{"${node.label}"}` :
+          `["${node.label}"]`;
+    lines.push(`  ${node.id}${shape}`);
+  }
+  for (const edge of ir.edges) {
+    const label = edge.sourcePortId !== "output" ? `-- ${edge.sourcePortId} -->` : `-->`;
+    lines.push(`  ${edge.sourceNodeId} ${label} ${edge.targetNodeId}`);
+  }
+  return lines.join("\n");
+}
+
+// ============================================================
+// watch command
 // ============================================================
 
 program
@@ -314,7 +413,7 @@ program
     }
 
     const outputDir = options.output ?? filePath.replace(/\.flow\.json$|\.json$/, "");
-    
+
     const written = splitToFileSystem(
       ir,
       resolve(outputDir),
@@ -406,7 +505,7 @@ program
 
     // 嘗試找到對應的 .flow.map.json
     const mapPath = filePath.replace(/\.ts$/, ".flow.map.json");
-    
+
     if (!existsSync(mapPath)) {
       // 嘗試從原始碼重新編譯生成 source map
       console.log(`🔍 未找到 Source Map (${mapPath})`);
@@ -417,7 +516,7 @@ program
     try {
       const mapRaw = readFileSync(mapPath, "utf-8");
       const sourceMap: SourceMap = JSON.parse(mapRaw);
-      
+
       const result = traceLineToNode(sourceMap, lineNum);
       if (result) {
         console.log(`🎯 第 ${lineNum} 行對應的節點:`);

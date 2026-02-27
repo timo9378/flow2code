@@ -97,7 +97,11 @@ export { inferFlowStateTypes } from "./compiler/type-inference";
 
 // ── Decompiler (TS → IR) ──
 export { decompile } from "./compiler/decompiler";
-export type { DecompileResult } from "./compiler/decompiler";
+export type {
+  DecompileResult,
+  DecompileOptions,
+  AuditHint,
+} from "./compiler/decompiler";
 
 // ── Runtime Error Tracer ──
 export {
