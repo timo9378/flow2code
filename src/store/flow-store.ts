@@ -71,7 +71,7 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
   // React Flow 狀態
   nodes: Node<FlowNodeData>[];
   edges: Edge[];
-  
+
   // 選取狀態
   selectedNodeId: string | null;
 
@@ -154,160 +154,160 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
       if (next) set({ nodes: next.nodes, edges: next.edges });
     },
 
-  onNodesChange: (changes) => {
-    set({ nodes: applyNodeChanges(changes, get().nodes) as Node<FlowNodeData>[] });
-  },
+    onNodesChange: (changes) => {
+      set({ nodes: applyNodeChanges(changes, get().nodes) as Node<FlowNodeData>[] });
+    },
 
-  onEdgesChange: (changes) => {
-    set({ edges: applyEdgeChanges(changes, get().edges) });
-  },
+    onEdgesChange: (changes) => {
+      set({ edges: applyEdgeChanges(changes, get().edges) });
+    },
 
-  onConnect: (connection) => {
-    get().snapshot();
-    set({ edges: addEdge(connection, get().edges) });
-  },
+    onConnect: (connection) => {
+      get().snapshot();
+      set({ edges: addEdge(connection, get().edges) });
+    },
 
-  addFlowNode: (nodeType, _category, position) => {
-    get().snapshot();
-    const id = `node_${++_nodeCounter}_${Date.now()}`;
-    const category = getCategoryForType(nodeType);
-    const { inputs, outputs } = getDefaultPorts(nodeType);
-    const params = getDefaultParams(nodeType);
-    const label = getDefaultLabel(nodeType);
+    addFlowNode: (nodeType, _category, position) => {
+      get().snapshot();
+      const id = `node_${++_nodeCounter}_${Date.now()}`;
+      const category = getCategoryForType(nodeType);
+      const { inputs, outputs } = getDefaultPorts(nodeType);
+      const params = getDefaultParams(nodeType);
+      const label = getDefaultLabel(nodeType);
 
-    const newNode: Node<FlowNodeData> = {
-      id,
-      type: "flowNode", // 使用統一的自定義節點渲染
-      position,
-      data: {
-        nodeType,
-        category,
-        label,
-        params,
-        inputs,
-        outputs,
-      },
-    };
+      const newNode: Node<FlowNodeData> = {
+        id,
+        type: "flowNode", // 使用統一的自定義節點渲染
+        position,
+        data: {
+          nodeType,
+          category,
+          label,
+          params,
+          inputs,
+          outputs,
+        },
+      };
 
-    set({
-      nodes: [...get().nodes, newNode],
-      flowCreatedAt: get().flowCreatedAt ?? new Date().toISOString(),
-    });
-    return id;
-  },
+      set({
+        nodes: [...get().nodes, newNode],
+        flowCreatedAt: get().flowCreatedAt ?? new Date().toISOString(),
+      });
+      return id;
+    },
 
-  updateNodeParams: (nodeId, params) => {
-    set({
-      nodes: get().nodes.map((node) =>
-        node.id === nodeId
-          ? {
+    updateNodeParams: (nodeId, params) => {
+      set({
+        nodes: get().nodes.map((node) =>
+          node.id === nodeId
+            ? {
               ...node,
               data: {
                 ...node.data,
-                params: { ...node.data.params, ...params },
+                params: { ...node.data.params, ...(params as any) },
               },
             }
-          : node
-      ),
-    });
-  },
+            : node
+        ),
+      });
+    },
 
-  updateNodeLabel: (nodeId, label) => {
-    set({
-      nodes: get().nodes.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, label } }
-          : node
-      ),
-    });
-  },
+    updateNodeLabel: (nodeId, label) => {
+      set({
+        nodes: get().nodes.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, label } }
+            : node
+        ),
+      });
+    },
 
-  selectNode: (nodeId) => {
-    set({ selectedNodeId: nodeId });
-  },
+    selectNode: (nodeId) => {
+      set({ selectedNodeId: nodeId });
+    },
 
-  removeNode: (nodeId) => {
-    get().snapshot();
-    set({
-      nodes: get().nodes.filter((n) => n.id !== nodeId),
-      edges: get().edges.filter(
-        (e) => e.source !== nodeId && e.target !== nodeId
-      ),
-      selectedNodeId:
-        get().selectedNodeId === nodeId ? null : get().selectedNodeId,
-    });
-  },
+    removeNode: (nodeId) => {
+      get().snapshot();
+      set({
+        nodes: get().nodes.filter((n) => n.id !== nodeId),
+        edges: get().edges.filter(
+          (e) => e.source !== nodeId && e.target !== nodeId
+        ),
+        selectedNodeId:
+          get().selectedNodeId === nodeId ? null : get().selectedNodeId,
+      });
+    },
 
-  exportIR: (): FlowIR => {
-    const { nodes, edges } = get();
+    exportIR: (): FlowIR => {
+      const { nodes, edges } = get();
 
-    const irNodes: FlowNode[] = nodes.map((n) => ({
-      id: n.id,
-      nodeType: n.data.nodeType,
-      category: n.data.category,
-      label: n.data.label,
-      params: n.data.params,
-      inputs: n.data.inputs,
-      outputs: n.data.outputs,
-    }));
-
-    const irEdges: FlowEdge[] = edges.map((e) => ({
-      id: e.id,
-      sourceNodeId: e.source,
-      sourcePortId: e.sourceHandle ?? "output",
-      targetNodeId: e.target,
-      targetPortId: e.targetHandle ?? "input",
-    }));
-
-    return {
-      version: "1.0.0",
-      meta: {
-        name: "Untitled Flow",
-        description: "",
-        createdAt: get().flowCreatedAt ?? new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      nodes: irNodes,
-      edges: irEdges,
-    };
-  },
-
-  reset: () => {
-    _nodeCounter = 0;
-    get().clearHistory();
-    set({ nodes: [], edges: [], selectedNodeId: null, flowCreatedAt: null });
-  },
-
-  loadIR: (ir: FlowIR) => {
-    _nodeCounter = ir.nodes.length;
-
-    const nodes: Node<FlowNodeData>[] = ir.nodes.map((n, i) => {
-      const defaults = getDefaultPorts(n.nodeType);
-      return {
+      const irNodes: FlowNode[] = nodes.map((n) => ({
         id: n.id,
-        type: "flowNode",
-        position: { x: 100 + (i % 3) * 300, y: 100 + Math.floor(i / 3) * 200 },
-        data: {
-          nodeType: n.nodeType,
-          category: n.category,
-          label: n.label ?? getDefaultLabel(n.nodeType),
-          params: n.params ?? getDefaultParams(n.nodeType),
-          inputs: n.inputs ?? defaults.inputs,
-          outputs: n.outputs ?? defaults.outputs,
+        nodeType: n.data.nodeType,
+        category: n.data.category,
+        label: n.data.label,
+        params: n.data.params,
+        inputs: n.data.inputs,
+        outputs: n.data.outputs,
+      }));
+
+      const irEdges: FlowEdge[] = edges.map((e) => ({
+        id: e.id,
+        sourceNodeId: e.source,
+        sourcePortId: e.sourceHandle ?? "output",
+        targetNodeId: e.target,
+        targetPortId: e.targetHandle ?? "input",
+      }));
+
+      return {
+        version: "1.0.0",
+        meta: {
+          name: "Untitled Flow",
+          description: "",
+          createdAt: get().flowCreatedAt ?? new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
+        nodes: irNodes,
+        edges: irEdges,
       };
-    });
+    },
 
-    const edges: Edge[] = ir.edges.map((e) => ({
-      id: e.id,
-      source: e.sourceNodeId,
-      sourceHandle: e.sourcePortId,
-      target: e.targetNodeId,
-      targetHandle: e.targetPortId,
-      animated: true,
-    }));
+    reset: () => {
+      _nodeCounter = 0;
+      get().clearHistory();
+      set({ nodes: [], edges: [], selectedNodeId: null, flowCreatedAt: null });
+    },
 
-    set({ nodes, edges, selectedNodeId: null, flowCreatedAt: ir.meta?.createdAt ?? new Date().toISOString() });
-  },
-};
+    loadIR: (ir: FlowIR) => {
+      _nodeCounter = ir.nodes.length;
+
+      const nodes: Node<FlowNodeData>[] = ir.nodes.map((n, i) => {
+        const defaults = getDefaultPorts(n.nodeType);
+        return {
+          id: n.id,
+          type: "flowNode",
+          position: { x: 100 + (i % 3) * 300, y: 100 + Math.floor(i / 3) * 200 },
+          data: {
+            nodeType: n.nodeType,
+            category: n.category,
+            label: n.label ?? getDefaultLabel(n.nodeType),
+            params: n.params ?? getDefaultParams(n.nodeType),
+            inputs: n.inputs ?? defaults.inputs,
+            outputs: n.outputs ?? defaults.outputs,
+          },
+        };
+      });
+
+      const edges: Edge[] = ir.edges.map((e) => ({
+        id: e.id,
+        source: e.sourceNodeId,
+        sourceHandle: e.sourcePortId,
+        target: e.targetNodeId,
+        targetHandle: e.targetPortId,
+        animated: true,
+      }));
+
+      set({ nodes, edges, selectedNodeId: null, flowCreatedAt: ir.meta?.createdAt ?? new Date().toISOString() });
+    },
+  };
 });

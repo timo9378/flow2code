@@ -84,27 +84,27 @@ function setSecurityHeaders(res: ServerResponse) {
   // Production 模式收緊策略；Dev 模式允許 inline（React/Next HMR 需求）
   const csp = isDev
     ? [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob:",
-        "font-src 'self' data:",
-        "connect-src 'self' *",
-        "frame-ancestors 'self'",
-        "form-action 'self'",
-        "base-uri 'self'",
-      ].join("; ")
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self' *",
+      "frame-ancestors 'self'",
+      "form-action 'self'",
+      "base-uri 'self'",
+    ].join("; ")
     : [
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob:",
-        "font-src 'self' data:",
-        "connect-src 'self'",
-        "frame-ancestors 'self'",
-        "form-action 'self'",
-        "base-uri 'self'",
-      ].join("; ");
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "frame-ancestors 'self'",
+      "form-action 'self'",
+      "base-uri 'self'",
+    ].join("; ");
 
   res.setHeader("Content-Security-Policy", csp);
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -204,19 +204,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
     }
 
     if (pathname === "/api/compile") {
-      const result = handleCompile(body, projectRoot);
+      const result = handleCompile(body as any, projectRoot);
       sendJson(res, result.status, result.body);
       return;
     }
 
     if (pathname === "/api/generate") {
-      const result = await handleGenerate(body);
+      const result = await handleGenerate(body as any);
       sendJson(res, result.status, result.body);
       return;
     }
 
     if (pathname === "/api/import-openapi") {
-      const result = handleImportOpenAPI(body);
+      const result = handleImportOpenAPI(body as any);
       sendJson(res, result.status, result.body);
       return;
     }

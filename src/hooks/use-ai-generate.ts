@@ -13,6 +13,7 @@ import {
   estimateTokenCount,
   checkTokenBudget,
 } from "@/lib/ai/stream";
+import type { FlowIR } from "@/lib/ir/types";
 
 export interface AIGenerateState {
   aiPrompt: string;
@@ -108,7 +109,7 @@ async function generateWithDirectEndpoint(
   prompt: string,
   abortRef: React.RefObject<AbortController | null>,
   setStreamContent: (v: string) => void,
-  loadIR: (ir: Record<string, unknown>) => void
+  loadIR: (ir: FlowIR) => void
 ): Promise<string> {
   const { FLOW_IR_SYSTEM_PROMPT: systemPrompt } = await import("@/lib/ai/prompt");
 
@@ -192,9 +193,9 @@ async function generateWithDirectEndpoint(
   );
   if (codeBlockMatch) jsonStr = codeBlockMatch[1];
 
-  let ir: Record<string, unknown>;
+  let ir: FlowIR;
   try {
-    ir = JSON.parse(jsonStr);
+    ir = JSON.parse(jsonStr) as FlowIR;
   } catch {
     return `❌ JSON 解析失敗:\n${content}`;
   }
@@ -228,7 +229,7 @@ async function generateWithDirectEndpoint(
 async function generateWithBackend(
   prompt: string,
   abortRef: React.RefObject<AbortController | null>,
-  loadIR: (ir: Record<string, unknown>) => void
+  loadIR: (ir: FlowIR) => void
 ): Promise<string> {
   const { getApiBase } = await import("@/lib/api-base");
   const res = await fetch(`${getApiBase()}/api/generate`, {
