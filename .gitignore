@@ -39,3 +39,4 @@ coverage/
 # Generated API docs
 docs/api/
 flow2code-*.tgz
+test.md

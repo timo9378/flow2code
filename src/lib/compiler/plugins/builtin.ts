@@ -195,7 +195,12 @@ const fetchApiPlugin: NodePlugin = {
 
       if (hasBody) {
         const bodyExpr = context.resolveExpression(params.body!, node.id);
-        writer.writeLine(`  body: JSON.stringify(${bodyExpr}),`);
+        // Avoid double JSON.stringify — if expression already calls JSON.stringify, use it as-is
+        if (bodyExpr.trimStart().startsWith("JSON.stringify")) {
+          writer.writeLine(`  body: ${bodyExpr},`);
+        } else {
+          writer.writeLine(`  body: JSON.stringify(${bodyExpr}),`);
+        }
       }
 
       writer.writeLine("});");
@@ -288,26 +293,30 @@ const redisCachePlugin: NodePlugin = {
   generate(node, writer) {
     const params = node.params as RedisCacheParams;
 
+    // Smart quoting: use backticks for keys with template expressions, double quotes otherwise
+    const needsInterpolation = params.key.includes("${") || params.key.includes("{{");
+    const keyExpr = needsInterpolation ? `\`${params.key}\`` : `"${params.key}"`;
+
     switch (params.operation) {
       case "get":
         writer.writeLine(
-          `flowState['${node.id}'] = await redis.get("${params.key}");`
+          `flowState['${node.id}'] = await redis.get(${keyExpr});`
         );
         break;
       case "set":
         if (params.ttl) {
           writer.writeLine(
-            `await redis.set("${params.key}", ${params.value ?? "null"}, "EX", ${params.ttl});`
+            `await redis.set(${keyExpr}, ${params.value ?? "null"}, "EX", ${params.ttl});`
           );
         } else {
           writer.writeLine(
-            `await redis.set("${params.key}", ${params.value ?? "null"});`
+            `await redis.set(${keyExpr}, ${params.value ?? "null"});`
           );
         }
         writer.writeLine(`flowState['${node.id}'] = true;`);
         break;
       case "del":
-        writer.writeLine(`await redis.del("${params.key}");`);
+        writer.writeLine(`await redis.del(${keyExpr});`);
         writer.writeLine(`flowState['${node.id}'] = true;`);
         break;
     }
@@ -361,18 +370,18 @@ const customCodePlugin: NodePlugin = {
       }
     }
 
+    // Use unique variable name per node to avoid duplicate const declarations
+    const resultVar = `custom_result_${node.id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+
     if (params.returnVariable) {
-      writer.writeLine(`const custom_result = await (async () => {`);
+      writer.writeLine(`const ${resultVar} = await (async () => {`);
     } else {
       writer.writeLine(`await (async () => {`);
     }
 
     writer.writeLine(`// Custom Code: ${node.label}`);
     const lines = params.code.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      // If the last line is a return statement and we have a returnVariable, strip the return keyword
-      // if it conflicts. Actually, if user provided `returnVariable`, we just inject normal code.
+    for (const line of lines) {
       writer.writeLine(`  ${line}`);
     }
 
@@ -383,7 +392,7 @@ const customCodePlugin: NodePlugin = {
     writer.writeLine(`})();`);
 
     if (params.returnVariable) {
-      writer.writeLine(`flowState['${node.id}'] = custom_result;`);
+      writer.writeLine(`flowState['${node.id}'] = ${resultVar};`);
     }
   },
 

@@ -827,6 +827,10 @@ function resolveEnvVars(url: string, context: CompilerContext): string {
       "`"
     );
   }
+  // If URL contains any ${...} expressions (e.g. flowState refs), use backticks for interpolation
+  if (url.includes("${")) {
+    return "`" + url + "`";
+  }
   return `"${url}"`;
 }
 

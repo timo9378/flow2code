@@ -28,7 +28,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -262,11 +262,13 @@ export default function Toolbar() {
 
             {/* Streaming Live Preview */}
             {ai.aiLoading && ai.aiStreamContent && (
-              <div className="bg-secondary/50 rounded-md p-3 max-h-[120px] overflow-y-auto">
+              <div className="bg-secondary/50 rounded-md p-3">
                 <div className="text-[10px] text-muted-foreground mb-1 font-semibold">📡 Live Stream</div>
-                <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words">
-                  {ai.aiStreamContent.length > 500 ? `...${ai.aiStreamContent.slice(-500)}` : ai.aiStreamContent}
-                </pre>
+                <ScrollArea className="max-h-[120px] w-full">
+                  <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words">
+                    {ai.aiStreamContent.length > 500 ? `...${ai.aiStreamContent.slice(-500)}` : ai.aiStreamContent}
+                  </pre>
+                </ScrollArea>
               </div>
             )}
 
@@ -335,9 +337,10 @@ export default function Toolbar() {
             <DialogDescription>Output from compilation, validation, or AI generation</DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 max-h-[60vh] w-full">
-            <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap break-words leading-relaxed max-w-full">
+            <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre leading-relaxed">
               {output}
             </pre>
+            <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </DialogContent>
       </Dialog>
