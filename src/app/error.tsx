@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Next.js App Router 頁面級錯誤邊界
+ * Next.js App Router Page-level Error Boundary
  *
- * 捕獲頁面渲染錯誤，保留 layout 和 navbar 正常顯示。
+ * Catches page rendering errors while keeping the layout and navbar displayed normally.
  */
 export default function Error({
   error,
@@ -15,9 +15,9 @@ export default function Error({
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="max-w-md text-center space-y-4 p-8">
-        <h2 className="text-xl font-bold text-red-400">⚠️ 畫布載入失敗</h2>
+        <h2 className="text-xl font-bold text-red-400">⚠️ Canvas failed to load</h2>
         <p className="text-sm text-muted-foreground">
-          {error.message || "渲染過程中發生了未知錯誤"}
+          {error.message || "An unknown error occurred during rendering"}
         </p>
         {error.digest && (
           <p className="text-xs text-neutral-500 font-mono">
@@ -28,7 +28,7 @@ export default function Error({
           onClick={reset}
           className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-md text-sm font-medium transition-colors"
         >
-          重新嘗試
+          Retry
         </button>
       </div>
     </div>

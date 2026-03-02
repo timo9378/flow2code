@@ -1,7 +1,7 @@
 /**
- * 測試用 IR 範例工廠
+ * Test IR Example Factory
  * 
- * 提供各種預設的 FlowIR 物件供測試使用。
+ * Provides various preset FlowIR objects for testing.
  */
 
 import type {
@@ -18,7 +18,7 @@ import {
 } from "@/lib/ir/types";
 
 /**
- * 最簡單的 HTTP GET → Return Response 流程
+ * Simplest HTTP GET → Return Response flow
  */
 export function createSimpleGetFlow(): FlowIR {
   return {
@@ -237,7 +237,7 @@ export function createIfElseFlow(): FlowIR {
 }
 
 /**
- * 帶環路的無效 IR（用於測試驗證器）
+ * Invalid IR with cycles (for testing the validator)
  */
 export function createCyclicFlow(): FlowIR {
   return {
@@ -280,14 +280,14 @@ export function createCyclicFlow(): FlowIR {
     edges: [
       { id: "e1", sourceNodeId: "trigger_1", sourcePortId: "output", targetNodeId: "node_a", targetPortId: "input" },
       { id: "e2", sourceNodeId: "node_a", sourcePortId: "result", targetNodeId: "node_b", targetPortId: "input" },
-      // 環路！
+      // Cycle!
       { id: "e3", sourceNodeId: "node_b", sourcePortId: "result", targetNodeId: "node_a", targetPortId: "input" },
     ],
   };
 }
 
 /**
- * 並發節點流程：Trigger → (Fetch1 & Fetch2) → Merge → Response
+ * Concurrent node flow: Trigger → (Fetch1 & Fetch2) → Merge → Response
  */
 export function createConcurrentFlow(): FlowIR {
   return {
@@ -349,7 +349,7 @@ export function createConcurrentFlow(): FlowIR {
 }
 
 /**
- * 帶環境變數的 Fetch 流程
+ * Fetch flow with environment variables
  */
 export function createEnvVarFlow(): FlowIR {
   return {

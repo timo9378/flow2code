@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Flow2Code 主畫布元件 — Koimsurai 風格
+ * Flow2Code Main Canvas Component — Koimsurai Style
  *
- * 使用 React Flow (@xyflow/react) 建立可互動的視覺化編輯畫布。
- * 深色背景 + 點狀格線 + 發光連線
+ * Uses React Flow (@xyflow/react) to build an interactive visual editing canvas.
+ * Dark background + dot grid + glowing connections
  */
 
 import { useCallback, useEffect } from "react";
@@ -43,17 +43,17 @@ export default function FlowCanvas() {
   const undo = useFlowStore((s) => s.undoFlow);
   const redo = useFlowStore((s) => s.redoFlow);
 
-  // ── Deep link 高亮（搭配 Runtime Tracer） ──
+  // ── Deep link highlight (works with Runtime Tracer) ──
   useHighlightFromURL();
 
-  // ── 鍵盤快捷鍵 ──
+  // ── Keyboard Shortcuts ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 如果焦點在 input/textarea，不攔截鍵盤
+      // Don't intercept keyboard when focus is in input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      // Delete / Backspace：刪除選取的節點
+      // Delete / Backspace: delete the selected node
       if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
         e.preventDefault();
         removeNode(selectedNodeId);
@@ -97,12 +97,12 @@ export default function FlowCanvas() {
       </ErrorBoundary>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* 左側：節點庫 */}
+        {/* Left: Node Library */}
         <ErrorBoundary name="NodeLibrary">
           <NodeLibrary />
         </ErrorBoundary>
 
-        {/* 中央：畫布 */}
+        {/* Center: Canvas */}
         <FlowErrorBoundary>
           <div className="flex-1 relative">
             <ReactFlow
@@ -155,7 +155,7 @@ export default function FlowCanvas() {
         </div>
         </FlowErrorBoundary>
 
-        {/* 右側：配置面板 */}
+        {/* Right: Configuration Panel */}
         <ErrorBoundary name="ConfigPanel">
           <ConfigPanel />
         </ErrorBoundary>

@@ -1,7 +1,7 @@
 /**
- * useAIGenerate — AI 生成流程圖的業務邏輯 hook
+ * useAIGenerate — AI flow chart generation business logic hook
  *
- * 從 Toolbar.tsx 提取，專注於 AI streaming、retry、token 管理。
+ * Extracted from Toolbar.tsx, focused on AI streaming, retry, and token management.
  */
 
 import { useState, useRef, useCallback } from "react";
@@ -72,9 +72,9 @@ export function useAIGenerate(): AIGenerateState & AIGenerateActions {
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") {
-        return "⏹️ AI 生成已取消";
+        return "⏹️ AI generation cancelled";
       }
-      return `❌ AI 請求失敗: ${err instanceof Error ? err.message : String(err)}`;
+      return `❌ AI request failed: ${err instanceof Error ? err.message : String(err)}`;
     } finally {
       setAiLoading(false);
       setAiStreamContent("");
@@ -115,7 +115,7 @@ async function generateWithDirectEndpoint(
 
   const budget = checkTokenBudget(systemPrompt, prompt);
   if (!budget.withinBudget) {
-    return `⚠️ Prompt 可能過長（估計 ~${budget.estimated} tokens，建議 ≤${budget.limit}）\n請精簡描述後重試。`;
+    return `⚠️ Prompt may be too long (estimated ~${budget.estimated} tokens, recommended ≤${budget.limit})\nPlease simplify your description and retry.`;
   }
 
   const url = config.baseUrl.replace(/\/+$/, "");
@@ -164,7 +164,7 @@ async function generateWithDirectEndpoint(
         initialDelay: 1500,
         signal: abortRef.current?.signal,
         onRetry: (attempt, err) => {
-          setStreamContent(`⏳ 重試中 (${attempt}/2)：${err.message}\n`);
+          setStreamContent(`⏳ Retrying (${attempt}/2): ${err.message}\n`);
         },
       }
     );
@@ -178,13 +178,13 @@ async function generateWithDirectEndpoint(
     });
     if (!llmRes.ok) {
       const errText = await llmRes.text();
-      return `❌ AI API 錯誤 (${llmRes.status}): ${errText}`;
+      return `❌ AI API error (${llmRes.status}): ${errText}`;
     }
     const llmData = await llmRes.json();
     content = llmData.choices?.[0]?.message?.content ?? "";
   }
 
-  if (!content) return "❌ AI 回傳空內容";
+  if (!content) return "❌ AI returned empty content";
 
   // Extract JSON
   let jsonStr = content;
@@ -197,14 +197,41 @@ async function generateWithDirectEndpoint(
   try {
     ir = JSON.parse(jsonStr) as FlowIR;
   } catch {
-    return `❌ JSON 解析失敗:\n${content}`;
+    return `❌ JSON parsing failed:\n${content}`;
+  }
+
+  // --- Auto Heal IR: Connect orphaned nodes to trigger ---
+  const triggerNode = ir.nodes.find(n => n.category === "trigger");
+  if (triggerNode) {
+    const triggerOutputPortId = triggerNode.outputs?.[0]?.id || "output";
+    const connectedTargetNodeIds = new Set(ir.edges.map(e => e.targetNodeId));
+    let healedCount = 0;
+
+    ir.nodes.forEach(node => {
+      // Connect nodes that have inputs but aren't targeted by any edge
+      if (node.id !== triggerNode.id && !connectedTargetNodeIds.has(node.id) && node.inputs && node.inputs.length > 0) {
+        ir.edges.push({
+          id: `healed_e_${crypto.randomUUID().slice(0, 8)}`,
+          sourceNodeId: triggerNode.id,
+          sourcePortId: triggerNode.nodeType === 'http_webhook' ? 'request' : triggerOutputPortId,
+          targetNodeId: node.id,
+          targetPortId: node.inputs[0].id
+        });
+        healedCount++;
+      }
+    });
+
+    if (healedCount > 0) {
+      console.warn(`[AutoHeal] Connected ${healedCount} orphaned nodes to trigger.`);
+    }
   }
 
   const { validateFlowIR: validate } = await import("@/lib/ir/validator");
   const validation = validate(ir);
   if (!validation.valid) {
-    return `❌ IR 驗證失敗:\n${validation.errors.map((e: { code: string; message: string }) => `  [${e.code}] ${e.message}`).join("\n")}\n\n${JSON.stringify(ir, null, 2)}`;
+    return `❌ IR validation failed:\n${validation.errors.map((e: { code: string; message: string }) => `  [${e.code}] ${e.message}`).join("\n")}\n\n${JSON.stringify(ir, null, 2)}`;
   }
+
 
   loadIR(ir);
 
@@ -212,18 +239,18 @@ async function generateWithDirectEndpoint(
   const nodes = (ir.nodes as Array<{ category?: string; nodeType?: string }>) ?? [];
   const edges = (ir.edges as unknown[]) ?? [];
   const reviewNotes: string[] = [];
-  if (!nodes.some((n) => n.category === "trigger")) reviewNotes.push("⚠️ 缺少觸發器節點");
-  if (!nodes.some((n) => n.nodeType === "return_response")) reviewNotes.push("⚠️ 缺少 Return Response 節點");
-  if (nodes.length > 15) reviewNotes.push("💡 節點數量較多，建議拆分為子流程");
-  if (edges.length === 0 && nodes.length > 1) reviewNotes.push("⚠️ 節點之間沒有連線");
+  if (!nodes.some((n) => n.category === "trigger")) reviewNotes.push("⚠️ Missing trigger node");
+  if (!nodes.some((n) => n.nodeType === "return_response")) reviewNotes.push("⚠️ Missing Return Response node");
+  if (nodes.length > 15) reviewNotes.push("💡 Too many nodes, consider splitting into sub-flows");
+  if (edges.length === 0 && nodes.length > 1) reviewNotes.push("⚠️ No connections between nodes");
 
   const review =
     reviewNotes.length > 0
-      ? `\n\n📋 自動審計:\n${reviewNotes.join("\n")}`
-      : "\n\n✅ 自動審計通過";
+      ? `\n\n📋 Auto review:\n${reviewNotes.join("\n")}`
+      : "\n\n✅ Auto review passed";
 
   const meta = ir.meta as { name?: string } | undefined;
-  return `✅ AI 已生成流程圖：「${meta?.name ?? "Untitled"}」\n📡 ${config.name} (${config.model})\n📊 Token 估計: ~${budget.estimated}\n\n共 ${nodes.length} 個節點、${edges.length} 條連線${review}`;
+  return `✅ AI generated flow chart: "${meta?.name ?? "Untitled"}"\n📡 ${config.name} (${config.model})\n📊 Token estimate: ~${budget.estimated}\n\n${nodes.length} nodes, ${edges.length} edges${review}`;
 }
 
 async function generateWithBackend(
@@ -241,7 +268,7 @@ async function generateWithBackend(
   const data = await res.json();
   if (data.success && data.ir) {
     loadIR(data.ir);
-    return `✅ AI 已生成流程圖：「${data.ir.meta?.name ?? "Untitled"}」\n\n共 ${data.ir.nodes?.length ?? 0} 個節點、${data.ir.edges?.length ?? 0} 條連線`;
+    return `✅ AI generated flow chart: "${data.ir.meta?.name ?? "Untitled"}"\n\n${data.ir.nodes?.length ?? 0} nodes, ${data.ir.edges?.length ?? 0} edges`;
   }
-  return `❌ AI 生成失敗:\n${data.error ?? "未知錯誤"}\n\n${data.validationErrors ? JSON.stringify(data.validationErrors, null, 2) : ""}`;
+  return `❌ AI generation failed:\n${data.error ?? "Unknown error"}\n\n${data.validationErrors ? JSON.stringify(data.validationErrors, null, 2) : ""}`;
 }

@@ -1,8 +1,8 @@
 /**
  * Built-in Node Plugins
  *
- * 從編譯器核心提取出的所有內建節點代碼生成器。
- * 每個生成器遵循 NodePlugin 介面，可被外部 Plugin 覆蓋。
+ * All built-in node code generators extracted from the compiler core.
+ * Each generator follows the NodePlugin interface and can be overridden by external plugins.
  */
 
 import type { FlowNode, NodeId } from "../../ir/types";
@@ -36,8 +36,8 @@ import type { CodeBlockWriter } from "ts-morph";
 // ============================================================
 
 /**
- * 從 transform 表達式推斷輸出型別
- * 分析常見的 JavaScript 表達式模式
+ * Infer output type from transform expression
+ * Analyze common JavaScript expression patterns
  */
 function inferTypeFromExpression(expr: string): string {
   const trimmed = expr.trim();
@@ -103,19 +103,19 @@ function inferTypeFromExpression(expr: string): string {
 }
 
 /**
- * 從 custom_code 程式碼推斷 returnVariable 的型別
+ * Infer the type of returnVariable from custom_code
  */
 function inferTypeFromCode(code: string, returnVar: string): string {
-  // 尋找 returnVar 的宣告
+  // Look for returnVar declaration
   const declMatch = code.match(
     new RegExp(`(?:const|let|var)\\s+${escapeRegex(returnVar)}\\s*(?::\\s*([^=]+?))?\\s*=\\s*(.+?)(?:;|$)`, "m")
   );
   if (declMatch) {
-    // 有明確的型別註解
+    // Has explicit type annotation
     const typeAnnotation = declMatch[1]?.trim();
     if (typeAnnotation) return typeAnnotation;
 
-    // 從賦值表達式推斷
+    // Infer from assignment expression
     const initializer = declMatch[2]?.trim();
     if (initializer) {
       if (/^\[/.test(initializer)) return "unknown[]";
@@ -137,12 +137,12 @@ function escapeRegex(s: string): string {
 }
 
 // ============================================================
-// Trigger Plugins (No-ops, 已在 Platform Adapter 處理)
+// Trigger Plugins (No-ops, handled in Platform Adapter)
 // ============================================================
 
 const httpWebhookPlugin: NodePlugin = {
   nodeType: TriggerType.HTTP_WEBHOOK,
-  generate: () => {},
+  generate: () => { },
   getOutputType(node) {
     const params = node.params as HttpWebhookParams;
     if (["GET", "DELETE"].includes(params.method)) {
@@ -157,13 +157,13 @@ const httpWebhookPlugin: NodePlugin = {
 
 const cronJobPlugin: NodePlugin = {
   nodeType: TriggerType.CRON_JOB,
-  generate: () => {},
+  generate: () => { },
   getOutputType: () => "{ triggeredAt: string }",
 };
 
 const manualPlugin: NodePlugin = {
   nodeType: TriggerType.MANUAL,
-  generate: () => {},
+  generate: () => { },
   getOutputType: () => "Record<string, unknown>",
 };
 
@@ -322,17 +322,17 @@ const redisCachePlugin: NodePlugin = {
 };
 
 /**
- * ⚠️ 危險 API 模式清單 — 用於在編譯時產生警告
- * custom_code 會將使用者代碼逐行寫入輸出，必須提醒風險。
+ * ⚠️ Dangerous API pattern list — used to generate warnings at compile time
+ * custom_code writes user code line by line into the output, so risks must be flagged.
  */
 const DANGEROUS_CODE_PATTERNS = [
-  { pattern: /\bprocess\.exit\b/, desc: "process.exit() — 會終止 Node.js 進程" },
-  { pattern: /\bchild_process\b/, desc: "child_process — 可執行任意系統指令" },
-  { pattern: /\beval\s*\(/, desc: "eval() — 動態執行任意代碼" },
-  { pattern: /\bnew\s+Function\s*\(/, desc: "new Function() — 動態建構函式" },
-  { pattern: /\brequire\s*\(\s*['"]fs['"]/, desc: "require('fs') — 檔案系統存取" },
-  { pattern: /\bimport\s*\(\s*['"]fs['"]/, desc: "import('fs') — 檔案系統存取" },
-  { pattern: /\bfs\.\w*(unlink|rmdir|rm|writeFile)\b/, desc: "fs 刪除/寫入操作" },
+  { pattern: /\bprocess\.exit\b/, desc: "process.exit() — terminates the Node.js process" },
+  { pattern: /\bchild_process\b/, desc: "child_process — can execute arbitrary system commands" },
+  { pattern: /\beval\s*\(/, desc: "eval() — dynamically executes arbitrary code" },
+  { pattern: /\bnew\s+Function\s*\(/, desc: "new Function() — dynamically constructs functions" },
+  { pattern: /\brequire\s*\(\s*['"]fs['"]/, desc: "require('fs') — file system access" },
+  { pattern: /\bimport\s*\(\s*['"]fs['"]/, desc: "import('fs') — file system access" },
+  { pattern: /\bfs\.\w*(unlink|rmdir|rm|writeFile)\b/, desc: "fs delete/write operations" },
 ];
 
 const customCodePlugin: NodePlugin = {
@@ -341,7 +341,7 @@ const customCodePlugin: NodePlugin = {
   generate(node, writer, context) {
     const params = node.params as CustomCodeParams;
 
-    // 安全檢查：偵測危險 API 呼叫
+    // Safety check: detect dangerous API calls
     const warnings: string[] = [];
     for (const { pattern, desc } of DANGEROUS_CODE_PATTERNS) {
       if (pattern.test(params.code)) {
@@ -349,33 +349,50 @@ const customCodePlugin: NodePlugin = {
       }
     }
     if (warnings.length > 0) {
-      writer.writeLine(`// ⚠️ SECURITY WARNING: 此自訂代碼使用了以下危險 API:`);
+      writer.writeLine(`// ⚠️ SECURITY WARNING: This custom code uses the following dangerous APIs:`);
       for (const w of warnings) {
         writer.writeLine(`//   - ${w}`);
       }
-      writer.writeLine(`// 請在部署前仔細審閱此段代碼。`);
-      // 也記錄到 context warnings（如果有的話）
+      writer.writeLine(`// Please carefully review this code before deployment.`);
+      // Also record to context warnings (if available)
       if (context && "addWarning" in context) {
         const addWarning = (context as { addWarning?: (msg: string) => void }).addWarning;
-        addWarning?.(`[${node.id}] Custom code 使用危險 API: ${warnings.join(", ")}`);
+        addWarning?.(`[${node.id}] Custom code uses dangerous API: ${warnings.join(", ")}`);
       }
     }
 
-    writer.writeLine(`// Custom Code: ${node.label}`);
-    for (const line of params.code.split("\n")) {
-      writer.writeLine(line);
-    }
     if (params.returnVariable) {
-      writer.writeLine(`flowState['${node.id}'] = ${params.returnVariable};`);
+      writer.writeLine(`const custom_result = await (async () => {`);
+    } else {
+      writer.writeLine(`await (async () => {`);
+    }
+
+    writer.writeLine(`// Custom Code: ${node.label}`);
+    const lines = params.code.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // If the last line is a return statement and we have a returnVariable, strip the return keyword
+      // if it conflicts. Actually, if user provided `returnVariable`, we just inject normal code.
+      writer.writeLine(`  ${line}`);
+    }
+
+    // Auto-return the variable if specified, but keep it robust
+    if (params.returnVariable) {
+      writer.writeLine(`  if (typeof ${params.returnVariable} !== 'undefined') return ${params.returnVariable};`);
+    }
+    writer.writeLine(`})();`);
+
+    if (params.returnVariable) {
+      writer.writeLine(`flowState['${node.id}'] = custom_result;`);
     }
   },
 
   getOutputType(node) {
     const params = node.params as CustomCodeParams & { returnType?: string };
-    // 使用者可透過 returnType 參數指定回傳型別
+    // Users can specify return type via the returnType parameter
     if (params.returnType) return params.returnType;
     if (!params.returnVariable) return "void";
-    // 嘗試從 code 中推斷型別
+    // Try to infer type from code
     return inferTypeFromCode(params.code, params.returnVariable);
   },
 };
@@ -386,7 +403,7 @@ const callSubflowPlugin: NodePlugin = {
   generate(node, writer, context) {
     const params = node.params as CallSubflowParams;
 
-    // 靜態引入：註冊到檔案頂端的 import 區塊
+    // Static import: register in the import block at the top of the file
     const existing = context.imports.get(params.flowPath);
     if (existing) {
       existing.add(params.functionName);
@@ -394,7 +411,7 @@ const callSubflowPlugin: NodePlugin = {
       context.imports.set(params.flowPath, new Set([params.functionName]));
     }
 
-    // 解析輸入映射表達式
+    // Resolve input mapping expressions
     const args = Object.entries(params.inputMapping)
       .map(([key, expr]) => {
         const resolved = context.resolveExpression(expr, node.id);
@@ -410,7 +427,7 @@ const callSubflowPlugin: NodePlugin = {
   getOutputType(node) {
     const params = node.params as CallSubflowParams & { returnType?: string };
     if (params.returnType) return params.returnType;
-    // 利用 TypeScript 型別推斷：Awaited<ReturnType<typeof fn>>
+    // Leverage TypeScript type inference: Awaited<ReturnType<typeof fn>>
     return `Awaited<ReturnType<typeof ${params.functionName}>>`;
   },
 };
@@ -474,10 +491,10 @@ const forLoopPlugin: NodePlugin = {
     );
     const sanitizedId = node.id.replace(/[^a-zA-Z0-9_]/g, "_");
 
-    // 動態作用域變數名稱：避免巢狀迴圈的 const 遮蔽問題
+    // Dynamic scope variable name: avoid const shadowing in nested loops
     const scopeVar = `_scope_${sanitizedId}`;
 
-    // 使用作用域隔離，防止迴圈內變數污染全域 flowState
+    // Use scope isolation to prevent loop variables from polluting global flowState
     writer.writeLine(`const ${sanitizedId}_results: unknown[] = [];`);
 
     if (params.indexVariable) {
@@ -491,20 +508,20 @@ const forLoopPlugin: NodePlugin = {
     }
 
     writer.block(() => {
-      // 建立迴圈內的局部 scope（變數名稱唯一，不會遮蔽外層）
+      // Create local scope inside loop (unique variable name, no outer scope shadowing)
       writer.writeLine(
         `const ${scopeVar}: Record<string, unknown> = {};`
       );
 
-      // 將迴圈迭代項注入 scope
+      // Inject loop iteration item into scope
       writer.writeLine(
         `${scopeVar}['${node.id}'] = ${params.itemVariable};`
       );
 
-      // 推入作用域：子節點對 node.id 的引用會解析到 scopeVar
+      // Push scope: child node references to node.id will resolve to scopeVar
       context.pushScope(node.id, scopeVar);
 
-      // 生成迴圈體內子節點
+      // Generate child nodes inside loop body
       const childEdges = context.ir.edges.filter(
         (e) => e.sourceNodeId === node.id && e.sourcePortId === "body"
       );
@@ -515,7 +532,7 @@ const forLoopPlugin: NodePlugin = {
         }
       }
 
-      // 彈出作用域
+      // Pop scope
       context.popScope();
 
       writer.writeLine(`${sanitizedId}_results.push(${params.itemVariable});`);
@@ -544,12 +561,12 @@ const tryCatchPlugin: NodePlugin = {
     const catchScopeVar = `_scope_${node.id.replace(/[^a-zA-Z0-9_]/g, "_")}_catch`;
 
     writer.write("try ").block(() => {
-      // 建立 try 區塊的局部 scope（變數名稱唯一）
+      // Create local scope for try block (unique variable name)
       writer.writeLine(
         `const ${tryScopeVar}: Record<string, unknown> = {};`
       );
 
-      // 推入作用域：子節點對 node.id 的引用會解析到 tryScopeVar
+      // Push scope: child node references to node.id will resolve to tryScopeVar
       context.pushScope(node.id, tryScopeVar);
 
       for (const edge of successEdges) {
@@ -569,7 +586,7 @@ const tryCatchPlugin: NodePlugin = {
       writer.writeLine(
         `console.error("Error in ${node.label}:", ${params.errorVariable});`
       );
-      // 建立 catch 區塊的局部 scope（變數名稱唯一）
+      // Create local scope for catch block (unique variable name)
       writer.writeLine(
         `const ${catchScopeVar}: Record<string, unknown> = {};`
       );
@@ -577,7 +594,7 @@ const tryCatchPlugin: NodePlugin = {
         `flowState['${node.id}'] = { success: false, error: ${params.errorVariable} };`
       );
 
-      // 推入作用域：子節點對 node.id 的引用會解析到 catchScopeVar
+      // Push scope: child node references to node.id will resolve to catchScopeVar
       context.pushScope(node.id, catchScopeVar);
 
       for (const edge of errorEdges) {
@@ -651,8 +668,8 @@ const transformPlugin: NodePlugin = {
 
 /**
  * Return Response Plugin
- * 注意：此 Plugin 需要 platform adapter 提供 generateResponse
- * 目前直接使用 NextResponse.json (由 compiler 在整合時處理)
+ * Note: This plugin requires platform adapter to provide generateResponse
+ * Currently uses NextResponse.json directly (handled by compiler during integration)
  */
 const returnResponsePlugin: NodePlugin = {
   nodeType: OutputType.RETURN_RESPONSE,
@@ -664,8 +681,8 @@ const returnResponsePlugin: NodePlugin = {
       node.id
     );
 
-    // 委託給 platform adapter（透過 context.__platformResponse）
-    // 如果沒有 platform，fallback 到 NextResponse（向後相容）
+    // Delegate to platform adapter (via context.__platformResponse)
+    // If no platform, fallback to NextResponse (backward compatible)
     const ctx = context as PluginContext & {
       __platformResponse?: (
         writer: CodeBlockWriter,
@@ -678,7 +695,7 @@ const returnResponsePlugin: NodePlugin = {
     if (ctx.__platformResponse) {
       ctx.__platformResponse(writer, bodyExpr, params.statusCode, params.headers);
     } else {
-      // Fallback: 直接使用 NextResponse（向後相容）
+      // Fallback: use NextResponse directly (backward compatible)
       if (params.headers && Object.keys(params.headers).length > 0) {
         writer.writeLine(
           `return NextResponse.json(${bodyExpr}, { status: ${params.statusCode}, headers: ${JSON.stringify(params.headers)} });`
@@ -695,7 +712,7 @@ const returnResponsePlugin: NodePlugin = {
 };
 
 // ============================================================
-// 匯出所有內建 Plugins
+// Export all built-in Plugins
 // ============================================================
 
 export const builtinPlugins: NodePlugin[] = [

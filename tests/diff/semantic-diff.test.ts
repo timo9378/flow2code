@@ -1,7 +1,7 @@
 /**
- * Semantic Diff Engine 測試
+ * Semantic Diff Engine Tests
  *
- * 驗證：節點差異、連線差異、Meta 差異、格式化輸出。
+ * Verifies: node diffs, edge diffs, meta diffs, formatted output.
  */
 
 import { describe, it, expect } from "vitest";
@@ -10,8 +10,8 @@ import type { FlowIR } from "@/lib/ir/types";
 import { createSimpleGetFlow, createPostWithFetchFlow } from "../fixtures";
 
 describe("Semantic Diff Engine", () => {
-  describe("無差異", () => {
-    it("完全相同的 IR 應回傳零差異", () => {
+  describe("No Differences", () => {
+    it("identical IR should return zero differences", () => {
       const ir = createSimpleGetFlow();
       const result = semanticDiff(ir, ir);
 
@@ -20,8 +20,8 @@ describe("Semantic Diff Engine", () => {
     });
   });
 
-  describe("Meta 差異", () => {
-    it("應偵測名稱變更", () => {
+  describe("Meta Differences", () => {
+    it("should detect name changes", () => {
       const before = createSimpleGetFlow();
       const after = { ...createSimpleGetFlow(), meta: { ...before.meta, name: "Updated Name" } };
 
@@ -34,10 +34,10 @@ describe("Semantic Diff Engine", () => {
     });
   });
 
-  describe("Node 差異", () => {
-    it("應偵測新增節點", () => {
+  describe("Node Differences", () => {
+    it("should detect added nodes", () => {
       const before = createSimpleGetFlow();
-      const after = createPostWithFetchFlow(); // 多了 fetch_1 節點
+      const after = createPostWithFetchFlow(); // has additional fetch_1 node
 
       const result = semanticDiff(before, after);
       const addedNodes = result.changes.filter(
@@ -47,7 +47,7 @@ describe("Semantic Diff Engine", () => {
       expect(addedNodes.length).toBeGreaterThan(0);
     });
 
-    it("應偵測移除節點", () => {
+    it("should detect removed nodes", () => {
       const before = createPostWithFetchFlow();
       const after = createSimpleGetFlow();
 
@@ -59,7 +59,7 @@ describe("Semantic Diff Engine", () => {
       expect(removedNodes.length).toBeGreaterThan(0);
     });
 
-    it("應偵測修改節點（label 變更）", () => {
+    it("should detect modified nodes (label change)", () => {
       const before = createSimpleGetFlow();
       const after = JSON.parse(JSON.stringify(before)) as FlowIR;
       after.nodes[0].label = "New Label";
@@ -74,7 +74,7 @@ describe("Semantic Diff Engine", () => {
       expect(modifiedNode!.details!.some((d) => d.field === "label")).toBe(true);
     });
 
-    it("應偵測節點參數變更", () => {
+    it("should detect node parameter changes", () => {
       const before = createSimpleGetFlow();
       const after = JSON.parse(JSON.stringify(before)) as FlowIR;
       (after.nodes[1].params as any).statusCode = 201;
@@ -91,8 +91,8 @@ describe("Semantic Diff Engine", () => {
     });
   });
 
-  describe("Edge 差異", () => {
-    it("應偵測新增連線", () => {
+  describe("Edge Differences", () => {
+    it("should detect added edges", () => {
       const before = createSimpleGetFlow();
       const after = JSON.parse(JSON.stringify(before)) as FlowIR;
       after.edges.push({
@@ -112,7 +112,7 @@ describe("Semantic Diff Engine", () => {
       expect(addedEdge!.id).toBe("e_new");
     });
 
-    it("應偵測移除連線", () => {
+    it("should detect removed edges", () => {
       const before = createSimpleGetFlow();
       const after = JSON.parse(JSON.stringify(before)) as FlowIR;
       after.edges = [];
@@ -126,8 +126,8 @@ describe("Semantic Diff Engine", () => {
     });
   });
 
-  describe("統計", () => {
-    it("stats 應正確計算", () => {
+  describe("Statistics", () => {
+    it("stats should calculate correctly", () => {
       const before = createSimpleGetFlow();
       const after = JSON.parse(JSON.stringify(before)) as FlowIR;
       after.nodes[0].label = "Changed";
@@ -150,15 +150,15 @@ describe("Semantic Diff Engine", () => {
   });
 
   describe("formatDiff", () => {
-    it("無差異時應顯示 ✅ 無差異", () => {
+    it("should display ✅ No Differences when there are none", () => {
       const ir = createSimpleGetFlow();
       const result = semanticDiff(ir, ir);
       const output = formatDiff(result);
 
-      expect(output).toContain("✅ 無差異");
+      expect(output).toContain("✅ No differences");
     });
 
-    it("有差異時應顯示摘要統計", () => {
+    it("should display summary statistics when there are differences", () => {
       const before = createSimpleGetFlow();
       const after = JSON.parse(JSON.stringify(before)) as FlowIR;
       after.nodes[0].label = "Modified";
@@ -166,11 +166,11 @@ describe("Semantic Diff Engine", () => {
       const result = semanticDiff(before, after);
       const output = formatDiff(result);
 
-      expect(output).toContain("📊 差異摘要");
+      expect(output).toContain("📊 Diff summary");
       expect(output).toContain("Nodes");
     });
 
-    it("格式化應包含詳細的欄位差異", () => {
+    it("format should include detailed field differences", () => {
       const before = createSimpleGetFlow();
       const after = JSON.parse(JSON.stringify(before)) as FlowIR;
       after.meta.name = "New Name";

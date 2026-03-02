@@ -1,7 +1,7 @@
 /**
- * Plugin System 測試
+ * Plugin System Tests
  *
- * 驗證自定義 Plugin 的註冊與覆蓋機制。
+ * Verifies custom plugin registration and override mechanisms.
  */
 
 import { describe, it, expect } from "vitest";
@@ -13,8 +13,8 @@ import type { FlowIR } from "@/lib/ir/types";
 import { NodeCategory, TriggerType, OutputType } from "@/lib/ir/types";
 
 describe("Plugin System", () => {
-  it("所有內建節點類型應有對應 Plugin", () => {
-    // 使用 per-instance registry 驗證所有內建 plugin
+  it("all built-in node types should have corresponding plugins", () => {
+    // Use per-instance registry to verify all built-in plugins
     const registry = createPluginRegistry();
     registry.registerAll(builtinPlugins);
 
@@ -40,7 +40,7 @@ describe("Plugin System", () => {
     }
   });
 
-  it("自定義 Plugin 應可透過 compile options 注入", () => {
+  it("custom plugins should be injectable via compile options", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -100,7 +100,7 @@ describe("Plugin System", () => {
     expect(result.dependencies!.all).toContain("@aws-sdk/client-ses");
   });
 
-  it("自定義 Plugin 應可覆蓋內建 Plugin", () => {
+  it("custom plugins should be able to override built-in plugins", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -129,11 +129,11 @@ describe("Plugin System", () => {
       ],
     };
 
-    // 先用原版
+    // First use the original
     const original = compile(ir);
     expect(original.code).toContain("NextResponse.json");
 
-    // 用覆蓋版 — 自定義的 return_response
+    // Use the overridden version — custom return_response
     const overridden = compile(ir, {
       plugins: [
         {

@@ -1,8 +1,8 @@
 /**
- * OpenAPI 3.x → FlowIR 轉換器
+ * OpenAPI 3.x → FlowIR Converter
  *
- * 將 OpenAPI JSON 規範轉換為多個 FlowIR，
- * 每個 path + method 組合生成一個獨立的 FlowIR。
+ * Converts an OpenAPI JSON specification into multiple FlowIRs,
+ * generating an independent FlowIR for each path + method combination.
  */
 
 import type {
@@ -22,7 +22,7 @@ import {
 } from "../ir/types";
 
 // ============================================================
-// OpenAPI 子集型別（只取我們需要的欄位）
+// OpenAPI Subset Types (only fields we need)
 // ============================================================
 
 interface OpenAPISpec {
@@ -69,14 +69,14 @@ interface ParameterObject {
 }
 
 // ============================================================
-// 轉換結果
+// Conversion Result
 // ============================================================
 
 export interface ConvertResult {
   success: boolean;
   flows: FlowIR[];
   errors: string[];
-  /** 匯總資訊 */
+  /** Summary information */
   summary: {
     totalPaths: number;
     totalOperations: number;
@@ -85,14 +85,17 @@ export interface ConvertResult {
 }
 
 // ============================================================
-// 主轉換函式
+// Main Conversion Function
 // ============================================================
 
 export function convertOpenAPIToFlowIR(jsonInput: string | object): ConvertResult {
+  // Reset ID counter for each invocation to ensure deterministic results
+  idCounter = 0;
+
   const errors: string[] = [];
   let spec: OpenAPISpec;
 
-  // 1. 解析 JSON
+  // 1. Parse JSON
   try {
     spec =
       typeof jsonInput === "string"
@@ -102,22 +105,22 @@ export function convertOpenAPIToFlowIR(jsonInput: string | object): ConvertResul
     return {
       success: false,
       flows: [],
-      errors: [`JSON 解析失敗: ${e instanceof Error ? e.message : String(e)}`],
+      errors: [`JSON parse failed: ${e instanceof Error ? e.message : String(e)}`],
       summary: { totalPaths: 0, totalOperations: 0, tags: [] },
     };
   }
 
-  // 2. 基本驗證
+  // 2. Basic validation
   if (!spec.openapi || !spec.paths) {
     return {
       success: false,
       flows: [],
-      errors: ["不是有效的 OpenAPI 規範：缺少 openapi 或 paths 欄位"],
+      errors: ["Not a valid OpenAPI spec: missing openapi or paths field"],
       summary: { totalPaths: 0, totalOperations: 0, tags: [] },
     };
   }
 
-  // 3. 遍歷所有 path + method 組合
+  // 3. Iterate all path + method combinations
   const flows: FlowIR[] = [];
   const allTags = new Set<string>();
   let totalOps = 0;
@@ -160,7 +163,7 @@ export function convertOpenAPIToFlowIR(jsonInput: string | object): ConvertResul
 }
 
 // ============================================================
-// 單一端點轉換
+// Single Endpoint Conversion
 // ============================================================
 
 let idCounter = 0;
@@ -168,7 +171,7 @@ function nextId(prefix: string): string {
   return `${prefix}_${++idCounter}`;
 }
 
-/** 重置 ID 計數器（測試用） */
+/** Reset ID counter (for testing) */
 export function resetIdCounter(): void {
   idCounter = 0;
 }
@@ -188,7 +191,7 @@ function convertSingleOperation(
   const hasQueryParams = operation.parameters?.some((p) => p.in === "query");
   const hasPathParams = operation.parameters?.some((p) => p.in === "path");
 
-  // ── 1. Trigger 節點 ──
+  // ── 1. Trigger Node ──
   const triggerId = nextId("trigger");
   const queryParamsDef = operation.parameters
     ?.filter((p) => p.in === "query")
@@ -216,10 +219,10 @@ function convertSingleOperation(
   };
   nodes.push(triggerNode);
 
-  // ── 2. 可選的 Validation / Transform 節點 ──
+  // ── 2. Optional Validation / Transform Nodes ──
   let prevNodeId = triggerId;
 
-  // 如果有 path 參數，加一個 Transform 節點來解析
+  // If path params exist, add a Transform node to parse them
   if (hasPathParams) {
     const transformId = nextId("transform");
     const pathParams = operation.parameters!.filter((p) => p.in === "path");
@@ -247,7 +250,7 @@ function convertSingleOperation(
     prevNodeId = transformId;
   }
 
-  // ── 3. Return Response 節點 ──
+  // ── 3. Return Response Node ──
   const responseId = nextId("response");
   const successStatus = getSuccessStatus(operation);
 
@@ -290,7 +293,7 @@ function convertSingleOperation(
 }
 
 // ============================================================
-// 輔助函式
+// Helper Functions
 // ============================================================
 
 function buildTriggerOutputs(
@@ -318,13 +321,13 @@ function getSuccessStatus(operation: OperationObject): number {
 }
 
 /**
- * 將 OpenAPI path（/users/{user_id}）轉為 Next.js App Router 路徑
+ * Convert OpenAPI path (/users/{user_id}) to Next.js App Router path
  * /users/{user_id} → /api/users/[user_id]
  */
 function convertPathToNextJS(path: string): string {
-  // 確保以 /api 開頭
+  // Ensure it starts with /api
   const apiPath = path.startsWith("/api") ? path : `/api${path}`;
-  // 將 {param} 轉為 [param]
+  // Convert {param} to [param]
   return apiPath.replace(/\{(\w+)\}/g, "[$1]");
 }
 

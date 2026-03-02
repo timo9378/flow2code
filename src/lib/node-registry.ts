@@ -1,11 +1,11 @@
 /**
  * Flow2Code Dynamic Node Registry
  *
- * 解決「核心與節點過度耦合」問題：
- * 節點定義不再硬編碼在 switch statement 中，
- * 而是透過 `NodeDefinition` 獨立描述，動態註冊。
+ * Solves the "core and nodes over-coupling" problem:
+ * Node definitions are no longer hardcoded in switch statements,
+ * but independently described via `NodeDefinition` and dynamically registered.
  *
- * 社區擴展只需：
+ * Community extensions simply need to:
  * ```ts
  * import { nodeRegistry } from "flow2code/compiler";
  *
@@ -14,7 +14,7 @@
  *   category: NodeCategory.ACTION,
  *   label: "AWS S3 Upload",
  *   icon: "☁️",
- *   description: "上傳檔案到 AWS S3 Bucket",
+ *   description: "Upload file to AWS S3 Bucket",
  *   defaultPorts: {
  *     inputs: [{ id: "file", label: "File", dataType: "object", required: true }],
  *     outputs: [{ id: "url", label: "URL", dataType: "string" }],
@@ -38,113 +38,113 @@ import {
   OutputType,
 } from "@/lib/ir/types";
 
-// ── NodeDefinition 型別 ──
+// ── NodeDefinition Type ──
 
 export interface NodeDefinition {
-  /** 節點類型識別符（對應 IR 的 nodeType） */
+  /** Node type identifier (corresponds to IR's nodeType) */
   nodeType: string;
-  /** 節點分類 */
+  /** Node category */
   category: NodeCategory;
-  /** 顯示標籤 */
+  /** Display label */
   label: string;
-  /** Emoji / icon（用於 NodeLibrary） */
+  /** Emoji / icon (for NodeLibrary) */
   icon: string;
-  /** 節點描述（tooltip） */
+  /** Node description (tooltip) */
   description?: string;
-  /** 預設端口 */
+  /** Default ports */
   defaultPorts: {
     inputs: InputPort[];
     outputs: OutputPort[];
   };
-  /** 預設參數 */
+  /** Default parameters */
   defaultParams: Record<string, unknown>;
-  /** 分類在 NodeLibrary 中顯示的群組名稱，省略時自動歸入 category 預設群組 */
+  /** Group name displayed in NodeLibrary; defaults to category group if omitted */
   group?: string;
-  /** 排序權重（越小越前面），預設 100 */
+  /** Sort weight (lower = higher priority), default 100 */
   order?: number;
 }
 
-// ── Registry 實作 ──
+// ── Registry Implementation ──
 
 export class NodeRegistry {
   private definitions = new Map<string, NodeDefinition>();
 
-  /** 註冊單個節點定義 */
+  /** Register a single node definition */
   register(def: NodeDefinition): void {
     this.definitions.set(def.nodeType, def);
   }
 
-  /** 批次註冊 */
+  /** Batch register */
   registerAll(defs: NodeDefinition[]): void {
     for (const def of defs) {
       this.register(def);
     }
   }
 
-  /** 取得單個節點定義 */
+  /** Get a single node definition */
   get(nodeType: string): NodeDefinition | undefined {
     return this.definitions.get(nodeType);
   }
 
-  /** 取得所有節點定義 */
+  /** Get all node definitions */
   getAll(): NodeDefinition[] {
     return [...this.definitions.values()];
   }
 
-  /** 依分類取得節點定義 */
+  /** Get node definitions by category */
   getByCategory(category: NodeCategory): NodeDefinition[] {
     return this.getAll().filter((d) => d.category === category);
   }
 
-  /** 取得所有已知的 nodeType 字串 */
+  /** Get all registered nodeType strings */
   getRegisteredTypes(): string[] {
     return [...this.definitions.keys()];
   }
 
-  /** 是否已註冊 */
+  /** Check if registered */
   has(nodeType: string): boolean {
     return this.definitions.has(nodeType);
   }
 
-  /** 移除（用於測試或熱重載） */
+  /** Remove (for testing or hot reload) */
   unregister(nodeType: string): boolean {
     return this.definitions.delete(nodeType);
   }
 
-  /** 清空全部（用於測試） */
+  /** Clear all (for testing) */
   clear(): void {
     this.definitions.clear();
   }
 
-  // ── 便利方法：與舊 API 相容 ──
+  // ── Convenience methods: backward-compatible with old API ──
 
-  /** 取得節點預設端口（向下相容 getDefaultPorts） */
+  /** Get node default ports (backward-compatible with getDefaultPorts) */
   getDefaultPorts(nodeType: string): { inputs: InputPort[]; outputs: OutputPort[] } {
     const def = this.definitions.get(nodeType);
     return def?.defaultPorts ?? { inputs: [], outputs: [] };
   }
 
-  /** 取得節點預設參數（向下相容 getDefaultParams） */
+  /** Get node default parameters (backward-compatible with getDefaultParams) */
   getDefaultParams(nodeType: string): Record<string, unknown> {
     const def = this.definitions.get(nodeType);
     return def?.defaultParams ?? {};
   }
 
-  /** 取得節點預設標籤（向下相容 getDefaultLabel） */
+  /** Get node default label (backward-compatible with getDefaultLabel) */
   getDefaultLabel(nodeType: string): string {
     const def = this.definitions.get(nodeType);
     return def?.label ?? "Unknown";
   }
 
-  /** 從節點類型推斷分類（向下相容 getCategoryForType） */
+  /** Infer category from node type (backward-compatible with getCategoryForType) */
   getCategoryForType(nodeType: string): NodeCategory {
     const def = this.definitions.get(nodeType);
     return def?.category ?? NC.ACTION;
   }
 
   /**
-   * 將節點按 group 分組（用於 NodeLibrary UI）
-   * 回傳格式與原始 NodeLibrary.tsx 的 nodeTemplates 相容
+   * Group nodes by group (for NodeLibrary UI)
+   * Return format is compatible with the original NodeLibrary.tsx nodeTemplates
    */
   getGroupedDefinitions(): Record<string, {
     icon: string;
@@ -152,11 +152,11 @@ export class NodeRegistry {
     templates: Array<{ nodeType: string; label: string; icon: string; category: NodeCategory }>;
   }> {
     const defaultGroups: Record<string, { icon: string; color: string; name: string }> = {
-      [NC.TRIGGER]: { icon: "⚡", color: "text-emerald-400", name: "觸發器" },
-      [NC.ACTION]:  { icon: "🔧", color: "text-blue-400",    name: "執行器" },
-      [NC.LOGIC]:   { icon: "🔀", color: "text-amber-400",   name: "邏輯控制" },
-      [NC.VARIABLE]:{ icon: "📦", color: "text-purple-400",  name: "變數" },
-      [NC.OUTPUT]:  { icon: "📤", color: "text-rose-400",    name: "輸出" },
+      [NC.TRIGGER]: { icon: "⚡", color: "text-emerald-400", name: "Triggers" },
+      [NC.ACTION]:  { icon: "🔧", color: "text-blue-400",    name: "Actions" },
+      [NC.LOGIC]:   { icon: "🔀", color: "text-amber-400",   name: "Logic Control" },
+      [NC.VARIABLE]:{ icon: "📦", color: "text-purple-400",  name: "Variables" },
+      [NC.OUTPUT]:  { icon: "📤", color: "text-rose-400",    name: "Output" },
     };
 
     const groups: Record<string, {
@@ -165,7 +165,7 @@ export class NodeRegistry {
       templates: Array<{ nodeType: string; label: string; icon: string; category: NodeCategory }>;
     }> = {};
 
-    // 按 order 排序後分組
+    // Sort by order then group
     const sorted = this.getAll().sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 
     for (const def of sorted) {
@@ -192,11 +192,11 @@ export class NodeRegistry {
   }
 }
 
-// ── 全域 singleton ──
+// ── Global singleton ──
 
 export const nodeRegistry = new NodeRegistry();
 
-// ── 內建節點定義 ──
+// ── Built-in node definitions ──
 
 const builtinNodeDefinitions: NodeDefinition[] = [
   // ── Triggers ──
@@ -205,7 +205,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.TRIGGER,
     label: "HTTP Webhook",
     icon: "🌐",
-    description: "監聽 HTTP 請求",
+    description: "Listen for HTTP requests",
     order: 1,
     defaultPorts: {
       inputs: [],
@@ -222,7 +222,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.TRIGGER,
     label: "Cron Job",
     icon: "⏰",
-    description: "定時排程觸發",
+    description: "Scheduled cron trigger",
     order: 2,
     defaultPorts: {
       inputs: [],
@@ -235,7 +235,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.TRIGGER,
     label: "Manual Trigger",
     icon: "👤",
-    description: "手動觸發",
+    description: "Manual trigger",
     order: 3,
     defaultPorts: {
       inputs: [],
@@ -250,7 +250,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.ACTION,
     label: "Fetch API",
     icon: "📡",
-    description: "呼叫外部 HTTP API",
+    description: "Call external HTTP API",
     order: 10,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
@@ -266,7 +266,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.ACTION,
     label: "SQL Query",
     icon: "🗄️",
-    description: "執行 SQL 查詢",
+    description: "Execute SQL query",
     order: 11,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
@@ -279,7 +279,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.ACTION,
     label: "Redis Cache",
     icon: "💾",
-    description: "存取 Redis 快取",
+    description: "Access Redis cache",
     order: 12,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
@@ -292,7 +292,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.ACTION,
     label: "Custom Code",
     icon: "💻",
-    description: "自訂 TypeScript 程式碼",
+    description: "Custom TypeScript code",
     order: 13,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
@@ -305,7 +305,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.ACTION,
     label: "Call Subflow",
     icon: "🔗",
-    description: "呼叫子流程",
+    description: "Call subflow",
     order: 14,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: false }],
@@ -320,7 +320,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.LOGIC,
     label: "If / Else",
     icon: "🔀",
-    description: "條件分支",
+    description: "Conditional branch",
     order: 20,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
@@ -336,7 +336,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.LOGIC,
     label: "For Loop",
     icon: "🔁",
-    description: "迭代陣列",
+    description: "Iterate array",
     order: 21,
     defaultPorts: {
       inputs: [{ id: "iterable", label: "Iterable", dataType: "array", required: true }],
@@ -352,7 +352,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.LOGIC,
     label: "Try / Catch",
     icon: "🛡️",
-    description: "錯誤處理包裝",
+    description: "Error handling wrapper",
     order: 22,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
@@ -368,7 +368,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.LOGIC,
     label: "Promise.all",
     icon: "⚡",
-    description: "並行執行多個非同步任務",
+    description: "Execute multiple async tasks in parallel",
     order: 23,
     defaultPorts: {
       inputs: [
@@ -386,7 +386,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.VARIABLE,
     label: "Declare Variable",
     icon: "📦",
-    description: "宣告變數",
+    description: "Declare variable",
     order: 30,
     defaultPorts: {
       inputs: [],
@@ -399,7 +399,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.VARIABLE,
     label: "Transform",
     icon: "🔄",
-    description: "轉換資料",
+    description: "Transform data",
     order: 31,
     defaultPorts: {
       inputs: [{ id: "input", label: "Input", dataType: "any", required: true }],
@@ -414,7 +414,7 @@ const builtinNodeDefinitions: NodeDefinition[] = [
     category: NC.OUTPUT,
     label: "Return Response",
     icon: "📤",
-    description: "回傳 HTTP 回應",
+    description: "Return HTTP response",
     order: 40,
     defaultPorts: {
       inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
@@ -424,5 +424,5 @@ const builtinNodeDefinitions: NodeDefinition[] = [
   },
 ];
 
-// 啟動時自動註冊所有內建節點
+// Auto-register all built-in nodes on startup
 nodeRegistry.registerAll(builtinNodeDefinitions);

@@ -1,7 +1,7 @@
 /**
- * Platform Adapter 測試
+ * Platform Adapter Tests
  *
- * 驗證多平台輸出的正確性，以及平台解耦的可行性。
+ * Verifies correctness of multi-platform output and feasibility of platform decoupling.
  */
 
 import { describe, it, expect } from "vitest";
@@ -9,8 +9,8 @@ import { compile } from "@/lib/compiler/compiler";
 import { createSimpleGetFlow, createPostWithFetchFlow } from "../fixtures";
 
 describe("Platform Adapters", () => {
-  describe("Next.js (預設)", () => {
-    it("預設應使用 Next.js 平台", () => {
+  describe("Next.js (Default)", () => {
+    it("should use Next.js platform by default", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
@@ -20,7 +20,7 @@ describe("Platform Adapters", () => {
       expect(result.filePath).toBe("src/app/api/hello/route.ts");
     });
 
-    it("明確指定 nextjs 應與預設結果相同", () => {
+    it("explicitly specifying nextjs should produce the same result as default", () => {
       const ir = createSimpleGetFlow();
       const defaultResult = compile(ir);
       const explicitResult = compile(ir, { platform: "nextjs" });
@@ -30,26 +30,26 @@ describe("Platform Adapters", () => {
   });
 
   describe("Express", () => {
-    it("應生成 Express 風格的 route handler", () => {
+    it("should generate Express-style route handler", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir, { platform: "express" });
 
       expect(result.success).toBe(true);
-      // Express 使用 Request/Response
+      // Express uses Request/Response
       expect(result.code).toContain('from "express"');
       expect(result.code).toContain("res.");
-      // 不應有 NextResponse
+      // Should not contain NextResponse
       expect(result.code).not.toContain("NextResponse");
     });
 
-    it("應生成 Express 的檔案路徑", () => {
+    it("should generate Express file path", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir, { platform: "express" });
 
       expect(result.filePath).toMatch(/^src\/routes\//);
     });
 
-    it("Express 應報告 express 為依賴", () => {
+    it("Express should report express as a dependency", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir, { platform: "express" });
 
@@ -59,20 +59,20 @@ describe("Platform Adapters", () => {
   });
 
   describe("Cloudflare Workers", () => {
-    it("應生成 Cloudflare Workers 風格的 handler", () => {
+    it("should generate Cloudflare Workers style handler", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir, { platform: "cloudflare" });
 
       expect(result.success).toBe(true);
-      // Cloudflare 使用 Web API 的 Response
+      // Cloudflare uses Web API Response
       expect(result.code).toContain("new Response");
-      // 不應有 NextResponse
+      // Should not contain NextResponse
       expect(result.code).not.toContain("NextResponse");
-      // 應有 export default
+      // Should have export default
       expect(result.code).toContain("export default");
     });
 
-    it("Cloudflare 應報告 workers-types 為依賴", () => {
+    it("Cloudflare should report workers-types as a dependency", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir, { platform: "cloudflare" });
 

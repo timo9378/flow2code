@@ -1,5 +1,5 @@
 /**
- * Decompiler Tests — TypeScript → FlowIR 反向解析
+ * Decompiler Tests — TypeScript → FlowIR Reverse Parsing
  */
 
 import { describe, it, expect } from "vitest";
@@ -9,7 +9,7 @@ import { NodeCategory } from "../../src/lib/ir/types";
 import type { FlowIR } from "../../src/lib/ir/types";
 
 describe("Decompiler (TS → IR)", () => {
-  it("應從 Source Map 註解還原節點", () => {
+  it("should restore nodes from Source Map comments", () => {
     const code = `
 import { NextRequest, NextResponse } from "next/server";
 
@@ -49,25 +49,25 @@ export async function GET(req: NextRequest) {
     expect(result.ir).toBeDefined();
     expect(result.confidence).toBeGreaterThan(0.5);
 
-    // 應偵測到 trigger
+    // Should detect trigger
     const trigger = result.ir!.nodes.find((n) => n.category === NodeCategory.TRIGGER);
     expect(trigger).toBeDefined();
     expect(trigger!.nodeType).toBe("http_webhook");
 
-    // 應偵測到 fetch 節點 (from source map or AST)
+    // Should detect fetch node (from source map or AST)
     const fetchNode = result.ir!.nodes.find(
       (n) => n.nodeType === "fetch_api" || n.id.includes("fetch")
     );
     expect(fetchNode).toBeDefined();
 
-    // 應偵測到 response 節點
+    // Should detect response node
     const respNode = result.ir!.nodes.find(
       (n) => n.nodeType === "return_response" || n.id.includes("response")
     );
     expect(respNode).toBeDefined();
   });
 
-  it("應從 export function 偵測 HTTP method", () => {
+  it("should detect HTTP method from export function", () => {
     const code = `
 import { NextRequest, NextResponse } from "next/server";
 
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     expect((trigger!.params as any).method).toBe("POST");
   });
 
-  it("應偵測 fetch 呼叫並建立 fetch_api 節點", () => {
+  it("should detect fetch calls and create fetch_api nodes", () => {
     const code = `
 export async function GET(req: Request) {
   const response = await fetch("https://api.example.com/data", {
@@ -103,7 +103,7 @@ export async function GET(req: Request) {
     expect(result.ir!.nodes.length).toBeGreaterThanOrEqual(2); // trigger + fetch + response
   });
 
-  it("應偵測 if 語句並建立 if_else 節點", () => {
+  it("should detect if statements and create if_else nodes", () => {
     const code = `
 export async function GET(req: Request) {
   const data = { ok: true };
@@ -122,7 +122,7 @@ export async function GET(req: Request) {
     expect(ifNode).toBeDefined();
   });
 
-  it("round-trip: compile → decompile 應能還原節點類型", () => {
+  it("round-trip: compile → decompile should restore node types", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "Round Trip Test", createdAt: "", updatedAt: "" },
@@ -175,19 +175,19 @@ export async function GET(req: Request) {
     const decompileResult = decompile(compileResult.code!);
     expect(decompileResult.success).toBe(true);
 
-    // 驗證關鍵節點都還原了
+    // Verify key nodes are restored
     const nodeTypes = decompileResult.ir!.nodes.map((n) => n.nodeType);
     expect(nodeTypes).toContain("http_webhook");
-    // 應有 fetch 相關節點
+    // Should have fetch-related nodes
     const hasFetch = decompileResult.ir!.nodes.some(
       (n) => n.nodeType === "fetch_api" || n.id.includes("fetch")
     );
     expect(hasFetch).toBe(true);
   });
 
-  it("空代碼應返回失敗", () => {
+  it("empty code should return failure", () => {
     const result = decompile("");
-    // 空文件可能不會完全失敗，但不應有有意義的節點
+    // Empty file may not completely fail, but should not have meaningful nodes
     expect(result.ir?.nodes.length ?? 0).toBeLessThanOrEqual(1);
   });
 });

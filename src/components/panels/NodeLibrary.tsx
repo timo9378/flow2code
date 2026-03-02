@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * 節點庫面板（左側面板）— Koimsurai 風格
+ * Node Library Panel (Left Panel) — Koimsurai Style
  *
- * 可收合的分類節點列表，拖放節點到畫布上。
- * 節點定義來自 NodeRegistry（動態），支援社區擴展。
+ * Collapsible categorized node list, drag-and-drop nodes onto the canvas.
+ * Node definitions come from NodeRegistry (dynamic), supports community extensions.
  */
 
 import { useMemo, useState } from "react";
@@ -36,7 +36,7 @@ export default function NodeLibrary() {
   const addFlowNode = useFlowStore((s) => s.addFlowNode);
   const [collapsed, setCollapsed] = useState(false);
 
-  // 從 NodeRegistry 動態取得分組節點定義
+  // Dynamically get grouped node definitions from NodeRegistry
   const nodeTemplates = useMemo(() => nodeRegistry.getGroupedDefinitions(), []);
 
   const handleAddNode = (template: NodeTemplate) => {
@@ -59,7 +59,7 @@ export default function NodeLibrary() {
               »
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">展開節點庫</TooltipContent>
+          <TooltipContent side="right">Expand Node Library</TooltipContent>
         </Tooltip>
         <Separator className="w-6" />
         {Object.entries(nodeTemplates).map(([name, group]) => (
@@ -78,7 +78,7 @@ export default function NodeLibrary() {
     <div className="w-56 bg-card border-r border-border flex flex-col shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
-        <span className="text-xs font-semibold text-foreground uppercase tracking-wider">節點庫</span>
+        <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Node Library</span>
         <Button
           variant="ghost"
           size="icon"

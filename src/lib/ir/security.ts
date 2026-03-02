@@ -1,8 +1,8 @@
 /**
- * AI 生成 IR 安全檢查
+ * AI-Generated IR Security Check
  *
- * 當 IR 由 AI/LLM 產生時，custom_code 節點可能包含惡意代碼。
- * 此模組在「載入/匯入」階段即攔截，比編譯時的 `DANGEROUS_CODE_PATTERNS` 更早。
+ * When IR is produced by AI/LLM, custom_code nodes may contain malicious code.
+ * This module intercepts at the "load/import" stage, earlier than the compile-time `DANGEROUS_CODE_PATTERNS`.
  *
  * @example
  * ```ts
@@ -21,24 +21,24 @@ import { ActionType } from "./types";
 // ── Types ──
 
 export interface SecurityFinding {
-  /** 嚴重性等級 */
+  /** Severity level */
   severity: "critical" | "warning" | "info";
-  /** 節點 ID */
+  /** Node ID */
   nodeId: NodeId;
-  /** 節點標籤 */
+  /** Node label */
   nodeLabel: string;
-  /** 偵測到的模式描述 */
+  /** Description of the detected pattern */
   pattern: string;
-  /** 匹配到的代碼片段 (截斷至 80 字元) */
+  /** Matched code snippet (truncated to 80 characters) */
   match: string;
 }
 
 export interface SecurityCheckResult {
-  /** 是否安全（沒有 critical findings） */
+  /** Whether it is safe (no critical findings) */
   safe: boolean;
-  /** 所有偵測結果 */
+  /** All detection results */
   findings: SecurityFinding[];
-  /** 掃描的節點數 */
+  /** Number of nodes scanned */
   nodesScanned: number;
 }
 
@@ -51,48 +51,48 @@ interface DangerousPattern {
 }
 
 /**
- * 危險代碼模式清單
+ * Dangerous code pattern list
  *
- * 分三級：
- * - critical: 直接威脅系統安全（RCE, 檔案刪除等）
- * - warning: 可能有安全隱患（動態 import, 網路通訊等）
- * - info: 值得注意但不一定危險
+ * Three severity levels:
+ * - critical: Direct threat to system security (RCE, file deletion, etc.)
+ * - warning: Potential security risk (dynamic import, network communication, etc.)
+ * - info: Worth noting but not necessarily dangerous
  */
 const SECURITY_PATTERNS: DangerousPattern[] = [
   // ── Critical: Remote Code Execution / System Access ──
-  { pattern: /\beval\s*\(/, desc: "eval() — 動態執行任意代碼", severity: "critical" },
-  { pattern: /\bnew\s+Function\s*\(/, desc: "new Function() — 動態建構函式", severity: "critical" },
-  { pattern: /\bchild_process\b/, desc: "child_process — 可執行任意系統指令", severity: "critical" },
-  { pattern: /\bexec\s*\(/, desc: "exec() — 執行 shell 指令", severity: "critical" },
-  { pattern: /\bexecSync\s*\(/, desc: "execSync() — 同步執行 shell 指令", severity: "critical" },
-  { pattern: /\bspawn\s*\(/, desc: "spawn() — 產生子進程", severity: "critical" },
-  { pattern: /\bprocess\.exit\b/, desc: "process.exit() — 終止 Node.js 進程", severity: "critical" },
-  { pattern: /\bprocess\.env\b/, desc: "process.env — 存取環境變數（可能洩漏密鑰）", severity: "critical" },
-  { pattern: /\bprocess\.kill\b/, desc: "process.kill() — 終止進程", severity: "critical" },
+  { pattern: /\beval\s*\(/, desc: "eval() — dynamically executes arbitrary code", severity: "critical" },
+  { pattern: /\bnew\s+Function\s*\(/, desc: "new Function() — dynamically constructs a function", severity: "critical" },
+  { pattern: /\bchild_process\b/, desc: "child_process — can execute arbitrary system commands", severity: "critical" },
+  { pattern: /\bexec\s*\(/, desc: "exec() — executes shell commands", severity: "critical" },
+  { pattern: /\bexecSync\s*\(/, desc: "execSync() — synchronously executes shell commands", severity: "critical" },
+  { pattern: /\bspawn\s*\(/, desc: "spawn() — spawns a child process", severity: "critical" },
+  { pattern: /\bprocess\.exit\b/, desc: "process.exit() — terminates the Node.js process", severity: "critical" },
+  { pattern: /\bprocess\.env\b/, desc: "process.env — accesses environment variables (may leak secrets)", severity: "critical" },
+  { pattern: /\bprocess\.kill\b/, desc: "process.kill() — kills a process", severity: "critical" },
   { pattern: /\brequire\s*\(\s*['"`]child_process/, desc: "require('child_process')", severity: "critical" },
-  { pattern: /\brequire\s*\(\s*['"`]vm['"`]/, desc: "require('vm') — V8 虛擬機", severity: "critical" },
+  { pattern: /\brequire\s*\(\s*['"`]vm['"`]/, desc: "require('vm') — V8 virtual machine", severity: "critical" },
 
   // ── Critical: File System Destructive ──
-  { pattern: /\bfs\.\w*(unlink|rmdir|rm|rmSync|unlinkSync)\b/, desc: "fs 刪除操作", severity: "critical" },
-  { pattern: /\bfs\.\w*(writeFile|writeFileSync|appendFile)\b/, desc: "fs 寫入操作", severity: "critical" },
-  { pattern: /\brequire\s*\(\s*['"`]fs['"`]\)/, desc: "require('fs') — 檔案系統存取", severity: "critical" },
+  { pattern: /\bfs\.\w*(unlink|rmdir|rm|rmSync|unlinkSync)\b/, desc: "fs delete operation", severity: "critical" },
+  { pattern: /\bfs\.\w*(writeFile|writeFileSync|appendFile)\b/, desc: "fs write operation", severity: "critical" },
+  { pattern: /\brequire\s*\(\s*['"`]fs['"`]\)/, desc: "require('fs') — file system access", severity: "critical" },
 
   // ── Warning: Network / Dynamic Import ──
-  { pattern: /\bimport\s*\(/, desc: "動態 import() — 可載入任意模組", severity: "warning" },
-  { pattern: /\brequire\s*\(\s*['"`]https?['"`]/, desc: "require('http/https') — 網路模組", severity: "warning" },
-  { pattern: /\brequire\s*\(\s*['"`]net['"`]/, desc: "require('net') — 低階網路存取", severity: "warning" },
-  { pattern: /\bglobalThis\b/, desc: "globalThis — 存取全域作用域", severity: "warning" },
-  { pattern: /\b__proto__\b/, desc: "__proto__ — 原型鏈汙染風險", severity: "warning" },
-  { pattern: /\bconstructor\s*\[\s*['"`]/, desc: "constructor[] — 原型鏈汙染風險", severity: "warning" },
+  { pattern: /\bimport\s*\(/, desc: "dynamic import() — can load arbitrary modules", severity: "warning" },
+  { pattern: /\brequire\s*\(\s*['"`]https?['"`]/, desc: "require('http/https') — network module", severity: "warning" },
+  { pattern: /\brequire\s*\(\s*['"`]net['"`]/, desc: "require('net') — low-level network access", severity: "warning" },
+  { pattern: /\bglobalThis\b/, desc: "globalThis — accesses the global scope", severity: "warning" },
+  { pattern: /\b__proto__\b/, desc: "__proto__ — prototype pollution risk", severity: "warning" },
+  { pattern: /\bconstructor\s*\[\s*['"`]/, desc: "constructor[] — prototype pollution risk", severity: "warning" },
 
   // ── Warning: FS Read (non-destructive but sensitive) ──
-  { pattern: /\brequire\s*\(\s*['"`]fs['"`]\s*\)\.read/, desc: "fs 讀取操作", severity: "warning" },
-  { pattern: /\bfs\.\w*(readFile|readFileSync|readdir)\b/, desc: "fs 讀取操作", severity: "warning" },
+  { pattern: /\brequire\s*\(\s*['"`]fs['"`]\s*\)\.read/, desc: "fs read operation", severity: "warning" },
+  { pattern: /\bfs\.\w*(readFile|readFileSync|readdir)\b/, desc: "fs read operation", severity: "warning" },
 
   // ── Info: Uncommon patterns ──
-  { pattern: /\bsetTimeout\s*\(\s*[^,]+,\s*\d{5,}/, desc: "長時間 setTimeout (>10s) — 可能是惡意延遲", severity: "info" },
-  { pattern: /\bwhile\s*\(\s*true\s*\)/, desc: "while(true) — 可能的無限迴圈", severity: "info" },
-  { pattern: /\bfor\s*\(\s*;\s*;\s*\)/, desc: "for(;;) — 可能的無限迴圈", severity: "info" },
+  { pattern: /\bsetTimeout\s*\(\s*[^,]+,\s*\d{5,}/, desc: "long setTimeout (>10s) — possibly a malicious delay", severity: "info" },
+  { pattern: /\bwhile\s*\(\s*true\s*\)/, desc: "while(true) — possible infinite loop", severity: "info" },
+  { pattern: /\bfor\s*\(\s*;\s*;\s*\)/, desc: "for(;;) — possible infinite loop", severity: "info" },
 ];
 
 // ── Core Scanner ──
@@ -102,7 +102,7 @@ function truncate(str: string, maxLen: number): string {
 }
 
 /**
- * 掃描單一節點的代碼字串
+ * Scan code strings of a single node
  */
 function scanCode(
   nodeId: NodeId,
@@ -112,8 +112,10 @@ function scanCode(
   const findings: SecurityFinding[] = [];
 
   for (const { pattern, desc, severity } of SECURITY_PATTERNS) {
-    const match = pattern.exec(code);
-    if (match) {
+    // Use a fresh regex with global flag to find ALL matches
+    const globalPattern = new RegExp(pattern.source, "g");
+    let match: RegExpExecArray | null;
+    while ((match = globalPattern.exec(code)) !== null) {
       findings.push({
         severity,
         nodeId,
@@ -128,11 +130,11 @@ function scanCode(
 }
 
 /**
- * 從 FlowNode 擷取可執行代碼字串
- * 目前掃描：
+ * Extract executable code strings from a FlowNode
+ * Currently scans:
  * - custom_code.code
  * - transform.expression
- * - 所有 params 中包含可疑字串的欄位
+ * - All params fields that may contain suspicious strings
  */
 function extractCodeFields(node: FlowNode): string[] {
   const codes: string[] = [];
@@ -140,29 +142,29 @@ function extractCodeFields(node: FlowNode): string[] {
 
   if (!params) return codes;
 
-  // custom_code 的 code 欄位
+  // custom_code's code field
   if (node.nodeType === ActionType.CUSTOM_CODE && typeof params.code === "string") {
     codes.push(params.code);
   }
 
-  // transform 的 expression 欄位
+  // transform's expression field
   if (typeof params.expression === "string") {
     codes.push(params.expression);
   }
 
-  // call_subflow 的 inputMapping（JSON 字串中可能藏代碼）
+  // call_subflow's inputMapping (may contain code hidden in JSON strings)
   if (typeof params.inputMapping === "string") {
     codes.push(params.inputMapping);
   } else if (typeof params.inputMapping === "object" && params.inputMapping !== null) {
     codes.push(JSON.stringify(params.inputMapping));
   }
 
-  // body 欄位 (fetch_api 等)
+  // body field (fetch_api, etc.)
   if (typeof params.body === "string") {
     codes.push(params.body);
   }
 
-  // SQL query 中的字串插值
+  // String interpolation in SQL queries
   if (typeof params.query === "string") {
     codes.push(params.query);
   }
@@ -183,13 +185,13 @@ function extractCodeFields(node: FlowNode): string[] {
 // ── Public API ──
 
 /**
- * 驗證 FlowIR 中所有節點的安全性
+ * Validate the security of all nodes in a FlowIR
  *
- * 特別針對 AI/LLM 產生的 IR，在載入或匯入階段即偵測惡意模式。
- * 掃範圍：custom_code, transform, if_else, return_response, fetch_api 等所有含代碼/表達式的欄位。
+ * Specifically targets AI/LLM-generated IR, detecting malicious patterns at the load/import stage.
+ * Scan scope: custom_code, transform, if_else, return_response, fetch_api, and all other fields containing code/expressions.
  *
- * @param ir - 待檢查的 FlowIR
- * @returns SecurityCheckResult - 包含安全性判斷、所有偵查結果、掃描統計
+ * @param ir - The FlowIR to check
+ * @returns SecurityCheckResult - Contains safety verdict, all detection findings, and scan statistics
  */
 export function validateIRSecurity(ir: FlowIR): SecurityCheckResult {
   const findings: SecurityFinding[] = [];
@@ -217,11 +219,11 @@ export function validateIRSecurity(ir: FlowIR): SecurityCheckResult {
 }
 
 /**
- * 格式化安全檢查結果為人類可讀字串
+ * Format security check results into a human-readable string
  */
 export function formatSecurityReport(result: SecurityCheckResult): string {
   if (result.findings.length === 0) {
-    return `✅ 安全檢查通過 (掃描 ${result.nodesScanned} 個節點，未偵測到危險模式)`;
+    return `✅ Security check passed (scanned ${result.nodesScanned} nodes, no dangerous patterns detected)`;
   }
 
   const lines: string[] = [];
@@ -229,7 +231,7 @@ export function formatSecurityReport(result: SecurityCheckResult): string {
   const warnings = result.findings.filter((f) => f.severity === "warning");
   const infos = result.findings.filter((f) => f.severity === "info");
 
-  lines.push(`⚠️ 安全檢查結果 (掃描 ${result.nodesScanned} 個節點)`);
+  lines.push(`⚠️ Security check results (scanned ${result.nodesScanned} nodes)`);
   lines.push("");
 
   if (critical.length > 0) {

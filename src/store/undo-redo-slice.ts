@@ -1,8 +1,8 @@
 /**
  * Zustand Undo/Redo Slice
  *
- * 獨立的歷史管理 slice，可與任何 Zustand store 組合使用。
- * 從 flow-store 中提取，職責單一化。
+ * Independent history management slice, composable with any Zustand store.
+ * Extracted from flow-store for single responsibility.
  *
  * @example
  * ```ts
@@ -22,36 +22,36 @@ import type { StateCreator } from "zustand";
 // ============================================================
 
 export interface UndoRedoSlice<TSnapshot> {
-  /** Undo 歷史堆疊 */
+  /** Undo history stack */
   undoStack: TSnapshot[];
-  /** Redo 歷史堆疊 */
+  /** Redo history stack */
   redoStack: TSnapshot[];
 
   /**
-   * 將當前快照推入 undo 堆疊。
-   * 呼叫者需提供 snapshot factory。
+   * Push the current snapshot onto the undo stack.
+   * Caller provides the snapshot factory.
    */
   pushSnapshot: (snapshot: TSnapshot) => void;
 
   /**
-   * 復原（Undo）— 從 undoStack pop 並將當前狀態 push 至 redoStack
-   * @param currentSnapshot - 呼叫者提供的「當前」快照
-   * @returns 前一個快照 (若存在)，或 null
+   * Undo — Pop from undoStack and push current state to redoStack
+   * @param currentSnapshot - Caller-provided "current" snapshot
+   * @returns Previous snapshot (if exists), or null
    */
   undo: (currentSnapshot: TSnapshot) => TSnapshot | null;
 
   /**
-   * 重做（Redo）— 從 redoStack pop 並將當前狀態 push 至 undoStack
-   * @param currentSnapshot - 呼叫者提供的「當前」快照
-   * @returns 下一個快照 (若存在)，或 null
+   * Redo — Pop from redoStack and push current state to undoStack
+   * @param currentSnapshot - Caller-provided "current" snapshot
+   * @returns Next snapshot (if exists), or null
    */
   redo: (currentSnapshot: TSnapshot) => TSnapshot | null;
 
-  /** 是否可復原 */
+  /** Whether undo is available */
   canUndo: () => boolean;
-  /** 是否可重做 */
+  /** Whether redo is available */
   canRedo: () => boolean;
-  /** 清除所有歷史 */
+  /** Clear all history */
   clearHistory: () => void;
 }
 
@@ -60,9 +60,9 @@ export interface UndoRedoSlice<TSnapshot> {
 // ============================================================
 
 /**
- * 建立 Undo/Redo slice — 通用 Zustand slice factory
+ * Create Undo/Redo slice — generic Zustand slice factory
  *
- * @param maxHistory - 最大歷史記錄數 (預設 50)
+ * @param maxHistory - Maximum history entries (default: 50)
  * @returns Zustand StateCreator slice
  */
 export function createUndoRedoSlice<TSnapshot>(

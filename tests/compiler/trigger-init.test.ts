@@ -1,7 +1,7 @@
 /**
- * Phase 2 測試：Platform Trigger Init 正確性
+ * Phase 2 Tests: Platform Trigger Init Correctness
  *
- * 驗證 Express / Cloudflare / Next.js 各自的 trigger init 生成代碼。
+ * Verifies trigger init code generation for Express / Cloudflare / Next.js platforms.
  */
 
 import { describe, it, expect } from "vitest";
@@ -128,34 +128,34 @@ function manualIR(): FlowIR {
 // ============================================================
 
 describe("Next.js Trigger Init", () => {
-  it("GET 應生成 req.nextUrl.searchParams", () => {
+  it("GET should generate req.nextUrl.searchParams", () => {
     const result = compile(httpTriggerIR("GET", "/api/search"), { platform: "nextjs" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("req.nextUrl.searchParams");
     expect(result.code).toContain("Object.fromEntries");
   });
 
-  it("POST 應生成 await req.json()", () => {
+  it("POST should generate await req.json()", () => {
     const result = compile(httpTriggerIR("POST", "/api/data"), { platform: "nextjs" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("await req.json()");
     expect(result.code).toContain("NextResponse.json");
   });
 
-  it("DELETE 應使用 searchParams（與 GET 相同）", () => {
+  it("DELETE should use searchParams (same as GET)", () => {
     const result = compile(httpTriggerIR("DELETE", "/api/item"), { platform: "nextjs" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("searchParams");
   });
 
-  it("Cron 觸發器應生成 triggeredAt", () => {
+  it("Cron trigger should generate triggeredAt", () => {
     const result = compile(cronIR(), { platform: "nextjs" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("triggeredAt");
     expect(result.code).toContain("new Date().toISOString()");
   });
 
-  it("Manual 觸發器應解構 args", () => {
+  it("Manual trigger should destructure args", () => {
     const result = compile(manualIR(), { platform: "nextjs" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("input, count");
@@ -167,7 +167,7 @@ describe("Next.js Trigger Init", () => {
 // ============================================================
 
 describe("Express Trigger Init", () => {
-  it("GET 應生成 req.query", () => {
+  it("GET should generate req.query", () => {
     const result = compile(httpTriggerIR("GET", "/api/search"), { platform: "express" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("req.query");
@@ -175,7 +175,7 @@ describe("Express Trigger Init", () => {
     expect(result.code).not.toContain("nextUrl");
   });
 
-  it("POST 應生成 req.body", () => {
+  it("POST should generate req.body", () => {
     const result = compile(httpTriggerIR("POST", "/api/data"), { platform: "express" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("req.body");
@@ -183,19 +183,19 @@ describe("Express Trigger Init", () => {
     expect(result.code).not.toContain("req.json()");
   });
 
-  it("DELETE 應使用 req.query（與 GET 相同）", () => {
+  it("DELETE should use req.query (same as GET)", () => {
     const result = compile(httpTriggerIR("DELETE", "/api/item"), { platform: "express" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("req.query");
   });
 
-  it("Cron 觸發器應生成 triggeredAt", () => {
+  it("Cron trigger should generate triggeredAt", () => {
     const result = compile(cronIR(), { platform: "express" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("triggeredAt");
   });
 
-  it("Manual 觸發器應解構 args", () => {
+  it("Manual trigger should destructure args", () => {
     const result = compile(manualIR(), { platform: "express" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("input, count");
@@ -207,7 +207,7 @@ describe("Express Trigger Init", () => {
 // ============================================================
 
 describe("Cloudflare Trigger Init", () => {
-  it("GET 應生成 new URL(request.url) + searchParams", () => {
+  it("GET should generate new URL(request.url) + searchParams", () => {
     const result = compile(httpTriggerIR("GET", "/api/search"), { platform: "cloudflare" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("new URL(request.url)");
@@ -215,7 +215,7 @@ describe("Cloudflare Trigger Init", () => {
     expect(result.code).not.toContain("nextUrl");
   });
 
-  it("POST 應生成 await request.json()", () => {
+  it("POST should generate await request.json()", () => {
     const result = compile(httpTriggerIR("POST", "/api/data"), { platform: "cloudflare" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("await request.json()");
@@ -223,20 +223,20 @@ describe("Cloudflare Trigger Init", () => {
     expect(result.code).not.toContain("NextResponse");
   });
 
-  it("應包含 export default { fetch } 模式", () => {
+  it("should include export default { fetch } pattern", () => {
     const result = compile(httpTriggerIR("GET", "/api/test"), { platform: "cloudflare" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("export default");
     expect(result.code).toContain("async fetch");
   });
 
-  it("Cron 觸發器應生成 triggeredAt", () => {
+  it("Cron trigger should generate triggeredAt", () => {
     const result = compile(cronIR(), { platform: "cloudflare" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("triggeredAt");
   });
 
-  it("Manual 觸發器應解構 args", () => {
+  it("Manual trigger should destructure args", () => {
     const result = compile(manualIR(), { platform: "cloudflare" });
     expect(result.success).toBe(true);
     expect(result.code).toContain("input, count");

@@ -1,8 +1,8 @@
 /**
- * Phase 2 測試：各節點類型的編譯正確性
+ * Phase 2 Tests: Compilation Correctness of Each Node Type
  *
- * 針對 for_loop / try_catch / sql_query / redis_cache / custom_code / call_subflow
- * 驗證生成的代碼結構正確。
+ * Covers for_loop / try_catch / sql_query / redis_cache / custom_code / call_subflow.
+ * Verifies that the generated code structure is correct.
  */
 
 import { describe, it, expect } from "vitest";
@@ -59,8 +59,8 @@ function wrapIR(name: string, nodes: any[], edges: any[]): FlowIR {
 // SQL Query Plugin
 // ============================================================
 
-describe("SQL Query 編譯", () => {
-  it("Drizzle ORM 應生成 db.execute + sql template", () => {
+describe("SQL Query Compilation", () => {
+  it("Drizzle ORM should generate db.execute + sql template", () => {
     const ir = wrapIR("sql-drizzle", [
       httpTrigger(),
       {
@@ -85,7 +85,7 @@ describe("SQL Query 編譯", () => {
     expect(result.code).toContain("SELECT * FROM users");
   });
 
-  it("Prisma 應生成 prisma.$queryRaw", () => {
+  it("Prisma should generate prisma.$queryRaw", () => {
     const ir = wrapIR("sql-prisma", [
       httpTrigger(),
       {
@@ -108,7 +108,7 @@ describe("SQL Query 編譯", () => {
     expect(result.code).toContain("prisma.$queryRaw");
   });
 
-  it("Raw SQL 應生成 db.query", () => {
+  it("Raw SQL should generate db.query", () => {
     const ir = wrapIR("sql-raw", [
       httpTrigger(),
       {
@@ -137,8 +137,8 @@ describe("SQL Query 編譯", () => {
 // Redis Cache Plugin
 // ============================================================
 
-describe("Redis Cache 編譯", () => {
-  it("get 操作應生成 redis.get", () => {
+describe("Redis Cache Compilation", () => {
+  it("get operation should generate redis.get", () => {
     const ir = wrapIR("redis-get", [
       httpTrigger(),
       {
@@ -161,7 +161,7 @@ describe("Redis Cache 編譯", () => {
     expect(result.code).toContain('redis.get("user:123")');
   });
 
-  it("set 操作帶 TTL 應生成 redis.set 含 EX", () => {
+  it("set operation with TTL should generate redis.set with EX", () => {
     const ir = wrapIR("redis-set", [
       httpTrigger(),
       {
@@ -186,7 +186,7 @@ describe("Redis Cache 編譯", () => {
     expect(result.code).toContain("3600");
   });
 
-  it("del 操作應生成 redis.del", () => {
+  it("del operation should generate redis.del", () => {
     const ir = wrapIR("redis-del", [
       httpTrigger(),
       {
@@ -209,7 +209,7 @@ describe("Redis Cache 編譯", () => {
     expect(result.code).toContain('redis.del("temp:xyz")');
   });
 
-  it("Redis 應報告 ioredis 為依賴", () => {
+  it("Redis should report ioredis as dependency", () => {
     const ir = wrapIR("redis-deps", [
       httpTrigger(),
       {
@@ -236,8 +236,8 @@ describe("Redis Cache 編譯", () => {
 // Custom Code Plugin
 // ============================================================
 
-describe("Custom Code 編譯", () => {
-  it("應插入自定義代碼並設定 returnVariable", () => {
+describe("Custom Code Compilation", () => {
+  it("should insert custom code and set returnVariable", () => {
     const ir = wrapIR("custom-code", [
       httpTrigger(),
       {
@@ -262,10 +262,10 @@ describe("Custom Code 編譯", () => {
     expect(result.success).toBe(true);
     expect(result.code).toContain("Custom Code: Hash Password");
     expect(result.code).toContain("bcrypt.hash(password, 10)");
-    expect(result.code).toContain("flowState['code_1'] = hashed");
+    expect(result.code).toContain("flowState['code_1'] = custom_result");
   });
 
-  it("無 returnVariable 不應寫入 flowState", () => {
+    it("no returnVariable should not write to flowState", () => {
     const ir = wrapIR("custom-no-return", [
       httpTrigger(),
       {
@@ -294,8 +294,8 @@ describe("Custom Code 編譯", () => {
 // Call Subflow Plugin
 // ============================================================
 
-describe("Call Subflow 編譯", () => {
-  it("應生成 await + import 語句", () => {
+describe("Call Subflow Compilation", () => {
+  it("should generate await + import statement", () => {
     const ir = wrapIR("call-subflow", [
       httpTrigger(),
       {
@@ -320,7 +320,7 @@ describe("Call Subflow 編譯", () => {
     const result = compile(ir);
     expect(result.success).toBe(true);
     expect(result.code).toContain("await authenticate");
-    // import 語句由 ts-morph 生成在檔案頂部
+    // import statement is generated at the top of the file by ts-morph
     expect(result.code).toContain("authenticate");
     expect(result.code).toContain("token:");
   });
@@ -330,8 +330,8 @@ describe("Call Subflow 編譯", () => {
 // For Loop Plugin
 // ============================================================
 
-describe("For Loop 編譯", () => {
-  it("應生成 for...of 迴圈 + scoped 變數", () => {
+describe("For Loop Compilation", () => {
+    it("should generate for...of loop + scoped variables", () => {
     const ir = wrapIR("for-loop", [
       httpTrigger(),
       {
@@ -362,7 +362,7 @@ describe("For Loop 編譯", () => {
     expect(result.code).toContain("flowState['loop_1']");
   });
 
-  it("帶 indexVariable 應生成 entries() 解構", () => {
+  it("with indexVariable should generate entries() destructuring", () => {
     const ir = wrapIR("for-loop-index", [
       httpTrigger(),
       {
@@ -398,8 +398,8 @@ describe("For Loop 編譯", () => {
 // Try/Catch Plugin
 // ============================================================
 
-describe("Try/Catch 編譯", () => {
-  it("應生成 try/catch 區塊", () => {
+describe("Try/Catch Compilation", () => {
+  it("should generate try/catch block", () => {
     const ir = wrapIR("try-catch", [
       httpTrigger(),
       {

@@ -1,5 +1,5 @@
 /**
- * Runtime Error Tracer 測試
+ * Runtime Error Tracer Tests
  */
 
 import { describe, it, expect } from "vitest";
@@ -21,7 +21,7 @@ describe("traceError", () => {
 
   it("should trace error to correct node by line number", () => {
     const error = new Error("fetch failed");
-    // 模擬 stack 中包含 route.ts:15
+    // Simulate stack containing route.ts:15
     error.stack = `Error: fetch failed
     at fetchData (app/api/test/route.ts:15:5)
     at handler (app/api/test/route.ts:8:3)`;
@@ -29,13 +29,13 @@ describe("traceError", () => {
     const traces = traceError(error, sourceMap);
     expect(traces.length).toBeGreaterThan(0);
 
-    // 應該匹配到 fetch_api_1（line 15 在 12-20 之間）
+    // Should match fetch_api_1 (line 15 is between 12-20)
     const fetchTrace = traces.find((t) => t.nodeId === "fetch_api_1");
     expect(fetchTrace).toBeDefined();
     expect(fetchTrace!.startLine).toBe(12);
     expect(fetchTrace!.endLine).toBe(20);
 
-    // 也應匹配到 trigger_1（line 8 在 5-10 之間）
+    // Should also match trigger_1 (line 8 is between 5-10)
     const triggerTrace = traces.find((t) => t.nodeId === "trigger_1");
     expect(triggerTrace).toBeDefined();
   });

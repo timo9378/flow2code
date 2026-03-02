@@ -1,8 +1,8 @@
 /**
  * Flow2Code Compiler — Headless Entry Point
  *
- * 這是給外部消費者使用的主要 API。
- * 不依賴 Next.js / React / UI，可在任何 Node.js 環境中獨立運作。
+ * This is the main API for external consumers.
+ * No dependency on Next.js / React / UI — runs standalone in any Node.js environment.
  *
  * @example
  * ```ts

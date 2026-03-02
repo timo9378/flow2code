@@ -1,5 +1,5 @@
 /**
- * Plugin System - 匯出
+ * Plugin System - Exports
  */
 
 export type { NodePlugin, PluginContext, PluginRegistry } from "./types";

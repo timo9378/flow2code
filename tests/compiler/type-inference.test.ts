@@ -1,7 +1,7 @@
 /**
- * Type Inference 測試
+ * Type Inference Tests
  *
- * 驗證 flowState 的型別推斷正確性。
+ * Verifies the correctness of flowState type inference.
  */
 
 import { describe, it, expect } from "vitest";
@@ -13,11 +13,11 @@ import { createSimpleGetFlow, createPostWithFetchFlow } from "../fixtures";
 import type { FlowIR } from "@/lib/ir/types";
 import { NodeCategory, TriggerType, ActionType, OutputType } from "@/lib/ir/types";
 
-// 確保 plugins 已註冊
+// Ensure plugins are registered
 registerPlugins(builtinPlugins);
 
 describe("Type Inference", () => {
-  it("應生成 FlowState interface", () => {
+  it("should generate FlowState interface", () => {
     const result = compile(createSimpleGetFlow());
 
     expect(result.success).toBe(true);
@@ -25,27 +25,27 @@ describe("Type Inference", () => {
     expect(result.code).toContain("const flowState: Partial<FlowState> = {}");
   });
 
-  it("不應包含 Record<string, any>", () => {
+  it("should not contain Record<string, any>", () => {
     const result = compile(createSimpleGetFlow());
 
     expect(result.code).not.toContain("Record<string, any>");
   });
 
-  it("GET 觸發器應推斷為 { query, url } 型別", () => {
+  it("GET trigger should infer { query, url } type", () => {
     const result = compile(createSimpleGetFlow());
 
     expect(result.code).toContain("query: Record<string, string>");
     expect(result.code).toContain("url: string");
   });
 
-  it("POST 觸發器應推斷包含 body 型別", () => {
+  it("POST trigger should infer a type containing body", () => {
     const result = compile(createPostWithFetchFlow());
 
     expect(result.code).toContain("body: unknown");
     expect(result.code).toContain("url: string");
   });
 
-  it("Fetch API 節點 parseJson=true 應推斷為 unknown", () => {
+  it("Fetch API node with parseJson=true should infer as unknown", () => {
     const ir = createPostWithFetchFlow();
     const typeInfo = inferFlowStateTypes(ir);
 
@@ -55,14 +55,14 @@ describe("Type Inference", () => {
     );
   });
 
-  it("Return Response 節點應推斷為 never", () => {
+  it("Return Response node should infer as never", () => {
     const ir = createSimpleGetFlow();
     const typeInfo = inferFlowStateTypes(ir);
 
     expect(typeInfo.nodeTypes.get("response_1")).toBe("never");
   });
 
-  it("Redis Cache get 應推斷為 string | null", () => {
+  it("Redis Cache get should infer as string | null", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -95,9 +95,9 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("redis_1")).toBe("string | null");
   });
 
-  // ── P2-4 新增: transform / custom_code / call_subflow ──
+  // ── P2-4 Added: transform / custom_code / call_subflow ──
 
-  it("Transform .map() 應推斷為 unknown[]", () => {
+  it("Transform .map() should infer as unknown[]", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -127,7 +127,7 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("transform_1")).toBe("unknown[]");
   });
 
-  it("Transform .length 應推斷為 number", () => {
+  it("Transform .length should infer as number", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -157,7 +157,7 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("transform_1")).toBe("number");
   });
 
-  it("Transform JSON.stringify 應推斷為 string", () => {
+  it("Transform JSON.stringify should infer as string", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -187,7 +187,7 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("transform_1")).toBe("string");
   });
 
-  it("Transform Object.keys 應推斷為 string[]", () => {
+  it("Transform Object.keys should infer as string[]", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -217,7 +217,7 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("transform_1")).toBe("string[]");
   });
 
-  it("Custom Code 無 returnVariable → void", () => {
+  it("Custom Code without returnVariable should infer as void", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -247,7 +247,7 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("custom_1")).toBe("void");
   });
 
-  it("Custom Code 有 returnType → 使用指定型別", () => {
+  it("Custom Code with returnType should use specified type", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -277,7 +277,7 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("custom_1")).toBe("number");
   });
 
-  it("Call Subflow 應推斷為 Awaited<ReturnType<typeof fn>>", () => {
+  it("Call Subflow should infer as Awaited<ReturnType<typeof fn>>", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -307,7 +307,7 @@ describe("Type Inference", () => {
     expect(typeInfo.nodeTypes.get("subflow_1")).toBe("Awaited<ReturnType<typeof checkAuth>>");
   });
 
-  it("Call Subflow 有 returnType → 使用指定型別", () => {
+  it("Call Subflow with returnType should use specified type", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },

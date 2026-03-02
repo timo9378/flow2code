@@ -1,7 +1,7 @@
 /**
- * Symbol Table 測試
+ * Symbol Table Tests
  *
- * 驗證 label → camelCase 變數名稱轉換、衝突解決、保留字保護。
+ * Verifies label → camelCase variable name conversion, conflict resolution, reserved word protection.
  */
 
 import { describe, it, expect } from "vitest";
@@ -14,38 +14,38 @@ import {
 } from "../fixtures";
 
 describe("Symbol Table", () => {
-  describe("labelToVarName 轉換", () => {
-    it("應將空格分隔的 label 轉為 camelCase", () => {
+  describe("labelToVarName conversion", () => {
+    it("should convert space-separated label to camelCase", () => {
       expect(labelToVarName("Fetch Available Models")).toBe("fetchAvailableModels");
     });
 
-    it("應將含斜線的路由轉為 camelCase", () => {
+    it("should convert label with slashes (routes) to camelCase", () => {
       expect(labelToVarName("GET /api/hello")).toBe("getApiHello");
     });
 
-    it("應將含特殊字元的 label 轉為 camelCase", () => {
+    it("should convert label with special characters to camelCase", () => {
       expect(labelToVarName("Merge & Return")).toBe("mergeReturn");
     });
 
-    it("應處理連字號分隔", () => {
+    it("should handle hyphen-separated labels", () => {
       expect(labelToVarName("my-custom-node")).toBe("myCustomNode");
     });
 
-    it("應處理底線分隔", () => {
+    it("should handle underscore-separated labels", () => {
       expect(labelToVarName("fetch_user_data")).toBe("fetchUserData");
     });
 
-    it("應回傳空字串當 label 只有特殊字元", () => {
+    it("should return empty string when label contains only special characters", () => {
       expect(labelToVarName("!!!")).toBe("");
     });
 
-    it("應保持純英文 label 的 camelCase", () => {
+    it("should maintain camelCase for pure English labels", () => {
       expect(labelToVarName("Check Valid")).toBe("checkValid");
     });
   });
 
   describe("buildSymbolTable", () => {
-    it("應為每個節點生成唯一的變數名稱", () => {
+    it("should generate unique variable names for each node", () => {
       const ir = createSimpleGetFlow();
       const table = buildSymbolTable(ir);
 
@@ -57,7 +57,7 @@ describe("Symbol Table", () => {
       expect(varName1).not.toBe(varName2);
     });
 
-    it("應正確映射節點 label", () => {
+    it("should correctly map node labels", () => {
       const ir = createSimpleGetFlow();
       const table = buildSymbolTable(ir);
 
@@ -67,28 +67,28 @@ describe("Symbol Table", () => {
       expect(table.getVarName("response_1")).toBe("returnHello");
     });
 
-    it("應解決命名衝突", () => {
+    it("should resolve naming conflicts", () => {
       const ir = createConcurrentFlow();
       const table = buildSymbolTable(ir);
       const mappings = table.getAllMappings();
 
-      // 所有名稱應唯一
+      // All names should be unique
       const names = [...mappings.values()];
       const uniqueNames = new Set(names);
       expect(names.length).toBe(uniqueNames.size);
     });
 
-    it("應保護 JS 保留字", () => {
-      // 手動構造一個 label 是保留字的節點
+    it("should protect JS reserved words", () => {
+      // Manually construct a node with a reserved word label
       const ir = createSimpleGetFlow();
-      ir.nodes[1].label = "return"; // "return" 是保留字
+      ir.nodes[1].label = "return"; // "return" is a reserved word
       const table = buildSymbolTable(ir);
 
       const varName = table.getVarName("response_1");
-      expect(varName).toBe("returnResult"); // 應加 Result 後綴
+      expect(varName).toBe("returnResult"); // Should add Result suffix
     });
 
-    it("hasVar 應正確回傳", () => {
+    it("hasVar should return correctly", () => {
       const ir = createSimpleGetFlow();
       const table = buildSymbolTable(ir);
 
@@ -96,7 +96,7 @@ describe("Symbol Table", () => {
       expect(table.hasVar("nonexistent_id")).toBe(false);
     });
 
-    it("不存在的 ID 應 fallback 到 node_xxx", () => {
+    it("non-existent ID should fallback to node_xxx", () => {
       const ir = createSimpleGetFlow();
       const table = buildSymbolTable(ir);
 
@@ -104,46 +104,46 @@ describe("Symbol Table", () => {
     });
   });
 
-  describe("編譯器整合：命名變數", () => {
-    it("生成的代碼應包含觸發器的命名變數", () => {
+  describe("Compiler Integration: Named Variables", () => {
+    it("generated code should contain trigger's named variable", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
-      // 應有 const getApiHello = { ... }
+      // Should have const getApiHello = { ... }
       expect(result.code).toContain("const getApiHello");
-      // 同時保留 flowState 賦值
+      // Also preserve flowState assignment
       expect(result.code).toContain("flowState['trigger_1'] = getApiHello");
     });
 
-    it("生成的代碼應包含 Action 節點的命名變數別名", () => {
+    it("generated code should contain Action node's named variable alias", () => {
       const ir = createPostWithFetchFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
-      // 應有 fetch 節點的命名變數
+      // Should have named variable for fetch node
       expect(result.code).toContain("const callExternalApi");
     });
 
-    it("並發節點應使用 DAG 模式（per-node promise）", () => {
+    it("concurrent nodes should use DAG mode (per-node promise)", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
-      // DAG 模式下，並發節點使用 promise 變數而非命名別名
+      // In DAG mode, concurrent nodes use promise variables instead of named aliases
       expect(result.code).toContain("const p_fetch_1");
       expect(result.code).toContain("const p_fetch_2");
     });
 
-    it("${} 表達式應使用命名變數而非 flowState", () => {
+    it("${} expressions should use named variables instead of flowState", () => {
       const ir = createPostWithFetchFlow();
-      // 修改 body expression 使用模板語法
+      // Modify body expression to use template syntax
       const responseNode = ir.nodes.find(n => n.id === "response_1")!;
       (responseNode.params as any).bodyExpression = "{ data: {{fetch_1}} }";
 
       const result = compile(ir);
       expect(result.success).toBe(true);
-      // 表達式應被解析為命名變數
+      // Expression should be resolved to named variable
       expect(result.code).toContain("callExternalApi");
     });
   });

@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * AI API 設定面板
+ * AI API Settings Panel
  *
- * 管理 AI 端點設定：
- * - 選擇使用環境變數或自訂端點
- * - 新增/編輯/刪除自訂端點
- * - 支援 copilot-api、Gemini Web API、任何 OpenAI 相容代理
+ * Manage AI endpoint settings:
+ * - Choose between environment variables or custom endpoints
+ * - Add/Edit/Delete custom endpoints
+ * - Supports copilot-api, Gemini Web API, any OpenAI-compatible proxy
  */
 
 import { useState } from "react";
@@ -89,12 +89,12 @@ export default function AISettingsDialog({
 
       const res = await fetch(`${url}/models`, { headers });
       if (res.ok) {
-        alert("✅ 連線成功！");
+        alert("✅ Connection successful!");
       } else {
-        alert(`❌ 連線失敗: HTTP ${res.status}`);
+        alert(`❌ Connection failed: HTTP ${res.status}`);
       }
     } catch (err) {
-      alert(`❌ 連線失敗: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`❌ Connection failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -102,15 +102,15 @@ export default function AISettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>⚙️ AI API 設定</DialogTitle>
+          <DialogTitle>⚙️ AI API Settings</DialogTitle>
           <DialogDescription>
-            設定 AI 端點以使用自然語言生成流程圖。支援 OpenAI、copilot-api 逆向代理、Gemini Web API 或任何 OpenAI 相容 API。
+            Configure AI endpoints to generate flow diagrams using natural language. Supports OpenAI, copilot-api reverse proxy, Gemini Web API, or any OpenAI-compatible API.
           </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="flex-1 max-h-[55vh]">
           <div className="space-y-4 p-1">
-            {/* 環境變數選項 */}
+            {/* Environment Variable Option */}
             <button
               onClick={() => setActiveEndpoint("env")}
               className={`w-full text-left px-4 py-3 rounded-lg border transition-all cursor-pointer ${
@@ -121,27 +121,27 @@ export default function AISettingsDialog({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">🔑 環境變數模式</p>
+                  <p className="text-sm font-medium">🔑 Environment Variable Mode</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    使用 OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL
+                    Uses OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL
                   </p>
                 </div>
                 {activeEndpointId === "env" && (
-                  <Badge className="bg-purple-600 text-white text-[10px]">啟用中</Badge>
+                  <Badge className="bg-purple-600 text-white text-[10px]">Active</Badge>
                 )}
               </div>
             </button>
 
             <Separator />
 
-            {/* 自訂端點列表 */}
+            {/* Custom Endpoints List */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">
-                  自訂端點
+                  Custom Endpoints
                 </p>
                 <Button variant="outline" size="sm" onClick={handleStartAdd} className="h-7 text-xs">
-                  + 新增端點
+                  + Add Endpoint
                 </Button>
               </div>
 
@@ -172,7 +172,7 @@ export default function AISettingsDialog({
                     </div>
                     <div className="flex items-center gap-1 ml-2 shrink-0">
                       {activeEndpointId === String(i) && (
-                        <Badge className="bg-purple-600 text-white text-[10px]">啟用中</Badge>
+                        <Badge className="bg-purple-600 text-white text-[10px]">Active</Badge>
                       )}
                       <Button
                         variant="ghost"
@@ -214,22 +214,22 @@ export default function AISettingsDialog({
 
               {endpoints.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-4">
-                  尚未新增自訂端點
+                  No custom endpoints added yet
                 </p>
               )}
             </div>
 
-            {/* 新增/編輯表單 */}
+            {/* Add/Edit Form */}
             {isAdding && (
               <>
                 <Separator />
                 <div className="space-y-3 p-3 border border-border rounded-lg bg-secondary/30">
                   <p className="text-xs font-semibold">
-                    {editIndex !== null ? "✏️ 編輯端點" : "➕ 新增端點"}
+                    {editIndex !== null ? "✏️ Edit Endpoint" : "➕ Add Endpoint"}
                   </p>
                   <div className="space-y-2">
                     <div>
-                      <Label className="text-[10px] uppercase tracking-wider">名稱</Label>
+                      <Label className="text-[10px] uppercase tracking-wider">Name</Label>
                       <Input
                         value={editConfig.name}
                         onChange={(e) => setEditConfig((c) => ({ ...c, name: e.target.value }))}
@@ -247,12 +247,12 @@ export default function AISettingsDialog({
                       />
                     </div>
                     <div>
-                      <Label className="text-[10px] uppercase tracking-wider">API Key（可為空）</Label>
+                      <Label className="text-[10px] uppercase tracking-wider">API Key (optional)</Label>
                       <Input
                         type="password"
                         value={editConfig.apiKey}
                         onChange={(e) => setEditConfig((c) => ({ ...c, apiKey: e.target.value }))}
-                        placeholder="sk-xxxx（逆向代理可留空）"
+                        placeholder="sk-xxxx (can be left empty for reverse proxies)"
                         className="font-mono text-xs h-8 mt-1"
                       />
                     </div>
@@ -279,7 +279,7 @@ export default function AISettingsDialog({
                         className="rounded border-border accent-primary"
                       />
                       <Label htmlFor="json-mode" className="text-[10px] uppercase tracking-wider cursor-pointer">
-                        支援 JSON Mode (response_format)
+                        Supports JSON Mode (response_format)
                       </Label>
                     </div>
                   </div>
@@ -293,7 +293,7 @@ export default function AISettingsDialog({
                       }}
                       className="h-7 text-xs"
                     >
-                      取消
+                      Cancel
                     </Button>
                     <Button
                       size="sm"
@@ -301,23 +301,23 @@ export default function AISettingsDialog({
                       disabled={!editConfig.name.trim() || !editConfig.baseUrl.trim()}
                       className="h-7 text-xs bg-purple-600 hover:bg-purple-500 text-white"
                     >
-                      儲存
+                      Save
                     </Button>
                   </div>
                 </div>
               </>
             )}
 
-            {/* 說明 */}
+            {/* Description */}
             <Separator />
             <div className="space-y-1.5 text-[10px] text-muted-foreground">
-              <p className="font-semibold uppercase tracking-wider">支援的 API 格式</p>
+              <p className="font-semibold uppercase tracking-wider">Supported API Formats</p>
               <ul className="space-y-0.5 list-disc list-inside">
                 <li><strong>OpenAI</strong> — api.openai.com/v1</li>
-                <li><strong>copilot-api</strong> — 逆向 GitHub Copilot API（localhost:4141/v1）</li>
-                <li><strong>Gemini Web API</strong> — 逆向 Google Gemini</li>
+                <li><strong>copilot-api</strong> — Reverse GitHub Copilot API (localhost:4141/v1)</li>
+                <li><strong>Gemini Web API</strong> — Reverse Google Gemini</li>
                 <li><strong>Ollama</strong> — localhost:11434/v1</li>
-                <li>任何 OpenAI 相容的 /chat/completions 端點</li>
+                <li>Any OpenAI-compatible /chat/completions endpoint</li>
               </ul>
             </div>
           </div>
@@ -325,7 +325,7 @@ export default function AISettingsDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            關閉
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "zustand";
 import { createUndoRedoSlice, type UndoRedoSlice } from "../../src/store/undo-redo-slice";
 
-// 簡單測試 snapshot 型別
+// Simple test snapshot type
 type TestSnapshot = { value: number };
 
 function createTestStore(maxHistory = 50) {
@@ -84,7 +84,7 @@ describe("UndoRedoSlice", () => {
     }
 
     expect(limitedStore.getState().undoStack).toHaveLength(3);
-    // 最老的（1, 2）被移除，保留 3, 4, 5
+    // Oldest (1, 2) removed, keeping 3, 4, 5
     expect(limitedStore.getState().undoStack[0]).toEqual({ value: 3 });
     expect(limitedStore.getState().undoStack[2]).toEqual({ value: 5 });
   });

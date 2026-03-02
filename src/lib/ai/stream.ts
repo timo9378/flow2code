@@ -1,8 +1,8 @@
 /**
  * AI Streaming Utilities
  *
- * 處理 OpenAI 相容 API 的 SSE (Server-Sent Events) 串流。
- * 支援即時 token-by-token 回傳，讓 UI 可以逐步顯示生成進度。
+ * Handles SSE (Server-Sent Events) streaming for OpenAI-compatible APIs.
+ * Supports real-time token-by-token responses for progressive UI rendering.
  */
 
 // ============================================================
@@ -10,11 +10,11 @@
 // ============================================================
 
 export interface StreamCallbacks {
-  /** 每收到一個 token 時觸發 */
+  /** Fired for each received token */
   onToken: (token: string) => void;
-  /** 串流完成時觸發（回傳完整內容） */
+  /** Fired when streaming completes (returns full content) */
   onComplete: (fullContent: string) => void;
-  /** 發生錯誤時觸發 */
+  /** Fired on error */
   onError: (error: Error) => void;
 }
 
@@ -31,107 +31,130 @@ export interface StreamRequestOptions {
 // ============================================================
 
 /**
- * 發送串流請求並逐 token 回傳結果。
- * 相容 OpenAI / Copilot API / Ollama 的 SSE 格式。
+ * Send a streaming request and return results token by token.
+ * Compatible with OpenAI / Copilot API / Ollama SSE formats.
  */
 export async function streamChatCompletion(
   options: StreamRequestOptions,
   callbacks: StreamCallbacks
 ): Promise<void> {
-  const { url, headers, body, signal } = options;
-
-  // 強制啟用串流模式
-  const streamBody = { ...body, stream: true };
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(streamBody),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    callbacks.onError(new Error(`AI API 錯誤 (${response.status}): ${errText}`));
-    return;
-  }
-
-  if (!response.body) {
-    callbacks.onError(new Error("回應沒有可讀串流 (response.body is null)"));
-    return;
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-  let fullContent = "";
-
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const { url, headers, body, signal } = options;
 
-      buffer += decoder.decode(value, { stream: true });
+    // Force streaming mode
+    const streamBody = { ...body, stream: true };
 
-      // 解析 SSE 格式：每行以 "data: " 開頭
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? ""; // 保留最後一行（可能不完整）
+    // Prevent requests from hanging indefinitely (e.g., CORS plugin issues) with a 60s header timeout
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(new Error("Connection timeout (60s)")), 60000);
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(":")) continue; // 空行或註解
-        if (trimmed === "data: [DONE]") continue; // OpenAI 結束標記
+    // Combine user signal (cancel button) with timeout signal
+    let combinedSignal = timeoutController.signal;
+    if (signal) {
+      combinedSignal = AbortSignal.any([signal, timeoutController.signal]);
+    }
 
-        if (trimmed.startsWith("data: ")) {
-          const jsonStr = trimmed.slice(6);
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              fullContent += delta;
-              callbacks.onToken(delta);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(streamBody),
+        signal: combinedSignal,
+      });
+    } finally {
+      clearTimeout(timeoutId); // Clear timeout after receiving header or on error
+    }
+
+    if (!response.ok) {
+      const errText = await response.text();
+      callbacks.onError(new Error(`AI API error (${response.status}): ${errText}`));
+      return;
+    }
+
+    if (!response.body) {
+      callbacks.onError(new Error("Response has no readable stream (response.body is null)"));
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let fullContent = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE format: each line starts with "data: "
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? ""; // Keep last line (may be incomplete)
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(":")) continue; // Empty line or comment
+          if (trimmed === "data: [DONE]") continue; // OpenAI end marker
+
+          if (trimmed.startsWith("data: ")) {
+            const jsonStr = trimmed.slice(6);
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) {
+                fullContent += delta;
+                callbacks.onToken(delta);
+              }
+            } catch {
+              // Incomplete JSON, skip
             }
-          } catch {
-            // 不完整的 JSON，跳過
           }
         }
       }
-    }
 
-    callbacks.onComplete(fullContent);
+      callbacks.onComplete(fullContent);
+    } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        callbacks.onComplete(fullContent); // Return received content on cancel
+      } else {
+        callbacks.onError(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
   } catch (err) {
     if ((err as Error).name === "AbortError") {
-      callbacks.onComplete(fullContent); // 取消時仍回傳已收到的內容
+      callbacks.onComplete(""); // Return empty string on cancel
     } else {
       callbacks.onError(err instanceof Error ? err : new Error(String(err)));
     }
   }
 }
 
+
 // ============================================================
 // Token Budget Estimation
 // ============================================================
 
 /**
- * 粗略估算文字的 token 數量。
- * 使用 GPT-4 的平均比例：約 4 字元 = 1 token（英文），
- * 中文約 1.5 字 = 1 token。
+ * Rough estimation of token count for text.
+ * Uses GPT-4 average ratios: ~4 chars = 1 token (English),
+ * ~1.5 chars = 1 token (CJK characters).
  */
 export function estimateTokenCount(text: string): number {
-  // 拆分中英文
   let tokens = 0;
   for (const char of text) {
     if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/.test(char)) {
-      tokens += 0.67; // 中文字約 1.5 字 = 1 token
+      tokens += 0.67; // CJK: ~1.5 chars = 1 token
     } else {
-      tokens += 0.25; // 英文約 4 字 = 1 token
+      tokens += 0.25; // English: ~4 chars = 1 token
     }
   }
   return Math.ceil(tokens);
 }
 
 /**
- * 檢查 prompt 是否超過 token 預算
+ * Check if prompt exceeds the token budget
  */
 export function checkTokenBudget(
   systemPrompt: string,
@@ -151,20 +174,20 @@ export function checkTokenBudget(
 // ============================================================
 
 export interface RetryOptions {
-  /** 最大重試次數（預設 3） */
+  /** Maximum retry attempts (default: 3) */
   maxRetries?: number;
-  /** 初始等待時間（ms，預設 1000） */
+  /** Initial delay in ms (default: 1000) */
   initialDelay?: number;
-  /** 等待時間倍數（預設 2） */
+  /** Backoff multiplier (default: 2) */
   backoffMultiplier?: number;
-  /** 中斷信號 */
+  /** Abort signal */
   signal?: AbortSignal;
-  /** 每次重試時的回呼 */
+  /** Callback on each retry */
   onRetry?: (attempt: number, error: Error) => void;
 }
 
 /**
- * 帶指數退避的自動重試機制
+ * Automatic retry with exponential backoff
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -183,26 +206,26 @@ export async function withRetry<T>(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      if (signal?.aborted) throw new Error("已取消");
+      if (signal?.aborted) throw new Error("Cancelled");
       return await fn();
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
 
       if (attempt === maxRetries) break;
 
-      // 不重試使用者取消
+      // Don't retry user cancellation
       if (lastError.name === "AbortError" || signal?.aborted) break;
 
-      // 不重試驗證失敗（4xx）
+      // Don't retry validation errors (4xx)
       if (lastError.message.includes("(4")) break;
 
       onRetry?.(attempt + 1, lastError);
 
-      // 指數退避等待
+      // Exponential backoff wait
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay *= backoffMultiplier;
     }
   }
 
-  throw lastError ?? new Error("重試次數已用盡");
+  throw lastError ?? new Error("Max retries exhausted");
 }

@@ -1,25 +1,25 @@
 /**
  * Flow2Code Runtime Error Tracer
  *
- * 解決「除錯體驗斷層」問題：
- * 當編譯生成的 API Route 在 Runtime 報錯時，
- * 自動攔截 Error Stack，反查 Source Map，
- * 印出可點擊的 deep link 直接跳轉到 Flow2Code 畫布中的錯誤節點。
+ * Solves the "debugging experience gap" problem:
+ * When a compiled API Route throws a runtime error,
+ * it automatically intercepts the error stack, reverse-lookups the Source Map,
+ * and prints a clickable deep link to jump directly to the error node on the Flow2Code canvas.
  *
- * 使用方式：
+ * Usage:
  * ```ts
- * // 1. Next.js middleware / 包裝 handler
+ * // 1. Next.js middleware / wrap handler
  * import { withFlowTrace } from "flow2code/compiler";
  *
  * export const GET = withFlowTrace(handler, { flowFile: "my-flow.flow.json" });
  *
- * // 2. 全域安裝（攔截 uncaught errors）
+ * // 2. Global install (intercept uncaught errors)
  * import { installFlowTracer } from "flow2code/compiler";
  *
  * installFlowTracer({ port: 3001 });
  * ```
  *
- * 輸出範例：
+ * Output example:
  * ```
  * ❌ Runtime Error in generated.ts:45
  *    → Flow2Code Node: [fetch_api_1] "Fetch User Data"
@@ -32,47 +32,47 @@ import type { SourceMap } from "./compiler";
 import type { FlowIR, FlowNode } from "../ir/types";
 
 // ============================================================
-// 型別定義
+// Type Definitions
 // ============================================================
 
 export interface TraceResult {
-  /** 匹配到的節點 ID */
+  /** Matched node ID */
   nodeId: string;
-  /** 節點標籤 */
+  /** Node label */
   nodeLabel: string;
-  /** 節點類型 */
+  /** Node type */
   nodeType: string;
-  /** 原始碼行號範圍 */
+  /** Source code line number range */
   startLine: number;
   endLine: number;
-  /** 可點擊的 deep link（開啟畫布並高亮節點） */
+  /** Clickable deep link (opens canvas and highlights node) */
   deepLink: string;
 }
 
 export interface TracerOptions {
-  /** Flow2Code 編輯器 URL（預設 http://localhost:3001） */
+  /** Flow2Code editor URL (default: http://localhost:3001) */
   editorUrl?: string;
-  /** Source Map 物件（若已在記憶體中） */
+  /** Source Map object (if already in memory) */
   sourceMap?: SourceMap;
-  /** FlowIR 物件（用於取得節點 label） */
+  /** FlowIR object (used to retrieve node labels) */
   ir?: FlowIR;
-  /** 是否在 console 印出可讀的錯誤訊息（預設 true） */
+  /** Whether to print a readable error message to console (default: true) */
   log?: boolean;
 }
 
 // ============================================================
-// 核心：從 Error Stack 反查節點
+// Core: Reverse-lookup nodes from Error Stack
 // ============================================================
 
 /**
- * 從 Error 物件的 stack trace 中提取所有匹配的行號，
- * 並透過 Source Map 反查對應的 Flow 節點。
+ * Extract all matching line numbers from an Error object's stack trace
+ * and reverse-lookup the corresponding Flow nodes via Source Map.
  *
- * @param error - 原始 Error 物件
- * @param sourceMap - 編譯時產生的 Source Map
- * @param ir - FlowIR（用於取得 label / nodeType）
- * @param editorUrl - 編輯器 URL
- * @returns 所有匹配的 TraceResult（按 stack order）
+ * @param error - Original Error object
+ * @param sourceMap - Source Map generated at compile time
+ * @param ir - FlowIR (used to retrieve label / nodeType)
+ * @param editorUrl - Editor URL
+ * @returns All matching TraceResults (in stack order)
  */
 export function traceError(
   error: Error,
@@ -84,7 +84,7 @@ export function traceError(
   if (!error.stack) return results;
 
   const generatedFile = sourceMap.generatedFile;
-  // 匹配 stack 中的行號：at Function (file.ts:45:12) 或 at file.ts:45:12
+  // Match line numbers in stack: at Function (file.ts:45:12) or at file.ts:45:12
   const lineRegex = new RegExp(
     `(?:${escapeRegex(generatedFile)}|generated\\.ts):(\\d+)`,
     "g"
@@ -114,7 +114,7 @@ export function traceError(
 }
 
 /**
- * 格式化 TraceResult 為可讀的 console 訊息
+ * Format TraceResults into a readable console message.
  */
 export function formatTraceResults(
   error: Error,
@@ -139,13 +139,13 @@ export function formatTraceResults(
 }
 
 // ============================================================
-// Handler 包裝器（Next.js / Express 適用）
+// Handler Wrapper (for Next.js / Express)
 // ============================================================
 
 type AsyncHandler = (...args: unknown[]) => Promise<unknown>;
 
 /**
- * 包裝 API handler，自動攔截 Runtime Error 並印出 Flow 節點追蹤。
+ * Wrap an API handler to automatically intercept runtime errors and print Flow node traces.
  *
  * @example
  * ```ts
@@ -184,7 +184,7 @@ export function withFlowTrace<T extends AsyncHandler>(
           );
         }
       }
-      throw err; // re-throw — 不吃掉原始錯誤
+      throw err; // re-throw — do not swallow the original error
     }
   };
 
@@ -192,16 +192,16 @@ export function withFlowTrace<T extends AsyncHandler>(
 }
 
 // ============================================================
-// 全域 Tracer 安裝器
+// Global Tracer Installer
 // ============================================================
 
 /**
- * 在 process 層級安裝 Flow2Code error tracer。
- * 會監聽 `uncaughtException` 和 `unhandledRejection`，
- * 將匹配 Source Map 的錯誤自動印出 deep link。
+ * Install the Flow2Code error tracer at the process level.
+ * Listens for `uncaughtException` and `unhandledRejection`,
+ * automatically printing deep links for errors matching the Source Map.
  *
- * @param options - TracerOptions（必須包含 sourceMap）
- * @returns 清除函數（uninstall tracer）
+ * @param options - TracerOptions (must include sourceMap)
+ * @returns Cleanup function (uninstall tracer)
  *
  * @example
  * ```ts
@@ -210,7 +210,7 @@ export function withFlowTrace<T extends AsyncHandler>(
  *
  * const uninstall = installFlowTracer({ sourceMap, editorUrl: "http://localhost:3001" });
  *
- * // 稍後停止追蹤
+ * // Later, stop tracing
  * uninstall();
  * ```
  */

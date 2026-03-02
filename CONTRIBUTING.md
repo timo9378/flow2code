@@ -1,8 +1,8 @@
 # Contributing to Flow2Code
 
-感謝你有興趣為 Flow2Code 貢獻！
+Thanks for your interest in contributing to Flow2Code!
 
-## 快速開始
+## Quick Start
 
 ```bash
 # 1. Clone & Install
@@ -10,41 +10,41 @@ git clone https://github.com/timo9378/flow2code.git
 cd flow2code
 pnpm install
 
-# 2. 開發 UI（含 Hot Reload）
+# 2. Start dev UI (with Hot Reload)
 pnpm dev
 
-# 3. 執行測試
+# 3. Run tests
 pnpm test:run
 
-# 4. 建置 CLI + Compiler
+# 4. Build CLI + Compiler
 pnpm build:cli
 ```
 
-## 專案結構
+## Project Structure
 
 ```
 src/
   lib/
-    ir/            # FlowIR 型別定義 + 驗證器 + 拓撲排序
-    compiler/      # AST 編譯器核心
-      plugins/     # Node Plugin 系統（可擴充）
-      platforms/   # Platform Adapter（Next.js / Express / Cloudflare）
-    storage/       # .flow.json 分割/合併
+    ir/            # FlowIR types, validator, topological sort
+    compiler/      # AST compiler core
+      plugins/     # Node Plugin system (extensible)
+      platforms/   # Platform Adapters (Next.js / Express / Cloudflare)
+    storage/       # .flow.json split/merge
     diff/          # Semantic Diff
-  cli/             # CLI 工具（compile / watch / init）
+  cli/             # CLI tools (compile / watch / init)
   server/          # Standalone HTTP Server
-  app/             # Next.js UI（Visual Canvas）
-tests/             # Vitest 測試
+  app/             # Next.js UI (Visual Canvas)
+tests/             # Vitest tests
 ```
 
-## 開發流程
+## Development Workflow
 
-1. **建立 Branch** — `feat/xxx` 或 `fix/xxx`
-2. **撰寫測試** — 所有編譯器變動必須有對應測試
-3. **通過 CI** — `pnpm lint && pnpm test:run`
-4. **發 PR** — 描述變動動機與影響
+1. **Create a branch** — `feat/xxx` or `fix/xxx`
+2. **Write tests** — All compiler changes must have corresponding tests
+3. **Pass CI** — `pnpm lint && pnpm test:run`
+4. **Open a PR** — Describe the motivation and impact of changes
 
-## 添加新的 Node Plugin
+## Adding a New Node Plugin
 
 ```typescript
 // src/lib/compiler/plugins/builtin/my-plugin.ts
@@ -63,30 +63,30 @@ export const myPlugin: NodePlugin = {
 };
 ```
 
-然後在 `src/lib/compiler/plugins/builtin/index.ts` 中註冊。
+Then register it in `src/lib/compiler/plugins/builtin/index.ts`.
 
-## 添加新的 Platform Adapter
+## Adding a New Platform Adapter
 
-在 `src/lib/compiler/platforms/` 建立新檔案，實作 `PlatformAdapter` 介面，
-然後在 `platforms/index.ts` 中註冊 `registerPlatform("myplatform", () => new MyPlatform())`。
+Create a new file in `src/lib/compiler/platforms/`, implement the `PlatformAdapter` interface,
+then register it in `platforms/index.ts` with `registerPlatform("myplatform", () => new MyPlatform())`.
 
-## 測試規範
+## Testing Guidelines
 
-- 測試檔放在 `tests/` 目錄，使用 Vitest
-- 命名格式：`*.test.ts`
-- Compiler 測試建議使用 snapshot 或 `toContain()` 驗證生成代碼
+- Test files go in the `tests/` directory, using Vitest
+- Naming convention: `*.test.ts`
+- Compiler tests should use snapshots or `toContain()` to verify generated code
 
 ## Commit Convention
 
 ```
-feat: 新功能
-fix: 修復 bug
-refactor: 重構（不改變行為）
-test: 新增或修改測試
-docs: 文件變動
-chore: 建構/CI/依賴更新
+feat: New feature
+fix: Bug fix
+refactor: Refactor (no behavior change)
+test: Add or modify tests
+docs: Documentation changes
+chore: Build/CI/dependency updates
 ```
 
-## 授權
+## License
 
-貢獻的代碼將以 MIT License 發布。
+Contributed code will be released under the MIT License.

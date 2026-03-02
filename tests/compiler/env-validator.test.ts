@@ -1,7 +1,7 @@
 /**
- * Environment Variable Validator 測試
+ * Environment Variable Validator Tests
  *
- * 驗證：環境變數收集、.env 解析、驗證報告。
+ * Verifies: environment variable collection, .env parsing, and validation reports.
  */
 
 import { describe, it, expect } from "vitest";
@@ -15,7 +15,7 @@ import { createEnvVarFlow, createSimpleGetFlow } from "../fixtures";
 
 describe("Environment Variable Validator", () => {
   describe("collectEnvVars", () => {
-    it("應從 Fetch URL 收集環境變數", () => {
+    it("should collect environment variables from Fetch URL", () => {
       const ir = createEnvVarFlow();
       const usageMap = collectEnvVars(ir);
 
@@ -23,7 +23,7 @@ describe("Environment Variable Validator", () => {
       expect(usageMap.has("API_KEY")).toBe(true);
     });
 
-    it("應記錄使用位置", () => {
+    it("should record usage locations", () => {
       const ir = createEnvVarFlow();
       const usageMap = collectEnvVars(ir);
 
@@ -33,7 +33,7 @@ describe("Environment Variable Validator", () => {
       expect(apiBaseUsages[0].paramKey).toBe("url");
     });
 
-    it("無環境變數時應回傳空 Map", () => {
+    it("should return an empty Map when there are no environment variables", () => {
       const ir = createSimpleGetFlow();
       const usageMap = collectEnvVars(ir);
 
@@ -42,7 +42,7 @@ describe("Environment Variable Validator", () => {
   });
 
   describe("parseEnvFile", () => {
-    it("應解析基本 KEY=VALUE 格式", () => {
+    it("should parse basic KEY=VALUE format", () => {
       const content = "API_KEY=abc123\nDB_URL=postgres://localhost";
       const vars = parseEnvFile(content);
 
@@ -50,21 +50,21 @@ describe("Environment Variable Validator", () => {
       expect(vars).toContain("DB_URL");
     });
 
-    it("應跳過空行和註釋", () => {
+    it("should skip blank lines and comments", () => {
       const content = "# This is a comment\n\nAPI_KEY=abc\n  # Another comment";
       const vars = parseEnvFile(content);
 
       expect(vars).toEqual(["API_KEY"]);
     });
 
-    it("應處理 export 前綴", () => {
+    it("should handle export prefix", () => {
       const content = "export API_KEY=abc123";
       const vars = parseEnvFile(content);
 
       expect(vars).toContain("API_KEY");
     });
 
-    it("應處理引號包裹的值", () => {
+    it("should handle quoted values", () => {
       const content = 'API_KEY="my secret key"';
       const vars = parseEnvFile(content);
 
@@ -73,7 +73,7 @@ describe("Environment Variable Validator", () => {
   });
 
   describe("validateEnvVars", () => {
-    it("所有變數都已宣告時應通過驗證", () => {
+    it("should pass validation when all variables are declared", () => {
       const ir = createEnvVarFlow();
       const result = validateEnvVars(ir, ["API_BASE_URL", "API_KEY"]);
 
@@ -81,15 +81,15 @@ describe("Environment Variable Validator", () => {
       expect(result.missingVars).toHaveLength(0);
     });
 
-    it("缺少變數時應驗證失敗", () => {
+    it("should fail validation when variables are missing", () => {
       const ir = createEnvVarFlow();
-      const result = validateEnvVars(ir, ["API_BASE_URL"]); // 缺少 API_KEY
+      const result = validateEnvVars(ir, ["API_BASE_URL"]); // Missing API_KEY
 
       expect(result.valid).toBe(false);
       expect(result.missingVars).toContain("API_KEY");
     });
 
-    it("應列出未使用的已宣告變數", () => {
+    it("should list unused declared variables", () => {
       const ir = createEnvVarFlow();
       const result = validateEnvVars(ir, [
         "API_BASE_URL",
@@ -101,7 +101,7 @@ describe("Environment Variable Validator", () => {
       expect(result.unusedVars).toContain("UNUSED_VAR");
     });
 
-    it("無環境變數的 IR 應直接通過", () => {
+    it("should pass directly for IR with no environment variables", () => {
       const ir = createSimpleGetFlow();
       const result = validateEnvVars(ir, []);
 
@@ -111,7 +111,7 @@ describe("Environment Variable Validator", () => {
   });
 
   describe("formatEnvValidationReport", () => {
-    it("通過驗證時應顯示成功訊息", () => {
+    it("should display success message when validation passes", () => {
       const result = validateEnvVars(createEnvVarFlow(), [
         "API_BASE_URL",
         "API_KEY",
@@ -121,7 +121,7 @@ describe("Environment Variable Validator", () => {
       expect(report).toContain("✅");
     });
 
-    it("失敗時應列出缺失的變數", () => {
+    it("should list missing variables on failure", () => {
       const result = validateEnvVars(createEnvVarFlow(), []);
       const report = formatEnvValidationReport(result);
 

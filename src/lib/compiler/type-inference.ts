@@ -1,14 +1,14 @@
 /**
  * Flow2Code Type Inference Engine
  *
- * 根據 FlowIR 的節點定義和端口型別，推斷 flowState 的 TypeScript 型別。
- * 取代 `Record<string, any>` 的粗暴宣告，讓生成的代碼具備真正的型別安全。
+ * Infers TypeScript types for flowState based on FlowIR node definitions and port types.
+ * Replaces the crude `Record<string, any>` declaration to provide real type safety in generated code.
  *
- * 推斷策略：
- *   1. 觸發器節點：根據觸發器類型和參數推斷（如 HTTP body、query 等）
- *   2. Action 節點：根據 Plugin 的 getOutputType() 推斷
- *   3. 手動指定：使用端口的 dataType 作為 fallback
- *   4. 自動窄化：$input 引用會根據上游節點型別收窄
+ * Inference strategies:
+ *   1. Trigger nodes: inferred from trigger type and parameters (e.g. HTTP body, query, etc.)
+ *   2. Action nodes: inferred from the plugin's getOutputType()
+ *   3. Manual specification: uses the port's dataType as a fallback
+ *   4. Auto-narrowing: $input references are narrowed based on upstream node types
  */
 
 import type { FlowIR, FlowNode, NodeType } from "../ir/types";
@@ -19,17 +19,17 @@ import { getPlugin } from "./plugins/types";
 // ============================================================
 
 export interface FlowStateTypeInfo {
-  /** 完整的 TypeScript interface 原始碼 */
+  /** Complete TypeScript interface source code */
   interfaceCode: string;
-  /** 每個節點 ID 對應的 TypeScript 型別 */
+  /** TypeScript type corresponding to each node ID */
   nodeTypes: Map<string, string>;
 }
 
 /**
- * 推斷 FlowIR 中所有節點的輸出型別，生成對應的 TypeScript interface。
+ * Infer the output types of all nodes in a FlowIR and generate the corresponding TypeScript interface.
  *
  * @param ir - Flow IR
- * @returns FlowStateTypeInfo 包含生成的 interface 和各節點型別映射
+ * @returns FlowStateTypeInfo containing the generated interface and per-node type mappings
  */
 export function inferFlowStateTypes(ir: FlowIR): FlowStateTypeInfo {
   const nodeTypes = new Map<string, string>();
@@ -39,7 +39,7 @@ export function inferFlowStateTypes(ir: FlowIR): FlowStateTypeInfo {
     nodeTypes.set(node.id, type);
   }
 
-  // 生成 interface 代碼（所有欄位為 optional，因為節點按拓撲順序執行，不一定每個都會被賦值）
+  // Generate interface code (all fields are optional since nodes execute in topological order and not every one will be assigned)
   const fields = ir.nodes
     .map((node) => {
       const type = nodeTypes.get(node.id) || "unknown";
@@ -54,8 +54,8 @@ export function inferFlowStateTypes(ir: FlowIR): FlowStateTypeInfo {
 }
 
 /**
- * 生成 flowState 的宣告語句
- * 取代舊的 `const flowState: Record<string, any> = {}`
+ * Generate the flowState declaration statement.
+ * Replaces the old `const flowState: Record<string, any> = {}`.
  */
 export function generateFlowStateDeclaration(ir: FlowIR): string {
   const typeInfo = inferFlowStateTypes(ir);
@@ -63,18 +63,18 @@ export function generateFlowStateDeclaration(ir: FlowIR): string {
 }
 
 // ============================================================
-// 單節點型別推斷
+// Single Node Type Inference
 // ============================================================
 
 function inferNodeOutputType(node: FlowNode): string {
-  // 1. 嘗試從 Plugin 取得型別
+  // 1. Try to get type from Plugin
   const plugin = getPlugin(node.nodeType);
   if (plugin?.getOutputType) {
     return plugin.getOutputType(node);
   }
 
-  // 2. 從端口的 dataType 推斷
-  if (node.outputs.length > 0) {
+  // 2. Infer from port's dataType
+  if (node.outputs && node.outputs.length > 0) {
     const primaryOutput = node.outputs[0];
     return mapFlowDataTypeToTS(primaryOutput.dataType);
   }
@@ -84,7 +84,7 @@ function inferNodeOutputType(node: FlowNode): string {
 }
 
 /**
- * 將 FlowDataType 映射為 TypeScript 型別
+ * Map FlowDataType to TypeScript types.
  */
 function mapFlowDataTypeToTS(
   dataType: string

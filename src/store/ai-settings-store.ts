@@ -1,32 +1,32 @@
 /**
- * AI API 設定 Store
+ * AI API Settings Store
  *
- * 管理自訂 AI API 端點設定，支援：
- * - 環境變數（預設行為）
- * - 自訂 OpenAI 相容端點（如 copilot-api 逆向代理、Gemini Web API 等）
- * - 設定持久化（localStorage）
+ * Manages custom AI API endpoint configurations, supporting:
+ * - Environment variables (fallback behavior)
+ * - Custom OpenAI-compatible endpoints (e.g., copilot-api proxy, Gemini Web API)
+ * - Settings persistence (localStorage)
  */
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export interface AIEndpointConfig {
-  /** 顯示名稱 */
+  /** Display name */
   name: string;
-  /** API Base URL（如 http://localhost:4141 或 https://your-proxy.com/v1） */
+  /** API Base URL (e.g., http://localhost:4141 or https://your-proxy.com/v1) */
   baseUrl: string;
-  /** API Key（可為空，部分逆向代理不需要） */
+  /** API Key (can be empty, some proxies don't require it) */
   apiKey: string;
-  /** 模型名稱 */
+  /** Model name */
   model: string;
-  /** 是否使用 response_format: json_object（部分 API 不支援） */
+  /** Whether to use response_format: json_object (some APIs don't support it) */
   supportsJsonMode: boolean;
 }
 
 interface AISettingsState {
-  /** 目前啟用的端點 ID（'env' = 使用環境變數） */
+  /** Active endpoint ID ('env' = use environment variables, '0' = first custom endpoint) */
   activeEndpointId: string;
-  /** 自訂端點列表 */
+  /** Custom endpoint list */
   endpoints: AIEndpointConfig[];
 
   // Actions
@@ -37,7 +37,7 @@ interface AISettingsState {
   getActiveConfig: () => AIEndpointConfig | null;
 }
 
-/** 預設 copilot-api 端點（使用者可修改） */
+/** Default copilot-api endpoint (user-configurable) */
 const DEFAULT_ENDPOINTS: AIEndpointConfig[] = [
   {
     name: "Copilot API (Local)",
@@ -51,7 +51,7 @@ const DEFAULT_ENDPOINTS: AIEndpointConfig[] = [
 export const useAISettingsStore = create<AISettingsState>()(
   persist(
     (set, get) => ({
-      activeEndpointId: "env",
+      activeEndpointId: "0",
       endpoints: DEFAULT_ENDPOINTS,
 
       setActiveEndpoint: (id) => set({ activeEndpointId: id }),
@@ -67,11 +67,11 @@ export const useAISettingsStore = create<AISettingsState>()(
       removeEndpoint: (index) =>
         set((s) => {
           const newEndpoints = s.endpoints.filter((_, i) => i !== index);
-          // 如果刪除的是目前啟用的端點，切回環境變數
+          // If the removed endpoint was active, fall back to first endpoint
           const removedWasActive = s.activeEndpointId === String(index);
           return {
             endpoints: newEndpoints,
-            activeEndpointId: removedWasActive ? "env" : s.activeEndpointId,
+            activeEndpointId: removedWasActive ? "0" : s.activeEndpointId,
           };
         }),
 

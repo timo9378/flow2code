@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * 工具列元件 — Koimsurai 風格暗色主題
+ * Toolbar component — Koimsurai-style dark theme
  *
- * 頂部工具列 + 浮動視窗（AI、輸出、OpenAPI 選擇器）
- * 業務邏輯已提取至 hooks：useCompile、useAIGenerate、useFileOps
+ * Top toolbar + floating dialogs (AI, Output, OpenAPI selector)
+ * Business logic extracted to hooks: useCompile, useAIGenerate, useFileOps
  */
 
 import { useState, useRef, useCallback } from "react";
@@ -93,7 +93,7 @@ export default function Toolbar() {
     setOutput(result);
     setShowOutput(true);
 
-    // 同步 sandbox 參數
+    // Sync sandbox parameters
     if (result.startsWith("✅")) {
       const ir = exportIR();
       const trigger = ir.nodes.find((n) => n.category === "trigger");
@@ -118,7 +118,7 @@ export default function Toolbar() {
 
   return (
     <>
-      {/* ── 頂部工具列 ── */}
+      {/* ── Top Toolbar ── */}
       <header className="h-12 bg-card border-b border-border flex items-center px-4 gap-1.5 shrink-0">
         {/* Logo */}
         <div className="flex items-center gap-2 mr-3">
@@ -128,32 +128,32 @@ export default function Toolbar() {
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
-        {/* 主要操作 */}
+        {/* Primary Actions */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={onCompile} className="text-primary hover:text-primary hover:bg-primary/10">
-              🚀 編譯
+              🚀 Compile
             </Button>
           </TooltipTrigger>
-          <TooltipContent>將流程圖編譯為 TypeScript 代碼</TooltipContent>
+          <TooltipContent>Compile the flow diagram to TypeScript code</TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={onValidate}>
-              ✅ 驗證
+              ✅ Validate
             </Button>
           </TooltipTrigger>
-          <TooltipContent>驗證 IR 結構正確性</TooltipContent>
+          <TooltipContent>Validate IR structural correctness</TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={onAnalyze}>
-              📊 分析
+              📊 Analyze
             </Button>
           </TooltipTrigger>
-          <TooltipContent>分析執行計畫（拓撲排序 + 並發偵測）</TooltipContent>
+          <TooltipContent>Analyze execution plan (topological sort + concurrency detection)</TooltipContent>
         </Tooltip>
 
         <Separator orientation="vertical" className="h-5 mx-1" />
@@ -162,10 +162,10 @@ export default function Toolbar() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={() => setShowAIDialog(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
-              ✨ AI 生成
+              ✨ AI Generate
             </Button>
           </TooltipTrigger>
-          <TooltipContent>用自然語言描述，AI 自動生成流程圖</TooltipContent>
+          <TooltipContent>Describe in natural language, AI auto-generates the flow diagram</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -174,46 +174,46 @@ export default function Toolbar() {
               ⚙️
             </Button>
           </TooltipTrigger>
-          <TooltipContent>AI API 端點設定</TooltipContent>
+          <TooltipContent>AI API endpoint settings</TooltipContent>
         </Tooltip>
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
-        {/* 檔案操作 */}
+        {/* File Operations */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm">
-              📁 檔案
+              📁 File
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={() => fileOps.handleLoadIRFromJSON()}>
-              <span className="mr-2">📂</span> 載入 Flow JSON
+              <span className="mr-2">📂</span> Load Flow JSON
             </DropdownMenuItem>
             <DropdownMenuItem onClick={compile.handleDownloadIR}>
-              <span className="mr-2">💾</span> 下載 Flow JSON
+              <span className="mr-2">💾</span> Download Flow JSON
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onExportIR}>
-              <span className="mr-2">📋</span> 匯出 IR 到剪貼簿
+              <span className="mr-2">📋</span> Export IR to Clipboard
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={fileOps.handleImportOpenAPI}>
-              <span className="mr-2">📄</span> 匯入 OpenAPI Spec
+              <span className="mr-2">📄</span> Import OpenAPI Spec
             </DropdownMenuItem>
             <DropdownMenuItem onClick={fileOps.handleDecompileTS}>
-              <span className="mr-2">🔄</span> 匯入 TypeScript（反向解析）
+              <span className="mr-2">🔄</span> Import TypeScript (Decompile)
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* 測試 */}
+        {/* Test */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={() => setShowSandbox(true)} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10">
-              🧪 測試
+              🧪 Test
             </Button>
           </TooltipTrigger>
-          <TooltipContent>開啟 API 測試沙盒</TooltipContent>
+          <TooltipContent>Open API test sandbox</TooltipContent>
         </Tooltip>
 
         {/* Spacer */}
@@ -224,24 +224,24 @@ export default function Toolbar() {
           {nodes.length} nodes
         </Badge>
 
-        {/* 重置 */}
+        {/* Reset */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="sm" onClick={reset} className="text-destructive hover:text-destructive hover:bg-destructive/10">
-              🗑️ 重置
+              🗑️ Reset
             </Button>
           </TooltipTrigger>
-          <TooltipContent>清除所有節點和邊</TooltipContent>
+          <TooltipContent>Clear all nodes and edges</TooltipContent>
         </Tooltip>
       </header>
 
-      {/* ── AI 生成對話框 ── */}
+      {/* ── AI Generate Dialog ── */}
       <Dialog open={showAIDialog} onOpenChange={setShowAIDialog}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>✨ AI 生成流程圖</DialogTitle>
+            <DialogTitle>✨ AI Generate Flow Diagram</DialogTitle>
             <DialogDescription>
-              描述你想建立的 API 端點或工作流程，AI 會自動生成完整的流程圖。
+              Describe the API endpoint or workflow you want to build, and AI will automatically generate the complete flow diagram.
             </DialogDescription>
           </DialogHeader>
 
@@ -253,17 +253,17 @@ export default function Toolbar() {
                 ai.setAiPrompt(e.target.value);
                 ai.updateTokenEstimate(e.target.value);
               }}
-              placeholder="例如：建立一個 GET /api/users 端點，從資料庫查詢用戶列表並回傳..."
+              placeholder="e.g.: Create a GET /api/users endpoint that queries the user list from the database and returns it..."
               className="min-h-[120px] font-mono text-sm resize-y"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onAIGenerate();
               }}
             />
 
-            {/* 串流即時預覽 */}
+            {/* Streaming Live Preview */}
             {ai.aiLoading && ai.aiStreamContent && (
               <div className="bg-secondary/50 rounded-md p-3 max-h-[120px] overflow-y-auto">
-                <div className="text-[10px] text-muted-foreground mb-1 font-semibold">📡 即時串流</div>
+                <div className="text-[10px] text-muted-foreground mb-1 font-semibold">📡 Live Stream</div>
                 <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words">
                   {ai.aiStreamContent.length > 500 ? `...${ai.aiStreamContent.slice(-500)}` : ai.aiStreamContent}
                 </pre>
@@ -271,7 +271,7 @@ export default function Toolbar() {
             )}
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">範例</span>
+              <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Examples</span>
               <div className="flex flex-wrap gap-1">
                 {EXAMPLE_PROMPTS.map((p, i) => (
                   <button
@@ -291,17 +291,17 @@ export default function Toolbar() {
 
           <DialogFooter className="flex items-center justify-between">
             <span className="text-muted-foreground text-[10px]">
-              ⌘+Enter 快速送出 ·{" "}
+              ⌘+Enter to submit ·{" "}
               {aiSettings.getActiveConfig()
                 ? `📡 ${aiSettings.getActiveConfig()!.name}`
-                : "🔑 環境變數模式"}
+                : "🔑 Environment variable mode"}
               {ai.tokenEstimate > 0 && ` · ~${ai.tokenEstimate} tokens`}
               {" · "}
               <button
                 onClick={() => { setShowAISettings(true); }}
                 className="text-purple-400 hover:underline cursor-pointer"
               >
-                設定端點
+                Configure endpoint
               </button>
             </span>
             <div className="flex gap-2">
@@ -312,7 +312,7 @@ export default function Toolbar() {
                   size="sm"
                   className="text-destructive border-destructive/50 hover:bg-destructive/10"
                 >
-                  ⏹ 取消
+                  ⏹ Cancel
                 </Button>
               )}
               <Button
@@ -320,19 +320,19 @@ export default function Toolbar() {
                 disabled={ai.aiLoading || !ai.aiPrompt.trim()}
                 className="bg-purple-600 hover:bg-purple-500 text-white"
               >
-                {ai.aiLoading ? "⏳ 生成中..." : "✨ 生成"}
+                {ai.aiLoading ? "⏳ Generating..." : "✨ Generate"}
               </Button>
             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── 輸出面板（浮動視窗） ── */}
+      {/* ── Output Panel (Floating Dialog) ── */}
       <Dialog open={showOutput} onOpenChange={setShowOutput}>
         <DialogContent className="sm:max-w-[720px] max-h-[80vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Output</DialogTitle>
-            <DialogDescription>編譯、驗證或 AI 生成的輸出結果</DialogDescription>
+            <DialogDescription>Output from compilation, validation, or AI generation</DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 max-h-[60vh] w-full">
             <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap break-words leading-relaxed max-w-full">
@@ -342,7 +342,7 @@ export default function Toolbar() {
         </DialogContent>
       </Dialog>
 
-      {/* ── API 測試沙盒 ── */}
+      {/* ── API Test Sandbox ── */}
       {showSandbox && (
         <ApiSandbox
           initialMethod={sandboxMethod}
@@ -351,13 +351,13 @@ export default function Toolbar() {
         />
       )}
 
-      {/* ── OpenAPI 匯入選擇對話框 ── */}
+      {/* ── OpenAPI Import Selection Dialog ── */}
       <Dialog open={fileOps.showOpenAPIDialog} onOpenChange={fileOps.setShowOpenAPIDialog}>
         <DialogContent className="sm:max-w-[700px] max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>📄 選擇要匯入的端點</DialogTitle>
+            <DialogTitle>📄 Select Endpoint to Import</DialogTitle>
             <DialogDescription>
-              從 OpenAPI 規範中找到 {fileOps.openAPIFlows.length} 個端點，選擇一個匯入：
+              Found {fileOps.openAPIFlows.length} endpoints in the OpenAPI spec. Select one to import:
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 max-h-[60vh]">
@@ -372,7 +372,7 @@ export default function Toolbar() {
                     {flow.meta?.name?.split(" ")[0] ?? "?"}
                   </Badge>
                   <span className="text-sm text-foreground flex-1 truncate group-hover:text-primary transition-colors">
-                    {flow.meta?.name ?? `端點 ${i + 1}`}
+                    {flow.meta?.name ?? `Endpoint ${i + 1}`}
                   </span>
                   <span className="text-muted-foreground text-[10px]">
                     {flow.nodes?.length ?? 0} nodes
@@ -384,7 +384,7 @@ export default function Toolbar() {
         </DialogContent>
       </Dialog>
 
-      {/* ── AI 設定對話框 ── */}
+      {/* ── AI Settings Dialog ── */}
       <AISettingsDialog open={showAISettings} onOpenChange={setShowAISettings} />
     </>
   );

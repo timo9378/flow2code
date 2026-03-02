@@ -1,8 +1,8 @@
 /**
- * 節點預設值定義（向下相容層）
+ * Node Default Values (backward compatibility layer)
  *
- * 現在委託給 NodeRegistry — 這些函式保留是為了不破壞既有呼叫者。
- * 新程式碼應直接使用 `nodeRegistry` 或 `NodeRegistry` class。
+ * Now delegated to NodeRegistry — these functions are kept to avoid breaking existing callers.
+ * New code should use `nodeRegistry` or `NodeRegistry` class directly.
  *
  * @see {@link ./node-registry.ts}
  */
@@ -11,7 +11,7 @@ import { type NodeType, type NodeCategory, type NodeParamsMap, type InputPort, t
 import { nodeRegistry } from "@/lib/node-registry";
 
 /**
- * 取得節點類型的預設輸入/輸出端口
+ * Get default input/output ports for a node type
  */
 export function getDefaultPorts(nodeType: NodeType): {
   inputs: InputPort[];
@@ -21,21 +21,21 @@ export function getDefaultPorts(nodeType: NodeType): {
 }
 
 /**
- * 取得節點類型的預設參數
+ * Get default parameters for a node type
  */
 export function getDefaultParams(nodeType: NodeType): NodeParamsMap[NodeType] {
   return nodeRegistry.getDefaultParams(nodeType) as NodeParamsMap[NodeType];
 }
 
 /**
- * 取得節點類型的預設標籤
+ * Get default label for a node type
  */
 export function getDefaultLabel(nodeType: NodeType): string {
   return nodeRegistry.getDefaultLabel(nodeType);
 }
 
 /**
- * 從節點類型推斷分類
+ * Infer category from node type
  */
 export function getCategoryForType(nodeType: NodeType): NodeCategory {
   return nodeRegistry.getCategoryForType(nodeType);

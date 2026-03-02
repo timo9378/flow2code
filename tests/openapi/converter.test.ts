@@ -1,5 +1,5 @@
 /**
- * OpenAPI → FlowIR 轉換器測試
+ * OpenAPI → FlowIR Converter Tests
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -18,11 +18,11 @@ beforeEach(() => {
 });
 
 // ============================================================
-// 基本解析
+// Basic Parsing
 // ============================================================
 
-describe("OpenAPI 基本解析", () => {
-  it("應正確解析最簡 OpenAPI 規範", () => {
+describe("OpenAPI Basic Parsing", () => {
+  it("should correctly parse a minimal OpenAPI spec", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test API", version: "1.0.0" },
@@ -45,7 +45,7 @@ describe("OpenAPI 基本解析", () => {
     expect(result.summary.totalOperations).toBe(1);
   });
 
-  it("應處理字串輸入（JSON 序列化）", () => {
+  it("should handle string input (JSON serialized)", () => {
     const spec = JSON.stringify({
       openapi: "3.0.0",
       info: { title: "Test API", version: "1.0.0" },
@@ -61,31 +61,31 @@ describe("OpenAPI 基本解析", () => {
     expect(result.flows).toHaveLength(1);
   });
 
-  it("無效 JSON 應回傳解析錯誤", () => {
+  it("invalid JSON should return parse error", () => {
     const result = convertOpenAPIToFlowIR("not valid json{{{");
     expect(result.success).toBe(false);
-    expect(result.errors[0]).toContain("JSON 解析失敗");
+    expect(result.errors[0]).toContain("JSON parse failed");
     expect(result.flows).toHaveLength(0);
   });
 
-  it("缺少 paths 欄位應回傳驗證錯誤", () => {
+  it("missing paths field should return validation error", () => {
     const result = convertOpenAPIToFlowIR({ openapi: "3.0.0" } as any);
     expect(result.success).toBe(false);
-    expect(result.errors[0]).toContain("openapi 或 paths");
+    expect(result.errors[0]).toContain("openapi or paths");
   });
 
-  it("缺少 openapi 欄位應回傳驗證錯誤", () => {
+  it("missing openapi field should return validation error", () => {
     const result = convertOpenAPIToFlowIR({ paths: {} } as any);
     expect(result.success).toBe(false);
   });
 });
 
 // ============================================================
-// 多端點
+// Multiple Endpoints
 // ============================================================
 
-describe("OpenAPI 多端點轉換", () => {
-  it("一個 path 多個 method 應各產生獨立 FlowIR", () => {
+describe("OpenAPI Multiple Endpoint Conversion", () => {
+  it("one path with multiple methods should each produce a separate FlowIR", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -105,7 +105,7 @@ describe("OpenAPI 多端點轉換", () => {
     expect(result.summary.totalPaths).toBe(1);
   });
 
-  it("多個 path 應各產生 FlowIR", () => {
+  it("multiple paths should each produce FlowIR", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -129,11 +129,11 @@ describe("OpenAPI 多端點轉換", () => {
 });
 
 // ============================================================
-// 路徑轉換
+// Path Conversion
 // ============================================================
 
-describe("OpenAPI 路徑轉換", () => {
-  it("應將 {param} 轉為 [param]", () => {
+describe("OpenAPI Path Conversion", () => {
+  it("should convert {param} to [param]", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -157,7 +157,7 @@ describe("OpenAPI 路徑轉換", () => {
     expect((triggerNode.params as any).routePath).toBe("/api/users/[user_id]");
   });
 
-  it("非 /api 開頭的路徑應自動加上 /api 前綴", () => {
+  it("paths not starting with /api should have /api prefix added", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -175,7 +175,7 @@ describe("OpenAPI 路徑轉換", () => {
     expect((triggerNode.params as any).routePath).toBe("/api/health");
   });
 
-  it("已有 /api 前綴的路徑不應重複", () => {
+  it("paths already with /api prefix should not be duplicated", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -195,11 +195,11 @@ describe("OpenAPI 路徑轉換", () => {
 });
 
 // ============================================================
-// HTTP Method 對應
+// HTTP Method Mapping
 // ============================================================
 
-describe("OpenAPI Method 對應", () => {
-  it("GET 不應標記 parseBody", () => {
+describe("OpenAPI Method Mapping", () => {
+  it("GET should not set parseBody", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -218,7 +218,7 @@ describe("OpenAPI Method 對應", () => {
     expect((trigger.params as any).method).toBe("GET");
   });
 
-  it("POST 有 requestBody 時應標記 parseBody", () => {
+  it("POST with requestBody should set parseBody", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -242,7 +242,7 @@ describe("OpenAPI Method 對應", () => {
     expect((trigger.params as any).method).toBe("POST");
   });
 
-  it("成功狀態碼應被正確提取", () => {
+  it("success status code should be correctly extracted", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -267,11 +267,11 @@ describe("OpenAPI Method 對應", () => {
 });
 
 // ============================================================
-// Tags 與 metadata
+// Tags and Metadata
 // ============================================================
 
-describe("OpenAPI Tags 和 metadata", () => {
-  it("應收集所有 tags 到 summary", () => {
+describe("OpenAPI Tags and Metadata", () => {
+  it("should collect all tags into summary", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -295,7 +295,7 @@ describe("OpenAPI Tags 和 metadata", () => {
     expect(result.summary.tags).toEqual(["Admin", "Items", "Users"]);
   });
 
-  it("operationId 應被用作 FlowIR name", () => {
+  it("operationId should be used as FlowIR name", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -319,7 +319,7 @@ describe("OpenAPI Tags 和 metadata", () => {
 // ============================================================
 
 describe("OpenAPI Query Parameters", () => {
-  it("query 參數應產生 queryParams 定義", () => {
+  it("query parameters should produce queryParams definitions", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -351,11 +351,11 @@ describe("OpenAPI Query Parameters", () => {
 });
 
 // ============================================================
-// 節點結構
+// Node Structure
 // ============================================================
 
-describe("OpenAPI 轉換節點結構", () => {
-  it("最簡 GET 應產生 2 個節點（Trigger + Return）和 1 條 edge", () => {
+describe("OpenAPI Conversion Node Structure", () => {
+  it("minimal GET should produce 2 nodes (Trigger + Return) and 1 edge", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -374,7 +374,7 @@ describe("OpenAPI 轉換節點結構", () => {
     expect(flow.nodes[1].category).toBe(NodeCategory.OUTPUT);
   });
 
-  it("有 path 參數的 GET 應多一個 Transform 節點", () => {
+  it("GET with path parameter should have one more Transform node", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -397,7 +397,7 @@ describe("OpenAPI 轉換節點結構", () => {
     expect(flow.edges).toHaveLength(2);
   });
 
-  it("edges 應正確連接節點", () => {
+  it("edges should correctly connect nodes", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },
@@ -416,11 +416,11 @@ describe("OpenAPI 轉換節點結構", () => {
 });
 
 // ============================================================
-// 空 paths
+// Empty Paths
 // ============================================================
 
-describe("OpenAPI 邊界情況", () => {
-  it("空 paths 應產生 0 個 flow", () => {
+describe("OpenAPI Edge Cases", () => {
+  it("empty paths should produce 0 flows", () => {
     const spec = {
       openapi: "3.0.0",
       info: { title: "Test", version: "1.0.0" },

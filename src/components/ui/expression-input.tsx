@@ -1,8 +1,8 @@
 /**
- * ExpressionInput — 帶有自動補全功能的表達式輸入框
+ * ExpressionInput — Expression input with autocomplete
  *
- * 用於替代 ConfigPanel 中的純 Textarea，
- * 提供 flowState 欄位、方法、內建變數的即時補全。
+ * Replaces plain Textarea in ConfigPanel,
+ * providing real-time autocomplete for flowState fields, methods, and built-in variables.
  */
 
 "use client";
@@ -16,17 +16,17 @@ import {
 } from "@/hooks/use-expression-suggestions";
 
 interface ExpressionInputProps {
-  /** 節點 ID（用於推斷上游型別） */
+  /** Node ID (for inferring upstream types) */
   nodeId: string | null;
-  /** 欄位標籤 */
+  /** Field label */
   label: string;
-  /** 當前值 */
+  /** Current value */
   value: string;
-  /** 值變更時回調 */
+  /** Callback when value changes */
   onChange: (value: string) => void;
   /** Placeholder */
   placeholder?: string;
-  /** 錯誤訊息 */
+  /** Error message */
   error?: string;
 }
 
@@ -53,7 +53,7 @@ export default function ExpressionInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
-  // ── 更新建議列表 ──
+  // ── Update suggestion list ──
   const updateSuggestions = useCallback(
     (inputValue: string, cursorPos?: number) => {
       const filtered = getFiltered(inputValue, cursorPos);
@@ -74,7 +74,7 @@ export default function ExpressionInput({
     [onChange, updateSuggestions]
   );
 
-  // ── 插入選定的建議 ──
+  // ── Insert selected suggestion ──
   const insertSuggestion = useCallback(
     (suggestion: ExpressionSuggestion) => {
       const textarea = textareaRef.current;
@@ -83,7 +83,7 @@ export default function ExpressionInput({
       const pos = textarea.selectionStart;
       const beforeCursor = value.slice(0, pos);
 
-      // 找到要替換的 token
+      // Find the token to replace
       const tokenMatch = /[\w$.'[\]]*$/.exec(beforeCursor);
       const tokenStart = tokenMatch ? pos - tokenMatch[0].length : pos;
 
@@ -92,7 +92,7 @@ export default function ExpressionInput({
       onChange(newValue);
       setShowSuggestions(false);
 
-      // 將游標移到插入文字的末尾
+      // Move cursor to end of inserted text
       requestAnimationFrame(() => {
         const newPos = tokenStart + suggestion.insertText.length;
         textarea.setSelectionRange(newPos, newPos);
@@ -102,7 +102,7 @@ export default function ExpressionInput({
     [value, onChange]
   );
 
-  // ── 鍵盤導航 ──
+  // ── Keyboard Navigation ──
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (!showSuggestions || filteredSuggestions.length === 0) return;
@@ -132,18 +132,18 @@ export default function ExpressionInput({
     [showSuggestions, filteredSuggestions, selectedIndex, insertSuggestion]
   );
 
-  // ── 計算彈出位置 ──
+  // ── Calculate popup position ──
   useEffect(() => {
     if (!showSuggestions || !textareaRef.current) return;
     const textarea = textareaRef.current;
     const rect = textarea.getBoundingClientRect();
     setPopupPosition({
-      top: rect.height + 2, // 在 textarea 下方
+      top: rect.height + 2, // Below the textarea
       left: 0,
     });
   }, [showSuggestions]);
 
-  // ── 點擊外部關閉 ──
+  // ── Close on outside click ──
   useEffect(() => {
     if (!showSuggestions) return;
 

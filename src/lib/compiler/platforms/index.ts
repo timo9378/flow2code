@@ -1,5 +1,5 @@
 /**
- * Platform Adapters - 註冊與匯出
+ * Platform Adapters - Registration & Exports
  */
 
 export type { PlatformAdapter, PlatformContext, PlatformName, BuiltinPlatformName, TriggerInitContext } from "./types";
@@ -13,7 +13,7 @@ export { NextjsPlatform } from "./nextjs";
 export { ExpressPlatform } from "./express";
 export { CloudflarePlatform } from "./cloudflare";
 
-// ── 註冊內建平台 ──
+// ── Register built-in platforms ──
 import { registerPlatform } from "./types";
 import { NextjsPlatform } from "./nextjs";
 import { ExpressPlatform } from "./express";

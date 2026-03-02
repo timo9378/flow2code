@@ -187,13 +187,13 @@ export interface RedisCacheParams {
   ttl?: number;
 }
 
-/** 自定義代碼參數 */
+/** Custom code parameters */
 export interface CustomCodeParams {
-  /** TypeScript 代碼片段 */
+  /** TypeScript code snippet */
   code: string;
-  /** 返回值的變數名稱 */
+  /** Name of the return variable */
   returnVariable?: string;
-  /** 明確指定返回型別（用於型別推斷，例如 "User[]" 或 "{ count: number }"） */
+  /** Explicitly specify the return type (for type inference, e.g. "User[]" or "{ count: number }") */
   returnType?: string;
 }
 

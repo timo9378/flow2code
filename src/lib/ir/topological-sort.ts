@@ -1,10 +1,10 @@
 /**
- * 拓撲排序與並發偵測演算法
+ * Topological Sort and Concurrency Detection Algorithm
  * 
- * 功能：
- * 1. 計算節點的執行優先順序（拓撲排序）
- * 2. 偵測可並發執行的節點組（用於生成 Promise.all）
- * 3. 建構執行計畫（Execution Plan）
+ * Features:
+ * 1. Compute node execution priority (topological sort)
+ * 2. Detect groups of concurrently executable nodes (for generating Promise.all)
+ * 3. Build Execution Plan
  */
 
 import type {
@@ -15,63 +15,63 @@ import type {
 } from "./types";
 
 // ============================================================
-// 執行計畫型別
+// Execution Plan Types
 // ============================================================
 
-/** 單一執行步驟 */
+/** Single execution step */
 export interface ExecutionStep {
-  /** 步驟索引 */
+  /** Step index */
   index: number;
   /** 
-   * 此步驟中需要執行的節點 ID 列表。
-   * 如果長度 > 1，表示可以用 Promise.all 並發執行。
+   * List of node IDs to execute in this step.
+   * If length > 1, they can be executed concurrently with Promise.all.
    */
   nodeIds: NodeId[];
-  /** 是否可以並發執行 */
+  /** Whether it can execute concurrently */
   concurrent: boolean;
 }
 
-/** 完整執行計畫 */
+/** Complete execution plan */
 export interface ExecutionPlan {
-  /** 所有步驟（已按拓撲排序） */
+  /** All steps (topologically sorted) */
   steps: ExecutionStep[];
-  /** 拓撲排序結果（扁平） */
+  /** Topological sort result (flat) */
   sortedNodeIds: NodeId[];
-  /** 每個節點的入邊節點（依賴來源） */
+  /** Incoming nodes for each node (dependency sources) */
   dependencies: Map<NodeId, Set<NodeId>>;
-  /** 每個節點的出邊節點（依賴目標） */
+  /** Outgoing nodes for each node (dependency targets) */
   dependents: Map<NodeId, Set<NodeId>>;
 }
 
 // ============================================================
-// 圖結構輔助
+// Graph Structure Helpers
 // ============================================================
 
 interface GraphInfo {
-  /** 入度 (indegree) */
+  /** Indegree */
   indegree: Map<NodeId, number>;
-  /** 鄰接表 (adjacency list) */
+  /** Adjacency list */
   adjacency: Map<NodeId, Set<NodeId>>;
-  /** 反向鄰接表 */
+  /** Reverse adjacency list */
   reverseAdjacency: Map<NodeId, Set<NodeId>>;
 }
 
 /**
- * 從 IR 建構圖結構
+ * Build graph structure from IR
  */
 function buildGraph(nodes: FlowNode[], edges: FlowEdge[]): GraphInfo {
   const indegree = new Map<NodeId, number>();
   const adjacency = new Map<NodeId, Set<NodeId>>();
   const reverseAdjacency = new Map<NodeId, Set<NodeId>>();
 
-  // 初始化所有節點
+  // Initialize all nodes
   for (const node of nodes) {
     indegree.set(node.id, 0);
     adjacency.set(node.id, new Set());
     reverseAdjacency.set(node.id, new Set());
   }
 
-  // 建立鄰接關係
+  // Build adjacency relationships
   for (const edge of edges) {
     adjacency.get(edge.sourceNodeId)!.add(edge.targetNodeId);
     reverseAdjacency.get(edge.targetNodeId)!.add(edge.sourceNodeId);
@@ -85,24 +85,24 @@ function buildGraph(nodes: FlowNode[], edges: FlowEdge[]): GraphInfo {
 }
 
 // ============================================================
-// Kahn's Algorithm 拓撲排序 + 層級分組
+// Kahn's Algorithm Topological Sort + Level Grouping
 // ============================================================
 
 /**
- * 使用 Kahn 演算法進行拓撲排序，
- * 同時將同一層級（入度同時歸零）的節點分為一組，
- * 以便偵測可並發執行的節點。
+ * Perform topological sort using Kahn's algorithm,
+ * grouping nodes at the same level (indegree reaches zero simultaneously)
+ * to detect concurrently executable nodes.
  */
 export function topologicalSort(ir: FlowIR): ExecutionPlan {
   const { nodes, edges } = ir;
   const { indegree, adjacency, reverseAdjacency } = buildGraph(nodes, edges);
 
-  // 工作副本
+  // Working copy
   const indegreeCopy = new Map(indegree);
   const sortedNodeIds: NodeId[] = [];
   const steps: ExecutionStep[] = [];
 
-  // 初始入度為 0 的節點（通常是 Trigger）
+  // Nodes with initial indegree of 0 (typically Triggers)
   let currentLevel: NodeId[] = [];
   for (const [nodeId, degree] of indegreeCopy) {
     if (degree === 0) {
@@ -113,7 +113,7 @@ export function topologicalSort(ir: FlowIR): ExecutionPlan {
   let stepIndex = 0;
 
   while (currentLevel.length > 0) {
-    // 記錄當前層級
+    // Record current level
     steps.push({
       index: stepIndex,
       nodeIds: [...currentLevel],
@@ -121,7 +121,7 @@ export function topologicalSort(ir: FlowIR): ExecutionPlan {
     });
     sortedNodeIds.push(...currentLevel);
 
-    // 計算下一層級
+    // Compute next level
     const nextLevel: NodeId[] = [];
     for (const nodeId of currentLevel) {
       for (const neighbor of adjacency.get(nodeId) ?? []) {
@@ -137,7 +137,7 @@ export function topologicalSort(ir: FlowIR): ExecutionPlan {
     stepIndex++;
   }
 
-  // 建構依賴關係表
+  // Build dependency table
   const dependencies = new Map<NodeId, Set<NodeId>>();
   const dependents = new Map<NodeId, Set<NodeId>>();
   for (const node of nodes) {
@@ -145,10 +145,10 @@ export function topologicalSort(ir: FlowIR): ExecutionPlan {
     dependents.set(node.id, adjacency.get(node.id) ?? new Set());
   }
 
-  // 檢查是否有未處理的節點（表示有環）
+  // Check for unprocessed nodes (indicates a cycle)
   if (sortedNodeIds.length !== nodes.length) {
     throw new Error(
-      `拓撲排序失敗：圖中存在環路。已排序 ${sortedNodeIds.length}/${nodes.length} 個節點。`
+      `Topological sort failed: cycle detected in graph. Sorted ${sortedNodeIds.length}/${nodes.length} nodes.`
     );
   }
 
@@ -161,44 +161,44 @@ export function topologicalSort(ir: FlowIR): ExecutionPlan {
 }
 
 // ============================================================
-// 工具函式
+// Utility Functions
 // ============================================================
 
 /**
- * 取得指定節點的所有依賴節點 ID
+ * Get all dependency node IDs for a given node
  */
 export function getDependencies(plan: ExecutionPlan, nodeId: NodeId): NodeId[] {
   return Array.from(plan.dependencies.get(nodeId) ?? []);
 }
 
 /**
- * 取得指定節點的所有下游節點 ID
+ * Get all downstream node IDs for a given node
  */
 export function getDependents(plan: ExecutionPlan, nodeId: NodeId): NodeId[] {
   return Array.from(plan.dependents.get(nodeId) ?? []);
 }
 
 /**
- * 檢查兩個節點是否可以並發執行
- * （即它們之間沒有直接或間接的依賴關係）
+ * Check if two nodes can execute concurrently
+ * (i.e., there is no direct or indirect dependency between them)
  */
 export function canRunConcurrently(
   plan: ExecutionPlan,
   nodeA: NodeId,
   nodeB: NodeId
 ): boolean {
-  // 檢查 A 是否在 B 的任何步驟之前或之後
+  // Check if A is before or after B in any step
   const stepA = plan.steps.find((s) => s.nodeIds.includes(nodeA));
   const stepB = plan.steps.find((s) => s.nodeIds.includes(nodeB));
 
   if (!stepA || !stepB) return false;
 
-  // 同一層級即可並發
+  // Same level means concurrent execution is possible
   return stepA.index === stepB.index;
 }
 
 /**
- * 將執行計畫轉為可讀的文字格式（用於除錯）
+ * Format the execution plan into readable text (for debugging)
  */
 export function formatExecutionPlan(
   plan: ExecutionPlan,

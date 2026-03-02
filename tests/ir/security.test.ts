@@ -1,7 +1,7 @@
 /**
  * IR Security Validation Tests
  *
- * 測試 AI 生成的 IR 安全檢查功能
+ * Tests for AI-generated IR security validation
  */
 
 import { describe, it, expect } from "vitest";

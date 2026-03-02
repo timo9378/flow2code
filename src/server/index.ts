@@ -3,10 +3,10 @@
 /**
  * Flow2Code Standalone Dev Server
  *
- * 零依賴 (僅 Node.js 內建 http/fs/path)
- * - 提供 3 個 API 端點：/api/compile, /api/generate, /api/import-openapi
- * - 靜態資源服務 (Next.js export output at `out/`)
- * - CORS 支援 (dev 模式下 Allow-Origin: *)
+ * Zero dependencies (only Node.js built-in http/fs/path)
+ * - Provides 3 API endpoints: /api/compile, /api/generate, /api/import-openapi
+ * - Static asset serving (Next.js export output at `out/`)
+ * - CORS support (Allow-Origin: * in dev mode)
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -17,18 +17,22 @@ import { existsSync } from "node:fs";
 
 import { handleCompile, handleGenerate, handleImportOpenAPI } from "./handlers.js";
 
+// Re-export handlers for programmatic use
+export { handleCompile, handleGenerate, handleImportOpenAPI } from "./handlers.js";
+export type { ApiResponse, CompileRequest } from "./handlers.js";
+
 // ── Path Management ──
-// __dirname → package-internal assets (out/ 靜態檔案)
-// process.cwd() → 使用者專案目錄 (user project)
+// __dirname → package-internal assets (out/ static files)
+// process.cwd() → user project directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * 找 out/ 目錄：依序檢查候選路徑，回傳第一個存在的
+ * Locate the out/ directory: check candidate paths in order, return the first that exists
  */
 function resolveStaticDir(): string {
   const candidates = [
-    join(__dirname, "..", "out"),       // dist/server.js → ../out (npm 套件結構)
+    join(__dirname, "..", "out"),       // dist/server.js → ../out (npm package structure)
     join(__dirname, "out"),             // dist/out/
     join(__dirname, "..", "..", "out"), // src/server/index.ts → ../../out (dev)
     join(process.cwd(), "out"),        // fallback: cwd/out
@@ -40,7 +44,7 @@ function resolveStaticDir(): string {
     }
   }
 
-  // 都不存在就用最常見的路徑（啟動時會印警告）
+  // None found — use the most common path (a warning will be printed on startup)
   return candidates[0];
 }
 
@@ -69,19 +73,20 @@ const MIME_TYPES: Record<string, string> = {
 const isDev = process.env.NODE_ENV !== "production";
 
 function setCors(res: ServerResponse) {
-  const origin = isDev ? "*" : (process.env.CORS_ORIGIN || "*");
+  const origin = isDev ? "*" : (process.env.CORS_ORIGIN || "");
+  if (!origin) return; // In production, no CORS headers = same-origin only
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
 
 /**
- * 安全 Headers — Content-Security-Policy + 常見防禦標頭
- * dev server 允許 'unsafe-inline' (React/Next dev 需求)。
+ * Security Headers — Content-Security-Policy + common defense headers.
+ * Dev server allows 'unsafe-inline' (required by React/Next dev).
  */
 function setSecurityHeaders(res: ServerResponse) {
-  // CSP：限制載入來源，防止 XSS
-  // Production 模式收緊策略；Dev 模式允許 inline（React/Next HMR 需求）
+  // CSP: restrict loading sources to prevent XSS
+  // Production tightens policy; Dev allows inline (required by React/Next HMR)
   const csp = isDev
     ? [
       "default-src 'self'",
@@ -149,7 +154,7 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
   // Map / → /index.html
   let filePath = join(staticDir, pathname === "/" ? "index.html" : pathname);
 
-  // 如果路徑不含副檔名，嘗試 .html (for Next.js export pages)
+  // If path has no extension, try .html (for Next.js export pages)
   if (!extname(filePath)) {
     filePath += ".html";
   }
@@ -196,6 +201,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
 
     let body: unknown;
     try {
+      // Validate Content-Type
+      const contentType = req.headers["content-type"] || "";
+      if (!contentType.includes("application/json")) {
+        sendJson(res, 415, { error: "Content-Type must be application/json" });
+        return;
+      }
       body = await parseJsonBody(req);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Invalid JSON body";
@@ -204,19 +215,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
     }
 
     if (pathname === "/api/compile") {
-      const result = handleCompile(body as any, projectRoot);
+      const result = handleCompile(body as import("./handlers.js").CompileRequest, projectRoot);
       sendJson(res, result.status, result.body);
       return;
     }
 
     if (pathname === "/api/generate") {
-      const result = await handleGenerate(body as any);
+      const result = await handleGenerate(body as { prompt?: string });
       sendJson(res, result.status, result.body);
       return;
     }
 
     if (pathname === "/api/import-openapi") {
-      const result = handleImportOpenAPI(body as any);
+      const result = handleImportOpenAPI(body as { spec?: unknown; filter?: { tags?: string[]; paths?: string[] } });
       sendJson(res, result.status, result.body);
       return;
     }
@@ -237,7 +248,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
     res.end(content);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("404 Not Found — UI 尚未建置，請先執行 pnpm build:ui");
+    res.end("404 Not Found — UI has not been built yet, please run pnpm build:ui first");
   }
 }
 
@@ -247,9 +258,9 @@ export interface ServerOptions {
   port?: number;
   host?: string;
   staticDir?: string;
-  /** 使用者專案根目錄 (預設 process.cwd()) */
+  /** User project root directory (defaults to process.cwd()) */
   projectRoot?: string;
-  /** 啟動後的 callback */
+  /** Callback after server starts */
   onReady?: (url: string) => void;
 }
 
@@ -283,8 +294,5 @@ export function startServer(options: ServerOptions = {}) {
   return server;
 }
 
-// 如果直接執行此檔案 (非透過 CLI import)
-// node dist/server.js → argv[1] 就是這個檔案本身
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  startServer();
-}
+// Standalone dev server boot logic has been removed; now fully invoked via cli/index.ts calling startServer()
+

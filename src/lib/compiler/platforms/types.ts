@@ -1,14 +1,14 @@
 /**
- * Platform Adapter 介面
+ * Platform Adapter Interface
  *
- * 將 HTTP 框架的具體實作抽象化，讓編譯器不再耦合 Next.js。
- * 開發者可以選擇不同的目標平台來生成對應的代碼。
+ * Abstracts HTTP framework implementations so the compiler is no longer coupled to Next.js.
+ * Developers can choose different target platforms to generate corresponding code.
  *
- * 支援的平台：
- *   - nextjs       (預設) Next.js App Router
+ * Supported platforms:
+ *   - nextjs       (default) Next.js App Router
  *   - express      Express.js
  *   - cloudflare   Cloudflare Workers
- *   - generic      通用 TypeScript（純函式，不綁框架）
+ *   - generic      Generic TypeScript (pure functions, framework-agnostic)
  */
 
 import type { SourceFile, CodeBlockWriter } from "ts-morph";
@@ -16,16 +16,16 @@ import type { FlowNode, NodeId, FlowIR } from "../../ir/types";
 import type { SymbolTable } from "../symbol-table";
 
 // ============================================================
-// Platform Adapter 介面
+// Platform Adapter Interface
 // ============================================================
 
 export interface PlatformAdapter {
-  /** 平台名稱 */
+  /** Platform name */
   readonly name: string;
 
   /**
-   * 生成 import 語句
-   * 例如 Next.js: `import { NextResponse } from "next/server"`
+   * Generate import statements.
+   * e.g. Next.js: `import { NextResponse } from "next/server"`
    */
   generateImports(
     sourceFile: SourceFile,
@@ -34,8 +34,8 @@ export interface PlatformAdapter {
   ): void;
 
   /**
-   * 生成導出的主函式（包含簽名、參數、外層 try/catch）
-   * bodyGenerator 回呼負責填入函式內部邏輯。
+   * Generate the exported main function (including signature, parameters, outer try/catch).
+   * The bodyGenerator callback is responsible for filling in the function body logic.
    */
   generateFunction(
     sourceFile: SourceFile,
@@ -45,7 +45,7 @@ export interface PlatformAdapter {
   ): void;
 
   /**
-   * 生成回傳 Response 的代碼
+   * Generate code that returns a Response.
    */
   generateResponse(
     writer: CodeBlockWriter,
@@ -55,13 +55,13 @@ export interface PlatformAdapter {
   ): void;
 
   /**
-   * 生成全域錯誤攔截的回傳代碼
+   * Generate the error response code for the global error handler.
    */
   generateErrorResponse(writer: CodeBlockWriter): void;
 
   /**
-   * 根據觸發器類型生成初始化代碼（解析 request body/query 等）
-   * 每個平台使用自己的 HTTP API（Next.js / Express / Cloudflare Workers）。
+   * Generate initialization code based on trigger type (parse request body/query, etc.).
+   * Each platform uses its own HTTP API (Next.js / Express / Cloudflare Workers).
    */
   generateTriggerInit(
     writer: CodeBlockWriter,
@@ -70,12 +70,12 @@ export interface PlatformAdapter {
   ): void;
 
   /**
-   * 取得輸出檔案路徑
+   * Get the output file path.
    */
   getOutputFilePath(trigger: FlowNode): string;
 
   /**
-   * 此平台隱含的 npm 依賴
+   * Implicit npm dependencies for this platform.
    */
   getImplicitDependencies(): string[];
 }
@@ -100,7 +100,7 @@ export interface TriggerInitContext {
 // ============================================================
 
 /**
- * 內建平台名稱（可擴展：第三方可過 registerPlatform 註冊任意字串）
+ * Built-in platform names (extensible: third parties can register any string via registerPlatform).
  */
 export type BuiltinPlatformName = "nextjs" | "express" | "cloudflare";
 export type PlatformName = BuiltinPlatformName | (string & {});
@@ -108,13 +108,13 @@ export type PlatformName = BuiltinPlatformName | (string & {});
 const platformRegistry = new Map<string, () => PlatformAdapter>();
 
 /**
- * 註冊自訂平台適配器
+ * Register a custom platform adapter.
  *
- * 允許使用者擴充編譯器支援的目標平台（例如 Fastify、Koa 等）。
- * 工廠函式在每次編譯時懶化呼叫，避免全域狀態污染。
+ * Allows users to extend the compiler's supported target platforms (e.g. Fastify, Koa, etc.).
+ * The factory function is lazily invoked on each compile to avoid global state pollution.
  *
- * @param name - 平台名稱，可使用內建名稱或自訂字串
- * @param factory - 平台適配器工廠函式
+ * @param name - Platform name, can use a built-in name or a custom string
+ * @param factory - Platform adapter factory function
  *
  * @example
  * ```ts
@@ -140,7 +140,7 @@ export function getPlatform(name: PlatformName): PlatformAdapter {
   const factory = platformRegistry.get(name);
   if (!factory) {
     throw new Error(
-      `未知的平台 "${name}"。可用平台: ${[...platformRegistry.keys()].join(", ")}`
+      `Unknown platform "${name}". Available platforms: ${[...platformRegistry.keys()].join(", ")}`
     );
   }
   return factory();

@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Flow2Code | Visual AST Compiler",
   description:
-    "視覺化後端邏輯生成器：將畫布節點直接編譯為原生 TypeScript 代碼",
+    "Visual backend logic generator: compile canvas nodes directly into native TypeScript code",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-TW">
+    <html lang="en">
       <body className="antialiased overflow-hidden">
         <TooltipProvider delayDuration={200}>
           {children}

@@ -1,12 +1,12 @@
 /**
- * Flow2Code 畫布狀態管理 (Zustand Store)
+ * Flow2Code Canvas State Management (Zustand Store)
  * 
- * 管理：
- * 1. React Flow 節點與連線狀態
- * 2. 選取的節點（用於側邊配置面板）
- * 3. IR JSON 匯出
+ * Manages:
+ * 1. React Flow nodes and edges state
+ * 2. Selected node (for side config panel)
+ * 3. IR JSON export
  * 
- * 節點預設值已提取至 @/lib/node-defaults
+ * Node defaults extracted to @/lib/node-defaults
  */
 
 import { create } from "zustand";
@@ -42,7 +42,7 @@ import {
 } from "./undo-redo-slice";
 
 // ============================================================
-// React Flow 節點 data 型別
+// React Flow Node Data Type
 // ============================================================
 
 export interface FlowNodeData extends Record<string, unknown> {
@@ -55,7 +55,7 @@ export interface FlowNodeData extends Record<string, unknown> {
 }
 
 // ============================================================
-// Snapshot 型別（Undo/Redo 用）
+// Snapshot Type (for Undo/Redo)
 // ============================================================
 
 interface FlowSnapshot {
@@ -64,26 +64,26 @@ interface FlowSnapshot {
 }
 
 // ============================================================
-// Store 狀態介面
+// Store State Interface
 // ============================================================
 
 interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
-  // React Flow 狀態
+  // React Flow state
   nodes: Node<FlowNodeData>[];
   edges: Edge[];
 
-  // 選取狀態
+  // Selection state
   selectedNodeId: string | null;
 
-  /** 流程的建立時間 */
+  /** Flow creation time */
   flowCreatedAt: string | null;
 
-  // 節點操作
+  // Node operations
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: (connection: Connection) => void;
 
-  // Flow2Code 操作
+  // Flow2Code operations
   addFlowNode: (
     nodeType: NodeType,
     category: NodeCategory,
@@ -94,17 +94,17 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
   selectNode: (nodeId: string | null) => void;
   removeNode: (nodeId: string) => void;
 
-  /** 拍攝快照並推入 undo 堆疊（零參數便捷版） */
+  /** Take snapshot and push to undo stack (zero-arg convenience version) */
   snapshot: () => void;
-  /** 復原（零參數便捷版，自動拍攝當前快照） */
+  /** Undo (zero-arg convenience version, auto-captures current snapshot) */
   undoFlow: () => void;
-  /** 重做（零參數便捷版，自動拍攝當前快照） */
+  /** Redo (zero-arg convenience version, auto-captures current snapshot) */
   redoFlow: () => void;
 
-  // IR 匯出
+  // IR export
   exportIR: () => FlowIR;
 
-  // 全域操作
+  // Global operations
   reset: () => void;
   loadIR: (ir: FlowIR) => void;
 }
@@ -115,10 +115,10 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
 
 const MAX_UNDO_HISTORY = 50;
 
-/** 模組內部 counter — 不暴露為全域可變狀態 */
+/** Module-internal counter — not exposed as global mutable state */
 let _nodeCounter = 0;
 
-/** 建立當前 nodes/edges 的深拷貝快照 */
+/** Create a deep-copy snapshot of current nodes/edges */
 function createSnapshot(nodes: Node<FlowNodeData>[], edges: Edge[]): FlowSnapshot {
   return {
     nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
@@ -139,7 +139,7 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
     selectedNodeId: null,
     flowCreatedAt: null,
 
-    // ── 零參數便捷方法（UI / 鍵盤快捷鍵使用） ──
+    // ── Zero-arg convenience methods (for UI / keyboard shortcuts) ──
     snapshot: () => {
       get().pushSnapshot(createSnapshot(get().nodes, get().edges));
     },
@@ -177,7 +177,7 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
 
       const newNode: Node<FlowNodeData> = {
         id,
-        type: "flowNode", // 使用統一的自定義節點渲染
+        type: "flowNode", // Uses the unified custom node renderer
         position,
         data: {
           nodeType,

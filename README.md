@@ -52,7 +52,7 @@
 | Platform Adapters | NextjsPlatform / ExpressPlatform / CloudflarePlatform |
 | Plugin System | `createPluginRegistry()` factory (per-instance) |
 | CLI | Commander.js + Chokidar |
-| Testing | Vitest 4 — 207+ tests |
+| Testing | Vitest 4 — 350+ tests |
 | CI | GitHub Actions (Node 20/22 matrix) |
 
 ## Quick Start
@@ -139,7 +139,7 @@ flow2code/
 │   │   └── storage/                 # .flow.json split/merge
 │   ├── cli/                         # CLI (compile/watch/init)
 │   └── server/                      # Standalone HTTP Server
-├── tests/                           # 207+ tests (Vitest)
+├── tests/                           # 350+ tests (Vitest)
 ├── .github/workflows/ci.yml         # GitHub Actions CI
 ├── CONTRIBUTING.md
 └── vitest.config.ts

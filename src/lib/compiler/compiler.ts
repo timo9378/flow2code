@@ -234,10 +234,8 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   try {
     generateCode(sourceFile, trigger, context);
   } catch (err) {
-    return {
-      success: false,
-      errors: [`AST 生成失敗: ${err instanceof Error ? err.message : String(err)}`],
-    };
+    console.error("COMPILER CRASH:", err);
+    throw err;
   }
 
   // 6. Format and output
@@ -428,14 +426,14 @@ function computeControlFlowDescendants(
 }
 
 /**
- * 生成區塊內的後續節點鏈（Block Continuation）。
+ * Generates subsequent node chains within a block (Block Continuation).
  *
- * 當 plugin 呼叫 generateChildNode 生成直接子節點後，
- * 此函式會在同一個區塊內，按拓撲順序繼續生成所有
- * 「專屬於此區塊的後代節點」。
+ * After a plugin calls generateChildNode to generate a direct child node,
+ * this function continues generating all descendant nodes that belong
+ * exclusively to this block, in topological order.
  *
- * 例如：If_Else →true→ A → B → C
- * Plugin 生成 A 後，此函式會接著生成 B 和 C。
+ * Example: If_Else →true→ A → B → C
+ * After the plugin generates A, this function continues to generate B and C.
  */
 function generateBlockContinuation(
   writer: CodeBlockWriter,
@@ -536,7 +534,7 @@ function generateNodeChainSequential(
 }
 
 // ============================================================
-// DAG 並發模式（per-node promise，只 await 直接上游）
+// DAG Concurrent Mode (per-node promise, only await direct upstream)
 // ============================================================
 
 /**
@@ -626,7 +624,7 @@ function generateNodeChainDAG(
     writer.blankLine();
   }
 
-  // ── Sync Barrier：確保所有 DAG Promise 完成，防止 Serverless 環境提早終止 ──
+  // ── Sync Barrier: ensure all DAG promises complete, prevent early termination in serverless environments ──
   if (dagNodeIds.length > 0) {
     writer.writeLine("// --- Sync Barrier: await all DAG promises before output ---");
     const allPromiseVars = dagNodeIds.map((id) => `p_${sanitizeId(id)}`);

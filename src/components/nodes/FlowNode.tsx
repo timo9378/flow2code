@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Flow2Code 統一自定義節點元件 — 暗色主題版
+ * Flow2Code Unified Custom Node Component — Dark Theme Version
  *
- * 節點的卡片使用半透明暗色搭配分類色彩的頂部飾條。
+ * Node cards use semi-transparent dark backgrounds with category-colored top accent bars.
  */
 
 import { memo } from "react";
@@ -11,7 +11,7 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import type { FlowNodeData } from "@/store/flow-store";
 import { NodeCategory } from "@/lib/ir/types";
 
-// 分類色彩 — 暗色變體（與 Koimsurai 深色背景搭配）
+// Category colors — dark variants (matching Koimsurai dark background)
 const categoryStyles: Record<NodeCategory, { accent: string; bg: string; text: string; handleIn: string; handleOut: string }> = {
   [NodeCategory.TRIGGER]: {
     accent: "bg-emerald-500",
@@ -73,7 +73,7 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
         transition-all duration-200
       `}
     >
-      {/* 頂部色條 */}
+      {/* Top accent bar */}
       <div className={`h-1 ${style.accent} rounded-t-lg`} />
 
       {/* Header */}
@@ -92,7 +92,7 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
         <span className="font-mono text-[10px] text-muted-foreground">{data.nodeType}</span>
       </div>
 
-      {/* 輸入 Handles */}
+      {/* Input Handles */}
       {(data.inputs ?? []).map((input, i) => (
         <Handle
           key={`input-${input.id}`}
@@ -111,7 +111,7 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
         />
       ))}
 
-      {/* 輸出 Handles */}
+      {/* Output Handles */}
       {(data.outputs ?? []).map((output, i) => (
         <Handle
           key={`output-${output.id}`}

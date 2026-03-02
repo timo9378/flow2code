@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * 節點配置面板（右側面板）— shadcn/ui 版
+ * Node Configuration Panel (Right Panel) — shadcn/ui version
  *
- * 浮動卡片風格，當選擇節點時從右側出現。
+ * Floating card style, appears from the right when a node is selected.
  */
 
 import { useFlowStore } from "@/store/flow-store";
@@ -107,7 +107,7 @@ function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string)
   switch (nodeType) {
     case TriggerType.HTTP_WEBHOOK: {
       const routePath = String(params.routePath ?? "");
-      const routeError = routePath && !routePath.startsWith("/") ? "路徑必須以 / 開頭" : undefined;
+      const routeError = routePath && !routePath.startsWith("/") ? "Path must start with /" : undefined;
       return (
         <>
           <div className="flex flex-col gap-1.5">
@@ -260,7 +260,7 @@ function renderParams(data: FlowNodeData, onUpdate: (key: string, value: string)
       return <ExpressionInput nodeId={nodeId} label="Expression" value={String(params.expression ?? "")} onChange={(v) => onUpdate("expression", v)} placeholder="flowState['fetch_1'].data" />;
     case OutputType.RETURN_RESPONSE: {
       const statusCode = Number(params.statusCode ?? 200);
-      const statusError = statusCode < 100 || statusCode > 599 ? "狀態碼範圍 100-599" : undefined;
+      const statusError = statusCode < 100 || statusCode > 599 ? "Status code range: 100-599" : undefined;
       return (
         <>
           <ParamField label="Status Code" value={String(params.statusCode ?? 200)} onChange={(v) => onUpdate("statusCode", v)} type="number" error={statusError} />
@@ -291,7 +291,7 @@ export default function ConfigPanel() {
     return (
       <div className="w-72 bg-card border-l border-border flex items-center justify-center h-full shrink-0">
         <p className="text-xs text-muted-foreground text-center px-4">
-          點擊節點以編輯參數
+          Click a node to edit its parameters
         </p>
       </div>
     );
@@ -302,7 +302,7 @@ export default function ConfigPanel() {
   const handleParamUpdate = (key: string, value: string) => {
     let parsedValue: unknown = value;
 
-    // JSON 欄位（如 inputMapping）
+    // JSON fields (e.g. inputMapping)
     if (key === "inputMapping") {
       try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
     } else if (value === "true") {
@@ -310,7 +310,7 @@ export default function ConfigPanel() {
     } else if (value === "false") {
       parsedValue = false;
     } else if (key === "statusCode") {
-      // statusCode 強制為數字
+      // statusCode forced to number
       const num = Number(value);
       parsedValue = isNaN(num) ? value : num;
     } else if (!isNaN(Number(value)) && value !== "" && key !== "routePath" && key !== "name" && key !== "functionName" && key !== "flowPath") {
@@ -328,21 +328,21 @@ export default function ConfigPanel() {
           <Card className="border-border">
             <CardHeader className="p-3 pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">節點設定</CardTitle>
+                <CardTitle className="text-sm">Node Settings</CardTitle>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => removeNode(selectedNode.id)}
                   className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 text-xs"
                 >
-                  刪除
+                  Delete
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="px-3 pb-3 space-y-2">
               <p className="text-[10px] text-muted-foreground font-mono truncate">{selectedNode.id}</p>
               <ParamField
-                label="節點名稱"
+                label="Node Name"
                 value={data.label}
                 onChange={(v) => updateNodeLabel(selectedNode.id, v)}
               />
@@ -354,7 +354,7 @@ export default function ConfigPanel() {
           {/* Params */}
           <Card className="border-border">
             <CardHeader className="p-3 pb-2">
-              <CardTitle className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">參數</CardTitle>
+              <CardTitle className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Parameters</CardTitle>
             </CardHeader>
             <CardContent className="px-3 pb-3 space-y-3">
               {renderParams(data, handleParamUpdate, selectedNodeId)}
@@ -366,12 +366,12 @@ export default function ConfigPanel() {
           {/* Ports */}
           <Card className="border-border">
             <CardHeader className="p-3 pb-2">
-              <CardTitle className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">端口</CardTitle>
+              <CardTitle className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Ports</CardTitle>
             </CardHeader>
             <CardContent className="px-3 pb-3 space-y-1.5">
               {data.inputs.length > 0 && (
                 <div className="flex flex-wrap gap-1 items-center">
-                  <span className="text-[10px] text-muted-foreground mr-1">輸入:</span>
+                  <span className="text-[10px] text-muted-foreground mr-1">In:</span>
                   {data.inputs.map((p) => (
                     <Badge key={p.id} variant="secondary" className="text-[10px]">
                       {p.label}
@@ -381,7 +381,7 @@ export default function ConfigPanel() {
               )}
               {data.outputs.length > 0 && (
                 <div className="flex flex-wrap gap-1 items-center">
-                  <span className="text-[10px] text-muted-foreground mr-1">輸出:</span>
+                  <span className="text-[10px] text-muted-foreground mr-1">Out:</span>
                   {data.outputs.map((p) => (
                     <Badge key={p.id} variant="outline" className="text-[10px] text-amber-400 border-amber-400/30">
                       {p.label}
@@ -392,14 +392,14 @@ export default function ConfigPanel() {
             </CardContent>
           </Card>
 
-          {/* Upstream Types — 即時型別提示 */}
+          {/* Upstream Types — Real-time Type Hints */}
           {upstreamTypes.hasTypes && (
             <>
               <Separator />
               <Card className="border-border border-cyan-500/20">
                 <CardHeader className="p-3 pb-2">
                   <CardTitle className="text-xs text-cyan-400 font-semibold uppercase tracking-wider">
-                    flowState 可用欄位
+                    flowState Available Fields
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-3 pb-3 space-y-1">
@@ -414,7 +414,7 @@ export default function ConfigPanel() {
                     </div>
                   ))}
                   <p className="text-[9px] text-muted-foreground pt-1">
-                    上游 {upstreamTypes.entries.length} 個節點的輸出型別
+                    Output types from {upstreamTypes.entries.length} upstream node(s)
                   </p>
                 </CardContent>
               </Card>

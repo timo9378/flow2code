@@ -1,11 +1,11 @@
 /**
- * Phase 3 測試
+ * Phase 3 Tests
  *
- * 驗證四個修復：
- *   1. Scope Stack — for-loop / try-catch 子節點正確解析局部作用域
- *   2. Partial<FlowState> — 型別安全，消除 `as FlowState`
- *   3. Sub-flow — call_subflow 節點代碼生成
- *   4. Fetch Envelope — parseJson=true 輸出 { data, status, headers }
+ * Verifies four fixes:
+ *   1. Scope Stack — for-loop / try-catch child nodes correctly resolve local scope
+ *   2. Partial<FlowState> — type safety, eliminates `as FlowState`
+ *   3. Sub-flow — call_subflow node code generation
+ *   4. Fetch Envelope — parseJson=true outputs { data, status, headers }
  */
 
 import { describe, it, expect } from "vitest";
@@ -24,11 +24,11 @@ import {
   VariableType,
 } from "@/lib/ir/types";
 
-// 確保 plugins 已註冊
+// Ensure plugins are registered
 registerPlugins(builtinPlugins);
 
 // ============================================================
-// Helper: 建立含 for-loop + 子節點的 IR
+// Helper: Create IR with for-loop + child nodes
 // ============================================================
 
 function createForLoopWithChildFlow(): FlowIR {
@@ -186,12 +186,12 @@ function createTryCatchWithChildFlow(): FlowIR {
 }
 
 // ============================================================
-// 1. Scope Stack 測試
+// 1. Scope Stack Tests
 // ============================================================
 
 describe("Scope Stack", () => {
   describe("Expression Parser with scopeStack", () => {
-    it("scopeStack 為空時，應 fallback 到 flowState", () => {
+    it("when scopeStack is empty, should fallback to flowState", () => {
       const ir: FlowIR = {
         version: "1.0.0",
         meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -215,7 +215,7 @@ describe("Scope Stack", () => {
       expect(result).toBe("flowState['node_1'].data");
     });
 
-    it("scopeStack 有匹配的 scope 時，應解析到 scope 變數", () => {
+    it("when scopeStack has a matching scope, should resolve to the scope variable", () => {
       const ir: FlowIR = {
         version: "1.0.0",
         meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -242,7 +242,7 @@ describe("Scope Stack", () => {
       expect(result).toBe("_loopScope['loop_1'].userId");
     });
 
-    it("巢狀 scope 應從最內層優先匹配", () => {
+    it("nested scopes should match from innermost first", () => {
       const ir: FlowIR = {
         version: "1.0.0",
         meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -276,17 +276,17 @@ describe("Scope Stack", () => {
 
       const ctx: ExpressionContext = { ir, nodeMap, scopeStack };
 
-      // inner scope 匹配
+      // inner scope match
       expect(parseExpression("{{loop_inner.x}}", ctx)).toBe(
         "_innerScope['loop_inner'].x"
       );
-      // outer scope 匹配
+      // outer scope match
       expect(parseExpression("{{loop_outer.y}}", ctx)).toBe(
         "_outerScope['loop_outer'].y"
       );
     });
 
-    it("scopeStack 不匹配時 fallback 到 flowState", () => {
+    it("when scopeStack does not match, should fallback to flowState", () => {
       const ir: FlowIR = {
         version: "1.0.0",
         meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -309,52 +309,52 @@ describe("Scope Stack", () => {
       ];
 
       const ctx: ExpressionContext = { ir, nodeMap, scopeStack };
-      // other_node 不在 scope 中，走 flowState
+      // other_node is not in scope, use flowState
       const result = parseExpression("{{other_node.data}}", ctx);
       expect(result).toBe("flowState['other_node'].data");
     });
   });
 
   describe("forLoopPlugin scope isolation", () => {
-    it("for-loop 子節點的表達式應解析到動態作用域變數", () => {
+    it("for-loop child node expressions should resolve to dynamically scoped variables", () => {
       const ir = createForLoopWithChildFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
 
-      // 子節點 fetch_inner 的 body `{{loop_1}}` 應解析到動態命名的作用域變數
+      // Child node fetch_inner's body `{{loop_1}}` should resolve to dynamically named scope variable
       expect(result.code).toContain("_scope_loop_1['loop_1']");
     });
 
-    it("for-loop 外部引用應走 flowState", () => {
+    it("for-loop external references should use flowState", () => {
       const ir = createForLoopWithChildFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
 
-      // response_1 在 loop 外部引用 {{loop_1}}，應走 flowState
+      // response_1 references {{loop_1}} outside the loop, should use flowState
       expect(result.code).toContain("flowState['loop_1']");
     });
   });
 
   describe("tryCatchPlugin scope isolation", () => {
-    it("try-catch 子節點推入動態命名的 try scope", () => {
+    it("try-catch child nodes push dynamically named try scope", () => {
       const ir = createTryCatchWithChildFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
-      // 動態 scope 變數名稱（含節點 ID）
+      // Dynamically named scope variable (includes node ID)
       expect(result.code).toContain("_scope_try_1_try");
     });
   });
 });
 
 // ============================================================
-// 2. Partial<FlowState> 測試
+// 2. Partial<FlowState> Tests
 // ============================================================
 
 describe("Partial<FlowState>", () => {
-  it("FlowState 欄位應為 optional（?:）", () => {
+  it("FlowState fields should be optional (?:)", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -376,7 +376,7 @@ describe("Partial<FlowState>", () => {
     expect(typeInfo.interfaceCode).toContain("'trigger_1'?:");
   });
 
-  it("生成的代碼使用 Partial<FlowState> 而非 as FlowState", () => {
+  it("generated code should use Partial<FlowState> instead of as FlowState", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -419,11 +419,11 @@ describe("Partial<FlowState>", () => {
 });
 
 // ============================================================
-// 3. Sub-flow 測試
+// 3. Sub-flow Tests
 // ============================================================
 
 describe("Call Subflow", () => {
-  it("應生成 dynamic import + function call", () => {
+  it("should generate dynamic import + function call", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "Subflow Test", createdAt: "", updatedAt: "" },
@@ -472,23 +472,23 @@ describe("Call Subflow", () => {
     const result = compile(ir);
 
     expect(result.success).toBe(true);
-    // 靜態 import 在檔案頂端（而非 runtime await import）
+    // Static import at file top (not runtime await import)
     expect(result.code).not.toContain('import("./email-flow")');
     expect(result.code).toContain("sendEmail");
     expect(result.code).toContain("flowState['subflow_1']");
   });
 
-  it("CALL_SUBFLOW 應存在於 ActionType enum", () => {
+  it("CALL_SUBFLOW should exist in ActionType enum", () => {
     expect(ActionType.CALL_SUBFLOW).toBe("call_subflow");
   });
 });
 
 // ============================================================
-// 4. Fetch Envelope 測試
+// 4. Fetch Envelope Tests
 // ============================================================
 
 describe("Fetch Envelope", () => {
-  it("parseJson=true 時應輸出 { data, status, headers } envelope", () => {
+  it("parseJson=true should output { data, status, headers } envelope", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "Fetch Envelope Test", createdAt: "", updatedAt: "" },
@@ -534,13 +534,13 @@ describe("Fetch Envelope", () => {
     const result = compile(ir);
     expect(result.success).toBe(true);
 
-    // Envelope 結構
+    // Envelope structure
     expect(result.code).toContain("data,");
     expect(result.code).toContain("status: response.status,");
     expect(result.code).toContain("headers: Object.fromEntries(response.headers.entries()),");
   });
 
-  it("parseJson=true 時 getOutputType 應返回 Envelope 型別", () => {
+  it("parseJson=true getOutputType should return Envelope type", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -568,7 +568,7 @@ describe("Fetch Envelope", () => {
     );
   });
 
-  it("parseJson=false 時仍返回 Response", () => {
+  it("parseJson=false should still return Response", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },

@@ -1,17 +1,17 @@
 /**
  * IR Migration Engine — Types
  *
- * 定義版本遷移的核心介面。
- * 每個 migration 負責將 IR 從一個版本升級到下一個版本。
+ * Defines core interfaces for version migrations.
+ * Each migration is responsible for upgrading IR from one version to the next.
  */
 
 // ============================================================
-// 遷移介面
+// Migration Interfaces
 // ============================================================
 
 /**
- * 未經型別驗證的原始 IR（來自舊版 JSON）
- * migration 函式的輸入類型
+ * Raw IR without type validation (from older JSON)
+ * Input type for migration functions
  */
 export interface RawFlowIR {
   version: string;
@@ -28,31 +28,31 @@ export interface RawFlowIR {
 }
 
 /**
- * 單次版本遷移定義
+ * Single version migration definition
  */
 export interface IRMigration {
-  /** 來源版本 */
+  /** Source version */
   readonly fromVersion: string;
-  /** 目標版本 */
+  /** Target version */
   readonly toVersion: string;
-  /** 遷移描述 */
+  /** Migration description */
   readonly description: string;
   /**
-   * 執行遷移
-   * @param ir - 舊版 IR（結構可能與目前 FlowIR 不同）
-   * @returns 升級後的 IR
+   * Execute migration
+   * @param ir - Older IR (structure may differ from current FlowIR)
+   * @returns Upgraded IR
    */
   migrate(ir: RawFlowIR): RawFlowIR;
 }
 
 /**
- * 遷移結果
+ * Migration result
  */
 export interface MigrationResult {
-  /** 遷移後的 IR（已符合最新版本） */
+  /** Migrated IR (conforms to the latest version) */
   ir: RawFlowIR;
-  /** 已套用的遷移路徑 */
+  /** Applied migration path */
   applied: string[];
-  /** 是否有任何遷移被套用 */
+  /** Whether any migrations were applied */
   migrated: boolean;
 }

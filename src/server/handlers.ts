@@ -1,8 +1,8 @@
 /**
- * Flow2Code API Handlers（純函式，不依賴 Next.js）
+ * Flow2Code API Handlers (pure functions, no Next.js dependency)
  *
- * 每個 handler 接收 parsed body，回傳 { status, body } 物件。
- * 供 standalone server 和 Next.js API route 共用。
+ * Each handler receives a parsed body and returns a { status, body } object.
+ * Shared by standalone server and Next.js API routes.
  */
 
 import { compile } from "../lib/compiler/compiler";
@@ -12,7 +12,7 @@ import { convertOpenAPIToFlowIR } from "../lib/openapi/converter";
 import { FLOW_IR_SYSTEM_PROMPT } from "../lib/ai/prompt";
 import type { FlowIR } from "../lib/ir/types";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 
 export interface ApiResponse {
   status: number;
@@ -23,18 +23,18 @@ export interface ApiResponse {
 
 export interface CompileRequest {
   ir?: FlowIR;
-  /** 是否寫入檔案到使用者專案 (預設 true) */
+  /** Whether to write files to the user's project (default: true) */
   write?: boolean;
 }
 
 /**
  * @param body - { ir: FlowIR, write?: boolean }
- * @param projectRoot - 使用者專案根目錄 (process.cwd())
+ * @param projectRoot - User's project root directory (process.cwd())
  */
 export function handleCompile(body: CompileRequest, projectRoot: string): ApiResponse {
   try {
     const ir = body.ir;
-    const shouldWrite = body.write !== false; // 預設寫入
+    const shouldWrite = body.write !== false; // default: write
 
     if (!ir) {
       return { status: 400, body: { success: false, error: "Missing 'ir' in request body" } };
@@ -50,9 +50,18 @@ export function handleCompile(body: CompileRequest, projectRoot: string): ApiRes
 
     let writtenPath: string | null = null;
 
-    // 寫入檔案到使用者專案
+    // Write file to user's project
     if (shouldWrite && result.filePath && result.code) {
-      const fullPath = join(projectRoot, result.filePath);
+      const fullPath = resolve(join(projectRoot, result.filePath));
+
+      // Security: prevent path traversal outside project root
+      if (!fullPath.startsWith(resolve(projectRoot))) {
+        return {
+          status: 400,
+          body: { success: false, error: "Output path escapes project root" },
+        };
+      }
+
       const dir = dirname(fullPath);
 
       if (!existsSync(dir)) {
@@ -62,13 +71,13 @@ export function handleCompile(body: CompileRequest, projectRoot: string): ApiRes
       writeFileSync(fullPath, result.code, "utf-8");
       writtenPath = fullPath;
 
-      // 寫入 Source Map
+      // Write Source Map
       if (result.sourceMap) {
         const mapPath = fullPath.replace(/\.ts$/, ".flow.map.json");
         writeFileSync(mapPath, JSON.stringify(result.sourceMap, null, 2), "utf-8");
       }
 
-      // 檢查缺少的套件
+      // Check for missing packages
       if (result.dependencies && result.dependencies.all.length > 0) {
         const pkgPath = join(projectRoot, "package.json");
         if (existsSync(pkgPath)) {
@@ -104,7 +113,7 @@ export function handleCompile(body: CompileRequest, projectRoot: string): ApiRes
       status: 500,
       body: {
         success: false,
-        error: `伺服器錯誤: ${err instanceof Error ? err.message : String(err)}`,
+        error: `Server error: ${err instanceof Error ? err.message : String(err)}`,
       },
     };
   }
@@ -117,12 +126,12 @@ export async function handleGenerate(body: { prompt?: string }): Promise<ApiResp
     const { prompt } = body;
 
     if (!prompt || typeof prompt !== "string") {
-      return { status: 400, body: { success: false, error: "請提供描述文字 (prompt)" } };
+      return { status: 400, body: { success: false, error: "Missing required 'prompt' string" } };
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return { status: 500, body: { success: false, error: "未設定 OPENAI_API_KEY 環境變數" } };
+      return { status: 500, body: { success: false, error: "OPENAI_API_KEY environment variable is not set" } };
     }
 
     const baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
@@ -147,32 +156,66 @@ export async function handleGenerate(body: { prompt?: string }): Promise<ApiResp
 
     if (!response.ok) {
       const errText = await response.text();
-      return { status: 502, body: { success: false, error: `LLM API 錯誤 (${response.status}): ${errText}` } };
+      return { status: 502, body: { success: false, error: `LLM API error (${response.status}): ${errText}` } };
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
-      return { status: 502, body: { success: false, error: "LLM 回傳空內容" } };
+      return { status: 502, body: { success: false, error: "LLM returned empty content" } };
     }
+
+    // Extract JSON from markdown code blocks (LLM may wrap JSON in ```json ... ```)
+    let jsonStr = content;
+    const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1];
 
     let ir: FlowIR;
     try {
-      ir = JSON.parse(content);
+      ir = JSON.parse(jsonStr);
     } catch {
-      return { status: 422, body: { success: false, error: "LLM 回傳的 JSON 無法解析", raw: content } };
+      return { status: 422, body: { success: false, error: "Failed to parse LLM JSON response", raw: content } };
+    }
+
+    // Auto-Heal IR: Connect orphaned nodes to trigger
+    const triggerNode = ir.nodes.find(n => n.category === "trigger");
+    if (triggerNode) {
+      const triggerOutputPortId = triggerNode.outputs?.[0]?.id || "output";
+      const connectedTargetNodeIds = new Set(ir.edges.map(e => e.targetNodeId));
+      const existingEdgeIds = new Set(ir.edges.map(e => e.id));
+      let healedCount = 0;
+
+      ir.nodes.forEach(node => {
+        if (node.id !== triggerNode.id && !connectedTargetNodeIds.has(node.id) && node.inputs && node.inputs.length > 0) {
+          let edgeId: string;
+          do { edgeId = `healed_e_${crypto.randomUUID().slice(0, 8)}`; } while (existingEdgeIds.has(edgeId));
+          existingEdgeIds.add(edgeId);
+          ir.edges.push({
+            id: edgeId,
+            sourceNodeId: triggerNode.id,
+            sourcePortId: triggerNode.nodeType === 'http_webhook' ? 'request' : triggerOutputPortId,
+            targetNodeId: node.id,
+            targetPortId: node.inputs[0].id
+          });
+          healedCount++;
+        }
+      });
+
+      if (healedCount > 0) {
+        console.warn(`[AutoHeal] Connected ${healedCount} orphaned nodes to trigger.`);
+      }
     }
 
     const validation = validateFlowIR(ir);
     if (!validation.valid) {
       return {
         status: 422,
-        body: { success: false, error: "LLM 生成的 IR 驗證失敗", validationErrors: validation.errors, raw: ir as unknown },
+        body: { success: false, error: "LLM-generated IR failed validation", validationErrors: validation.errors, raw: ir as unknown },
       };
     }
 
-    // AI 生成的 IR 安全檢查
+    // Security check for AI-generated IR
     const security = validateIRSecurity(ir);
     const securityReport = security.findings.length > 0 ? formatSecurityReport(security) : undefined;
 
@@ -180,7 +223,7 @@ export async function handleGenerate(body: { prompt?: string }): Promise<ApiResp
   } catch (err) {
     return {
       status: 500,
-      body: { success: false, error: `伺服器錯誤: ${err instanceof Error ? err.message : String(err)}` },
+      body: { success: false, error: `Server error: ${err instanceof Error ? err.message : String(err)}` },
     };
   }
 }

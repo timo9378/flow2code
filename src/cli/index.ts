@@ -504,7 +504,7 @@ program
       process.exit(1);
     }
 
-    // 嘗試找到對應的 .flow.map.json
+    // Try to find the corresponding .flow.map.json
     const mapPath = filePath.replace(/\.ts$/, ".flow.map.json");
 
     if (!existsSync(mapPath)) {

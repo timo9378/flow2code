@@ -1,7 +1,7 @@
 /**
  * Cloudflare Workers Platform Adapter
  *
- * 生成與 Cloudflare Workers 相容的 Request handler 代碼。
+ * Generates request handler code compatible with Cloudflare Workers.
  */
 
 import type { SourceFile, CodeBlockWriter } from "ts-morph";
@@ -22,7 +22,7 @@ export class CloudflarePlatform implements PlatformAdapter {
     _trigger: FlowNode,
     _context: PlatformContext
   ): void {
-    // Cloudflare Workers 使用全域 Web API，不需額外 import
+    // Cloudflare Workers uses global Web APIs, no additional imports needed
   }
 
   generateFunction(
@@ -42,7 +42,7 @@ export class CloudflarePlatform implements PlatformAdapter {
         this.generateManualFunction(sourceFile, trigger, bodyGenerator);
         break;
       default:
-        throw new Error(`不支援的觸發器類型: ${trigger.nodeType}`);
+        throw new Error(`Unsupported trigger type: ${trigger.nodeType}`);
     }
   }
 
@@ -160,8 +160,8 @@ export class CloudflarePlatform implements PlatformAdapter {
     trigger: FlowNode,
     bodyGenerator: (writer: CodeBlockWriter) => void
   ): void {
-    // Cloudflare Workers 使用 export default { fetch() {} } 模式
-    // 但為了與其他平台一致，生成命名導出函式
+    // Cloudflare Workers uses export default { fetch() {} } pattern
+    // For consistency with other platforms, we generate a named export function
     const params = trigger.params as HttpWebhookParams;
 
     sourceFile.addStatements(`// Cloudflare Workers handler`);
@@ -186,7 +186,7 @@ export class CloudflarePlatform implements PlatformAdapter {
       });
     });
 
-    // 導出 default handler
+    // Export default handler
     sourceFile.addStatements(`
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

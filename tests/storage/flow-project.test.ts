@@ -1,5 +1,5 @@
 /**
- * FlowProject (Git-Native Split Storage) 測試
+ * FlowProject (Git-Native Split Storage) Tests
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -83,11 +83,11 @@ describe("saveFlowProject", () => {
     const ir = createPostWithFetchFlow();
     const dir = join(TMP, "orphan-test");
 
-    // 先儲存完整 IR
+    // First save the full IR
     saveFlowProject(ir, dir);
     const nodesBefore = readdirSync(join(dir, "nodes"));
 
-    // 移除一個節點後重新儲存
+    // Remove a node and re-save
     const reduced = { ...ir, nodes: ir.nodes.slice(0, 1) };
     saveFlowProject(reduced, dir);
     const nodesAfter = readdirSync(join(dir, "nodes"));
@@ -142,7 +142,7 @@ describe("loadFlowProject", () => {
     expect(loaded.ir.edges.length).toBe(ir.edges.length);
     expect(loaded.ir.meta.name).toBe(ir.meta.name);
     
-    // 每個節點的資料應一致
+    // Each node's data should be consistent
     for (const node of ir.nodes) {
       const loadedNode = loaded.ir.nodes.find((n) => n.id === node.id);
       expect(loadedNode).toBeDefined();
@@ -161,10 +161,10 @@ describe("migrateToSplit", () => {
     const written = migrateToSplit(jsonPath);
     expect(written.length).toBeGreaterThan(0);
 
-    // 原 json 仍應存在
+    // Original json should still exist
     expect(existsSync(jsonPath)).toBe(true);
 
-    // YAML 目錄應已建立
+    // YAML directory should have been created
     const dirPath = join(TMP, "migrate");
     expect(existsSync(join(dirPath, "meta.yaml"))).toBe(true);
   });

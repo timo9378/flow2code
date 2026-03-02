@@ -17,10 +17,10 @@ export default tseslint.config(
     },
   },
 
-  // ── TypeScript 寬鬆規則（漸進式修正） ──
+  // ── TypeScript lenient rules (incremental cleanup) ──
   {
     rules: {
-      // 暫時 warn，Phase 4 逐步清理後改 error
+      // Temporarily warn, will change to error after cleanup
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": [
         "warn",
@@ -33,15 +33,15 @@ export default tseslint.config(
       "@typescript-eslint/no-non-null-asserted-optional-chain": "warn",
       "@typescript-eslint/ban-ts-comment": "warn",
 
-      // 允許空 catch（SSE parser 等場景需要）
+      // Allow empty catch (needed by SSE parser, etc.)
       "no-empty": ["error", { allowEmptyCatch: true }],
 
-      // 允許 console（CLI + dev server 需要）
+      // Allow console (needed by CLI + dev server)
       "no-console": "off",
     },
   },
 
-  // ── 忽略清單 ──
+  // ── Ignore list ──
   {
     ignores: [
       "node_modules/",
@@ -53,6 +53,7 @@ export default tseslint.config(
       "*.config.mjs",
       "*.config.cjs",
       "next-env.d.ts",
+      "debug-ast.js",
     ],
   }
 );

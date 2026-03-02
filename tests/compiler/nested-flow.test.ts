@@ -1,7 +1,7 @@
 /**
- * Phase 2 測試：巢狀 Control Flow 複合場景
+ * Phase 2 Tests: Nested Control Flow Composite Scenarios
  *
- * 驗證 if_else 內嵌 for_loop、try_catch 內嵌 if_else 等複雜組合。
+ * Verifies complex combinations such as if_else nested with for_loop, try_catch nested with if_else, etc.
  */
 
 import { describe, it, expect } from "vitest";
@@ -19,11 +19,11 @@ function wrapIR(name: string, nodes: any[], edges: any[]): FlowIR {
 }
 
 // ============================================================
-// If/Else 內嵌 For Loop
+// If/Else Nested with For Loop
 // ============================================================
 
-describe("巢狀 Control Flow", () => {
-  it("If/Else 內嵌 For Loop 應正確生成巢狀結構", () => {
+describe("Nested Control Flow", () => {
+  it("If/Else nested with For Loop should generate correct nested structure", () => {
     const ir = wrapIR("if-for-nested", [
       {
         id: "trigger_1",
@@ -90,18 +90,18 @@ describe("巢狀 Control Flow", () => {
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // 應有 if 結構
+    // Should have if structure
     expect(code).toContain("if (");
-    // 應有 for 迴圈
+    // Should have for loop
     expect(code).toContain("for (const item of");
-    // 應有 else 分支
+    // Should have else branch
     expect(code).toContain("else {");
-    // 兩個不同 Response
+    // Two different Responses
     expect(code).toContain("200");
     expect(code).toContain("400");
   });
 
-  it("Try/Catch 內嵌 If/Else 應正確生成", () => {
+  it("Try/Catch nested with If/Else should generate correctly", () => {
     const ir = wrapIR("try-if-nested", [
       {
         id: "trigger_1",
@@ -175,7 +175,7 @@ describe("巢狀 Control Flow", () => {
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // 巢狀結構驗證
+    // Nested structure verification
     expect(code).toContain("try {");
     expect(code).toContain("catch (err)");
     expect(code).toContain("if (");
@@ -183,7 +183,7 @@ describe("巢狀 Control Flow", () => {
     expect(code).toContain("success: false");
   });
 
-  it("跨平台複合場景：Express + If/Else + ForLoop", () => {
+  it("Cross-platform composite scenario: Express + If/Else + ForLoop", () => {
     const ir = wrapIR("express-nested", [
       {
         id: "trigger_1",
@@ -234,12 +234,12 @@ describe("巢狀 Control Flow", () => {
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // Express 特有：req.body / res.status().json()
+    // Express-specific: req.body / res.status().json()
     expect(code).toContain("req.body");
     expect(code).toContain("res.status(200).json");
-    // 不應有 NextResponse
+    // Should not have NextResponse
     expect(code).not.toContain("NextResponse");
-    // 控制流結構
+    // Control flow structure
     expect(code).toContain("if (");
     expect(code).toContain("else {");
   });

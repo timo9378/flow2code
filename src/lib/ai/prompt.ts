@@ -1,8 +1,8 @@
 /**
- * AI Prompt-to-Graph 系統提示詞
+ * AI Prompt-to-Graph System Prompt
  * 
- * 將完整的 FlowIR Schema 嵌入 system prompt，
- * 讓 LLM 能精準生成合法的 IR JSON。
+ * Embeds the complete FlowIR Schema into the system prompt,
+ * enabling the LLM to accurately generate valid IR JSON.
  */
 
 export const FLOW_IR_SYSTEM_PROMPT = `You are Flow2Code AI, a specialist in generating FlowIR JSON for a visual API builder.
@@ -120,7 +120,7 @@ Given a user's natural language description of an API endpoint or workflow, gene
 2. All node IDs must be unique
 3. Edges must reference valid node IDs and port IDs
 4. No cycles allowed in the graph
-5. Every non-trigger node should be reachable from the trigger via edges
+5. STRICT RULE: Every non-trigger node MUST be connected via an edge. For parallel execution branches, you MUST create separate edges connecting the trigger's output to EACH parallel node's input. Do NOT leave any node orphaned!
 6. Use descriptive labels for nodes
 7. Generate sensible default values
 8. For HTTP APIs that receive data, use parseBody: true with POST/PUT/PATCH methods
@@ -132,12 +132,12 @@ Return ONLY valid JSON (no markdown, no explanation). The JSON must conform to t
 `;
 
 /**
- * 預設範例提示詞（用於前端 placeholder）
+ * Default example prompts (used as frontend placeholders)
  */
 export const EXAMPLE_PROMPTS = [
-  "建立一個 GET /api/users 端點，從 https://jsonplaceholder.typicode.com/users 抓取用戶列表並回傳",
-  "建立一個 POST /api/auth/login 端點，接收 email 和 password，驗證後回傳 JWT token",
-  "建立一個 GET /api/weather 端點，同時呼叫天氣 API 和空氣品質 API，合併後回傳",
-  "建立一個 POST /api/orders 端點，接收訂單資料，寫入資料庫，並發送通知",
-  "建立一個定時任務，每小時檢查資料庫中的過期訂單並更新狀態",
+   "Create a GET /api/users endpoint that fetches the user list from https://jsonplaceholder.typicode.com/users and returns it",
+   "Create a POST /api/auth/login endpoint that accepts email and password, validates them, and returns a JWT token",
+   "Create a GET /api/weather endpoint that calls a weather API and an air quality API in parallel, then merges and returns the results",
+   "Create a POST /api/orders endpoint that accepts order data, writes it to the database, and sends a notification",
+   "Create a scheduled task that checks the database for expired orders every hour and updates their status",
 ];

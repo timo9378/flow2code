@@ -1,8 +1,8 @@
 /**
  * Next.js App Router Platform Adapter
  *
- * 生成與 Next.js App Router 相容的 API Route 代碼。
- * 這是預設的平台適配器（向後相容）。
+ * Generates API Route code compatible with Next.js App Router.
+ * This is the default platform adapter (backward compatible).
  */
 
 import type { SourceFile, CodeBlockWriter } from "ts-morph";
@@ -53,7 +53,7 @@ export class NextjsPlatform implements PlatformAdapter {
         this.generateManualFunction(sourceFile, trigger, bodyGenerator);
         break;
       default:
-        throw new Error(`不支援的觸發器類型: ${trigger.nodeType}`);
+        throw new Error(`Unsupported trigger type: ${trigger.nodeType}`);
     }
   }
 
@@ -65,16 +65,19 @@ export class NextjsPlatform implements PlatformAdapter {
   ): void {
     if (headers && Object.keys(headers).length > 0) {
       writer.writeLine(
-        `return NextResponse.json(${bodyExpr}, { status: ${statusCode}, headers: ${JSON.stringify(headers)} });`
+        `throw new EarlyResponse(NextResponse.json(${bodyExpr}, { status: ${statusCode}, headers: ${JSON.stringify(headers)} }));`
       );
     } else {
       writer.writeLine(
-        `return NextResponse.json(${bodyExpr}, { status: ${statusCode} });`
+        `throw new EarlyResponse(NextResponse.json(${bodyExpr}, { status: ${statusCode} }));`
       );
     }
   }
 
   generateErrorResponse(writer: CodeBlockWriter): void {
+    writer.write("if (error instanceof EarlyResponse) ").block(() => {
+      writer.writeLine("return error.response;");
+    });
     writer.writeLine('console.error("Workflow failed:", error);');
     writer.writeLine(
       'return NextResponse.json({ error: error instanceof Error ? error.message : "Internal Server Error" }, { status: 500 });'
@@ -180,9 +183,16 @@ export class NextjsPlatform implements PlatformAdapter {
       ],
     });
 
+    sourceFile.insertStatements(funcDecl.getChildIndex(), (writer) => {
+      writer.writeLine("class EarlyResponse extends Error {");
+      writer.writeLine("  constructor(public response: Response) { super(); }");
+      writer.writeLine("}");
+      writer.blankLine();
+    });
+
     funcDecl.addStatements((writer) => {
       writer.write("try ").block(() => {
-        // flowState 初始化（由 compiler 注入具型別版本）
+        // flowState initialization (typed version injected by compiler)
         bodyGenerator(writer);
       });
       writer.write(" catch (error) ").block(() => {

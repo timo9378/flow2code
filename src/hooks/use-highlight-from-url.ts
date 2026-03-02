@@ -1,8 +1,8 @@
 /**
- * useHighlightFromURL — URL Deep Link 節點高亮 hook
+ * useHighlightFromURL — URL Deep Link Node Highlight Hook
  *
- * 當 URL 包含 `?highlight=nodeId` 時，自動選取該節點並滾動到畫布位置。
- * 搭配 Runtime Tracer 的 deep link 使用。
+ * When the URL contains `?highlight=nodeId`, automatically selects the node and scrolls to its canvas position.
+ * Used with the Runtime Tracer's deep link.
  *
  * @example URL: http://localhost:3001?highlight=fetch_api_1
  */
@@ -20,12 +20,12 @@ export function useHighlightFromURL() {
     const highlightId = params.get("highlight");
     if (!highlightId) return;
 
-    // 等節點載入完成後再選取
+    // Wait for nodes to finish loading before selecting
     const targetNode = nodes.find((n) => n.id === highlightId);
     if (targetNode) {
       selectNode(highlightId);
 
-      // 清除 URL 參數（避免重複觸發）
+      // Clear URL parameters (avoid re-triggering)
       const url = new URL(window.location.href);
       url.searchParams.delete("highlight");
       window.history.replaceState({}, "", url.toString());

@@ -1,5 +1,5 @@
 /**
- * IR 驗證器測試
+ * IR Validator Tests
  */
 
 import { describe, it, expect } from "vitest";
@@ -10,7 +10,7 @@ import {
 } from "../fixtures";
 
 describe("IR Validator", () => {
-  it("應通過有效的簡單 GET 流程驗證", () => {
+  it("should pass validation for a valid simple GET flow", () => {
     const ir = createSimpleGetFlow();
     const result = validateFlowIR(ir);
     
@@ -18,7 +18,7 @@ describe("IR Validator", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it("應檢測缺少觸發器的情況", () => {
+  it("should detect missing trigger", () => {
     const ir = createSimpleGetFlow();
     ir.nodes = ir.nodes.filter((n) => n.category !== "trigger");
     
@@ -28,7 +28,7 @@ describe("IR Validator", () => {
     expect(result.errors.some((e) => e.code === "NO_TRIGGER")).toBe(true);
   });
 
-  it("應檢測多個觸發器", () => {
+  it("should detect multiple triggers", () => {
     const ir = createSimpleGetFlow();
     ir.nodes.push({
       ...ir.nodes[0],
@@ -41,11 +41,11 @@ describe("IR Validator", () => {
     expect(result.errors.some((e) => e.code === "MULTIPLE_TRIGGERS")).toBe(true);
   });
 
-  it("應檢測重複的節點 ID", () => {
+  it("should detect duplicate node IDs", () => {
     const ir = createSimpleGetFlow();
     ir.nodes.push({
       ...ir.nodes[1],
-    }); // 重複 response_1
+    }); // duplicate response_1
     
     const result = validateFlowIR(ir);
     
@@ -53,7 +53,7 @@ describe("IR Validator", () => {
     expect(result.errors.some((e) => e.code === "DUPLICATE_NODE_ID")).toBe(true);
   });
 
-  it("應檢測無效的 Edge 來源節點", () => {
+  it("should detect invalid edge source node", () => {
     const ir = createSimpleGetFlow();
     ir.edges[0].sourceNodeId = "nonexistent";
     
@@ -63,7 +63,7 @@ describe("IR Validator", () => {
     expect(result.errors.some((e) => e.code === "INVALID_EDGE_SOURCE")).toBe(true);
   });
 
-  it("應檢測環路", () => {
+  it("should detect cycles", () => {
     const ir = createCyclicFlow();
     const result = validateFlowIR(ir);
     
@@ -71,7 +71,7 @@ describe("IR Validator", () => {
     expect(result.errors.some((e) => e.code === "CYCLE_DETECTED")).toBe(true);
   });
 
-  it("應檢測不支援的版本號", () => {
+  it("should detect unsupported version number", () => {
     const ir = createSimpleGetFlow();
     (ir as any).version = "99.0.0";
     

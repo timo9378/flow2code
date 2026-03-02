@@ -1,7 +1,7 @@
 /**
- * Expression Parser 測試
+ * Expression Parser Tests
  *
- * 驗證新的 Recursive Descent Parser 正確取代 Regex 解析。
+ * Verifies that the new Recursive Descent Parser correctly replaces Regex parsing.
  */
 
 import { describe, it, expect } from "vitest";
@@ -28,32 +28,32 @@ function makeContext(opts: {
 }
 
 describe("Expression Parser", () => {
-  describe("基本模板解析", () => {
-    it("純字串不含 {{ 時應原封不動返回", () => {
+  describe("Basic Template Parsing", () => {
+    it("plain string without {{ should be returned as-is", () => {
       const ctx = makeContext({});
       expect(parseExpression("hello world", ctx)).toBe("hello world");
     });
 
-    it("{{nodeId}} 應解析為 flowState['nodeId']", () => {
+    it("{{nodeId}} should resolve to flowState['nodeId']", () => {
       const ctx = makeContext({});
       expect(parseExpression("{{fetch_1}}", ctx)).toBe("flowState['fetch_1']");
     });
 
-    it("{{nodeId.path}} 應解析為 flowState['nodeId'].path", () => {
+    it("{{nodeId.path}} should resolve to flowState['nodeId'].path", () => {
       const ctx = makeContext({});
       expect(parseExpression("{{fetch_1.data}}", ctx)).toBe(
         "flowState['fetch_1'].data"
       );
     });
 
-    it("{{nodeId.nested.path}} 應解析為 flowState['nodeId'].nested.path", () => {
+    it("{{nodeId.nested.path}} should resolve to flowState['nodeId'].nested.path", () => {
       const ctx = makeContext({});
       expect(parseExpression("{{fetch_1.data.users}}", ctx)).toBe(
         "flowState['fetch_1'].data.users"
       );
     });
 
-    it("{{nodeId.arr[0].name}} 應正確解析陣列索引", () => {
+    it("{{nodeId.arr[0].name}} should correctly parse array index", () => {
       const ctx = makeContext({});
       expect(parseExpression("{{fetch_1.arr[0].name}}", ctx)).toBe(
         "flowState['fetch_1'].arr[0].name"
@@ -61,7 +61,7 @@ describe("Expression Parser", () => {
     });
   });
 
-  describe("混合文字與引用", () => {
+  describe("Mixed Text and References", () => {
     it("should handle text before and after reference", () => {
       const ctx = makeContext({});
       expect(
@@ -77,8 +77,8 @@ describe("Expression Parser", () => {
     });
   });
 
-  describe("特殊變數 $input", () => {
-    it("{{$input}} 應解析為上游非觸發器節點", () => {
+  describe("Special Variable $input", () => {
+    it("{{$input}} should resolve to upstream non-trigger node", () => {
       const ctx = makeContext({
         nodes: [
           {
@@ -119,7 +119,7 @@ describe("Expression Parser", () => {
       expect(parseExpression("{{$input}}", ctx)).toBe("flowState['fetch_1']");
     });
 
-    it("{{$input.data.items}} 應包含子路徑", () => {
+    it("{{$input.data.items}} should include sub-path", () => {
       const ctx = makeContext({
         nodes: [
           {
@@ -153,8 +153,8 @@ describe("Expression Parser", () => {
     });
   });
 
-  describe("特殊變數 $trigger", () => {
-    it("{{$trigger}} 應解析為觸發器節點", () => {
+  describe("Special Variable $trigger", () => {
+    it("{{$trigger}} should resolve to trigger node", () => {
       const ctx = makeContext({
         nodes: [
           {
@@ -172,7 +172,7 @@ describe("Expression Parser", () => {
       expect(parseExpression("{{$trigger}}", ctx)).toBe("flowState['trigger_1']");
     });
 
-    it("{{$trigger.body.userId}} 應正確帶路徑", () => {
+    it("{{$trigger.body.userId}} should correctly include path", () => {
       const ctx = makeContext({
         nodes: [
           {
@@ -193,15 +193,15 @@ describe("Expression Parser", () => {
     });
   });
 
-  describe("空白處理", () => {
-    it("應正確處理 {{ 和 }} 內的空白", () => {
+  describe("Whitespace Handling", () => {
+    it("should correctly handle whitespace inside {{ and }}", () => {
       const ctx = makeContext({});
       expect(parseExpression("{{ fetch_1.data }}", ctx)).toBe(
         "flowState['fetch_1'].data"
       );
     });
 
-    it("應正確處理前後空白", () => {
+    it("should correctly handle leading and trailing whitespace", () => {
       const ctx = makeContext({});
       expect(parseExpression("{{  $trigger  }}", ctx)).toBe(
         // No trigger registered, should return "undefined"
@@ -210,22 +210,22 @@ describe("Expression Parser", () => {
     });
   });
 
-  describe("錯誤處理", () => {
-    it("未關閉的 {{ 應拋出 ExpressionParseError", () => {
+  describe("Error Handling", () => {
+    it("unclosed {{ should throw ExpressionParseError", () => {
       const ctx = makeContext({});
       expect(() => parseExpression("{{unclosed", ctx)).toThrow(
         ExpressionParseError
       );
     });
 
-    it("空的 {{}} 應拋出 ExpressionParseError", () => {
+    it("empty {{}} should throw ExpressionParseError", () => {
       const ctx = makeContext({});
       expect(() => parseExpression("{{}}", ctx)).toThrow(ExpressionParseError);
     });
   });
 
-  describe("逃脫序列", () => {
-    it("\\\\{{ 應輸出字面 {{", () => {
+  describe("Escape Sequences", () => {
+    it("\\\\{{ should output literal {{", () => {
       const ctx = makeContext({});
       expect(parseExpression("\\{{literal}}", ctx)).toBe("{{literal}}");
     });

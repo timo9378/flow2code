@@ -104,8 +104,11 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
     });
   }
 
+  // Rebuild nodeMap from workingIR (which may have been migrated)
+  const workingNodeMap = new Map<NodeId, FlowNode>(workingIR.nodes.map((n) => [n.id, n]));
+
   // 2. Must have exactly one Trigger
-  const triggers = ir.nodes.filter(
+  const triggers = workingIR.nodes.filter(
     (n) => n.category === NodeCategory.TRIGGER
   );
   if (triggers.length === 0) {
@@ -123,7 +126,7 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
 
   // 3. Check node ID uniqueness
   const idSet = new Set<string>();
-  for (const node of ir.nodes) {
+  for (const node of workingIR.nodes) {
     if (idSet.has(node.id)) {
       errors.push({
         code: "DUPLICATE_NODE_ID",
@@ -135,15 +138,15 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
   }
 
   // 4. Validate all edge endpoints
-  for (const edge of ir.edges) {
-    if (!nodeMap.has(edge.sourceNodeId)) {
+  for (const edge of workingIR.edges) {
+    if (!workingNodeMap.has(edge.sourceNodeId)) {
       errors.push({
         code: "INVALID_EDGE_SOURCE",
         message: `Edge "${edge.id}" references non-existent source node "${edge.sourceNodeId}"`,
         edgeId: edge.id,
       });
     }
-    if (!nodeMap.has(edge.targetNodeId)) {
+    if (!workingNodeMap.has(edge.targetNodeId)) {
       errors.push({
         code: "INVALID_EDGE_TARGET",
         message: `Edge "${edge.id}" references non-existent target node "${edge.targetNodeId}"`,
@@ -153,16 +156,16 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
   }
 
   // 5. Cycle detection (DFS)
-  const cycleErrors = detectCycles(ir.nodes, ir.edges);
+  const cycleErrors = detectCycles(workingIR.nodes, workingIR.edges);
   errors.push(...cycleErrors);
 
   // 6. Check for orphan nodes (no edges, not a Trigger)
   const connectedNodes = new Set<NodeId>();
-  for (const edge of ir.edges) {
+  for (const edge of workingIR.edges) {
     connectedNodes.add(edge.sourceNodeId);
     connectedNodes.add(edge.targetNodeId);
   }
-  for (const node of ir.nodes) {
+  for (const node of workingIR.nodes) {
     if (
       node.category !== NodeCategory.TRIGGER &&
       !connectedNodes.has(node.id)
@@ -211,7 +214,7 @@ function detectCycles(
     color.set(node.id, WHITE);
   }
 
-  function dfs(nodeId: NodeId): boolean {
+  function dfs(nodeId: NodeId): void {
     color.set(nodeId, GRAY);
 
     for (const neighbor of adjacency.get(nodeId) ?? []) {
@@ -221,15 +224,13 @@ function detectCycles(
           message: `Cycle detected: node "${nodeId}" → "${neighbor}"`,
           nodeId,
         });
-        return true;
-      }
-      if (color.get(neighbor) === WHITE) {
-        if (dfs(neighbor)) return true;
+        // Don't return — continue to find all cycles
+      } else if (color.get(neighbor) === WHITE) {
+        dfs(neighbor);
       }
     }
 
     color.set(nodeId, BLACK);
-    return false;
   }
 
   for (const node of nodes) {

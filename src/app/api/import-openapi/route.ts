@@ -4,7 +4,7 @@
  * POST /api/import-openapi
  * Body: { spec: string | object, filter?: { tags?: string[], paths?: string[] } }
  *
- * 將 OpenAPI 規範轉換為 FlowIR 陣列
+ * Converts OpenAPI specification to FlowIR array
  */
 
 import { NextResponse } from "next/server";
@@ -23,12 +23,12 @@ export async function POST(req: Request) {
 
     const result = convertOpenAPIToFlowIR(body.spec);
 
-    // 可選的 tag / path 篩選
+    // Optional tag / path filtering
     let filteredFlows = result.flows;
     if (body.filter?.tags && Array.isArray(body.filter.tags)) {
       const tags = new Set(body.filter.tags as string[]);
       filteredFlows = filteredFlows.filter((flow) => {
-        // 檢查 flow 的 meta.name 是否在指定的 tag 路徑集內
+        // Check if the flow's meta.name is in the specified tag path set
         return true; // TODO: tag-based filtering
       });
     }

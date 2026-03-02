@@ -56,6 +56,9 @@
     "url": "git+https://github.com/timo9378/flow2code.git"
   },
   "homepage": "https://github.com/timo9378/flow2code#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "bugs": {
     "url": "https://github.com/timo9378/flow2code/issues"
   },

@@ -1,11 +1,11 @@
 /**
- * 編譯器 Bug 修復驗證測試
+ * Compiler Bug Fix Verification Tests
  *
- * 對應 test.md 中記錄的 4 大測試狀況：
- * 1. Data Binding（資料流動斷層）
- * 2. HTTP Method 衝突與 Body 解析地雷
- * 3. Fetch API 錯誤處理太樂觀
- * 4. Error 拋出導致不優雅的伺服器錯誤
+ * Corresponds to the 4 major test scenarios documented in test.md:
+ * 1. Data Binding (data flow disconnection)
+ * 2. HTTP Method conflicts and body parsing pitfalls
+ * 3. Fetch API error handling too optimistic
+ * 4. Error throwing leads to ungraceful server errors
  */
 
 import { describe, it, expect } from "vitest";
@@ -19,11 +19,11 @@ import {
 } from "@/lib/ir/types";
 
 // ============================================================
-// 狀況一：Data Binding 自動綁定（{{$input}} 解析）
+// Scenario 1: Data Binding Auto-binding ({{$input}} resolution)
 // ============================================================
 
-describe("Bug #1: Data Binding（$input 自動參照）", () => {
-  it("{{$input}} 應解析為上一個非觸發器節點的 flowState", () => {
+describe("Bug #1: Data Binding ($input auto-reference)", () => {
+  it("{{$input}} should resolve to the flowState of the previous non-trigger node", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -53,7 +53,7 @@ describe("Bug #1: Data Binding（$input 自動參照）", () => {
           label: "Return Data",
           params: {
             statusCode: 200,
-            bodyExpression: "{{$input}}",  // 使用 $input 自動參照
+            bodyExpression: "{{$input}}",  // Using $input auto-reference
           },
           inputs: [{ id: "data", label: "Data", dataType: "any", required: true }],
           outputs: [],
@@ -67,13 +67,13 @@ describe("Bug #1: Data Binding（$input 自動參照）", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // $input 應被解析為 fetch_1 的命名變數（Symbol Table）
-    expect(result.code).toContain("flowState['fetch_1']"); // plugin 仍會寫入 flowState
-    // v3: 表達式使用命名變數而非 flowState
+    // $input should resolve to fetch_1's named variable (Symbol Table)
+    expect(result.code).toContain("flowState['fetch_1']"); // plugin still writes to flowState
+    // v3: expression uses named variable instead of flowState
     expect(result.code).toContain("externalApi");
   });
 
-  it("{{$input}} 在只有觸發器連入時，應 fallback 到觸發器", () => {
+  it("{{$input}} should fallback to trigger when only trigger is connected", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -107,11 +107,11 @@ describe("Bug #1: Data Binding（$input 自動參照）", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // 無非觸發器前驅，應 fallback 到 trigger_1
+    // No non-trigger predecessors, should fallback to trigger_1
     expect(result.code).toContain("flowState['trigger_1']");
   });
 
-  it("{{$trigger}} 應解析為觸發器節點的 flowState", () => {
+  it("{{$trigger}} should resolve to the trigger node's flowState", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -145,17 +145,17 @@ describe("Bug #1: Data Binding（$input 自動參照）", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // v3: {{$trigger.body}} 解析為觸發器的命名變數
+    // v3: {{$trigger.body}} resolves to the trigger's named variable
     expect(result.code).toContain("postApiProxy.body");
   });
 });
 
 // ============================================================
-// 狀況二：HTTP Method 衝突
+// Scenario 2: HTTP Method Conflicts
 // ============================================================
 
-describe("Bug #2: HTTP Method 衝突與 Body 解析", () => {
-  it("GET 請求不應生成 req.json()，應解析 searchParams", () => {
+describe("Bug #2: HTTP Method Conflicts and Body Parsing", () => {
+  it("GET request should not generate req.json(), should parse searchParams", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -186,16 +186,16 @@ describe("Bug #2: HTTP Method 衝突與 Body 解析", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // GET 不應有 req.json()
+    // GET should not have req.json()
     expect(result.code).not.toContain("req.json()");
-    // GET 應解析 searchParams
+    // GET should parse searchParams
     expect(result.code).toContain("req.nextUrl.searchParams");
     expect(result.code).toContain("Object.fromEntries");
-    // GET 的提供者型別應為 NextRequest
+    // GET's provider type should be NextRequest
     expect(result.code).toContain("req: NextRequest");
   });
 
-  it("POST 的 req.json() 應被 try/catch 包覆", () => {
+  it("POST's req.json() should be wrapped in try/catch", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -226,16 +226,16 @@ describe("Bug #2: HTTP Method 衝突與 Body 解析", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // POST 仍然應有 req.json()
+    // POST should still have req.json()
     expect(result.code).toContain("await req.json()");
-    // POST 的 req.json() 應被 try/catch 包覆
+    // POST's req.json() should be wrapped in try/catch
     expect(result.code).toContain("Invalid JSON body");
     expect(result.code).toContain("status: 400");
-    // POST 的參數型別應為 Request（不需要 NextRequest）
+    // POST's parameter type should be Request (no need for NextRequest)
     expect(result.code).toContain("req: Request");
   });
 
-  it("DELETE 請求應像 GET 一樣處理（不讀 body）", () => {
+  it("DELETE request should be handled like GET (no body reading)", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -273,11 +273,11 @@ describe("Bug #2: HTTP Method 衝突與 Body 解析", () => {
 });
 
 // ============================================================
-// 狀況三：Fetch API 錯誤處理
+// Scenario 3: Fetch API Error Handling
 // ============================================================
 
-describe("Bug #3: Fetch API response.ok 檢查", () => {
-  it("Fetch 結果應檢查 response.ok", () => {
+describe("Bug #3: Fetch API response.ok check", () => {
+  it("Fetch result should check response.ok", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -318,19 +318,19 @@ describe("Bug #3: Fetch API response.ok 檢查", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // 應檢查 response.ok
+    // Should check response.ok
     expect(result.code).toContain("if (!response.ok)");
-    // 應有描述性錯誤訊息
+    // Should have descriptive error message
     expect(result.code).toContain("response.status");
   });
 });
 
 // ============================================================
-// 狀況四：全域 try/catch 錯誤攔截
+// Scenario 4: Global try/catch Error Interception
 // ============================================================
 
-describe("Bug #4: 全域 try/catch 攔截（優雅的 JSON 錯誤）", () => {
-  it("HTTP Webhook 的函式體應被 try/catch 包覆", () => {
+describe("Bug #4: Global try/catch Interception (graceful JSON errors)", () => {
+  it("HTTP Webhook function body should be wrapped in try/catch", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -361,14 +361,14 @@ describe("Bug #4: 全域 try/catch 攔截（優雅的 JSON 錯誤）", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // 應有全域 catch 回傳 JSON 錯誤
+    // Should have global catch returning JSON error
     expect(result.code).toContain("catch (error)");
     expect(result.code).toContain("Workflow failed");
     expect(result.code).toContain("Internal Server Error");
     expect(result.code).toContain("status: 500");
   });
 
-  it("Fetch API 的 throw 應被全域 catch 攔截", () => {
+  it("Fetch API's throw should be caught by global catch", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -411,12 +411,12 @@ describe("Bug #4: 全域 try/catch 攔截（優雅的 JSON 錯誤）", () => {
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // Fetch 的 catch 會 re-throw
+    // Fetch's catch will re-throw
     expect(code).toContain("throw fetchError");
-    // 全域 catch 會攔截並回傳 JSON
+    // Global catch will intercept and return JSON
     expect(code).toContain("Workflow failed");
     expect(code).toContain("status: 500");
-    // 不再有裸露的 throw 導致 HTML 錯誤
+    // No more bare throw causing HTML errors
     expect(code).toContain("NextResponse.json({ error:");
   });
 });

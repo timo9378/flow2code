@@ -1,5 +1,5 @@
 /**
- * Dynamic Node Registry 測試
+ * Dynamic Node Registry Tests
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -83,7 +83,7 @@ describe("NodeRegistry", () => {
     expect(registry.getAll().length).toBe(0);
   });
 
-  // ── 向下相容 API ──
+  // ── Backward-compatible API ──
 
   it("getDefaultPorts should return registered ports", () => {
     registry.register(sampleDef);
@@ -132,9 +132,9 @@ describe("NodeRegistry", () => {
     ]);
 
     const groups = registry.getGroupedDefinitions();
-    expect(Object.keys(groups)).toContain("觸發器");
-    expect(Object.keys(groups)).toContain("執行器");
-    expect(groups["觸發器"].templates[0].nodeType).toBe("trigger:mqtt");
+    expect(Object.keys(groups)).toContain("Triggers");
+    expect(Object.keys(groups)).toContain("Actions");
+    expect(groups["Triggers"].templates[0].nodeType).toBe("trigger:mqtt");
   });
 });
 

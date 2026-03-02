@@ -1,8 +1,8 @@
 /**
  * Express.js Platform Adapter
  *
- * 生成與 Express.js 相容的 route handler 代碼。
- * 證明平台解耦的可行性。
+ * Generates route handler code compatible with Express.js.
+ * Demonstrates the feasibility of platform decoupling.
  */
 
 import type { SourceFile, CodeBlockWriter } from "ts-morph";
@@ -48,7 +48,7 @@ export class ExpressPlatform implements PlatformAdapter {
         this.generateManualFunction(sourceFile, trigger, bodyGenerator);
         break;
       default:
-        throw new Error(`不支援的觸發器類型: ${trigger.nodeType}`);
+        throw new Error(`Unsupported trigger type: ${trigger.nodeType}`);
     }
   }
 

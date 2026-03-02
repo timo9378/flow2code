@@ -1,7 +1,7 @@
 /**
- * Split Storage 測試
+ * Split Storage Tests
  * 
- * 測試 FlowIR ↔ YAML 目錄結構的雙向轉換
+ * Tests bidirectional conversion between FlowIR ↔ YAML directory structure
  */
 
 import { describe, it, expect } from "vitest";
@@ -13,16 +13,16 @@ describe("splitIR", () => {
     const ir = createSimpleGetFlow();
     const files = splitIR(ir);
 
-    // meta.yaml 應包含版本和名稱
+    // meta.yaml should contain version and name
     expect(files.meta).toContain("version:");
     expect(files.meta).toContain("Simple GET");
     expect(files.meta).toContain("nodeOrder:");
 
-    // edges.yaml 應包含連線
+    // edges.yaml should contain connections
     expect(files.edges).toContain("trigger_1:request");
     expect(files.edges).toContain("response_1:data");
 
-    // 應有 2 個節點檔案
+    // Should have 2 node files
     expect(files.nodes.size).toBe(2);
     expect(files.nodes.has("trigger_1.yaml")).toBe(true);
     expect(files.nodes.has("response_1.yaml")).toBe(true);
@@ -57,7 +57,7 @@ describe("mergeIR", () => {
     expect(restored.nodes.length).toBe(original.nodes.length);
     expect(restored.edges.length).toBe(original.edges.length);
 
-    // 檢查節點內容
+    // Check node content
     expect(restored.nodes[0].id).toBe(original.nodes[0].id);
     expect(restored.nodes[0].nodeType).toBe(original.nodes[0].nodeType);
     expect(restored.nodes[0].params).toEqual(original.nodes[0].params);
@@ -68,7 +68,7 @@ describe("mergeIR", () => {
     const files = splitIR(original);
     const restored = mergeIR(files);
 
-    // 節點順序應與原始相同
+    // Node order should be the same as original
     expect(restored.nodes.map((n) => n.id)).toEqual(
       original.nodes.map((n) => n.id)
     );
@@ -94,7 +94,7 @@ describe("mergeIR", () => {
     expect(restored.nodes.length).toBe(original.nodes.length);
     expect(restored.edges.length).toBe(original.edges.length);
     
-    // 所有節點 params 應相等
+    // All node params should be equal
     for (let i = 0; i < original.nodes.length; i++) {
       expect(restored.nodes[i].params).toEqual(original.nodes[i].params);
     }
@@ -118,8 +118,8 @@ describe("YAML format quality", () => {
     const ir = createSimpleGetFlow();
     const files = splitIR(ir);
 
-    // 不應包含展開的 sourceNodeId/targetNodeId 字段
-    // 而是使用 source: "trigger_1:request" 格式
+    // Should not contain expanded sourceNodeId/targetNodeId fields
+    // Instead use source: "trigger_1:request" format
     expect(files.edges).toContain("source:");
     expect(files.edges).toContain("target:");
   });

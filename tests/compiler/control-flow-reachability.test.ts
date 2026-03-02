@@ -1,10 +1,10 @@
 /**
- * Reachability Analysis & Promise Safety 測試
+ * Reachability Analysis & Promise Safety Tests
  *
- * 驗證三個關鍵修復：
- *   Boss 1: DAG 模式不再重複生成子區塊節點（Pre-computed childBlockNodeIds）
- *   Boss 2: Control Flow 子節點的下游不再外洩到頂層（Block Continuation）
- *   Boss 3: DAG Promise 有 .catch 防護 & Promise.allSettled barrier
+ * Verifies three critical fixes:
+ *   Boss 1: DAG mode no longer duplicates sub-block nodes (Pre-computed childBlockNodeIds)
+ *   Boss 2: Downstream of control flow child nodes no longer leaks to top level (Block Continuation)
+ *   Boss 3: DAG Promises have .catch guards & Promise.allSettled barrier
  */
 
 import { describe, it, expect } from "vitest";
@@ -27,13 +27,13 @@ registerPlugins(builtinPlugins);
 // ============================================================
 
 /**
- * Boss 1 場景：DAG 模式下的 If/Else 含子節點
+ * Boss 1 Scenario: If/Else with child nodes in DAG mode
  *
  * trigger ──→ fetch_a ──→ if_1 ──true──→ fetch_child
  *          └─→ fetch_b ──→ response_1
  *
- * fetch_a 與 fetch_b 並行（觸發 DAG 模式）。
- * fetch_child 是 if_1 的 true 分支子節點，不應出現在頂層 DAG。
+ * fetch_a and fetch_b run in parallel (triggers DAG mode).
+ * fetch_child is a true branch child of if_1, should not appear in top-level DAG.
  */
 function createDAGWithIfElse(): FlowIR {
   return {
@@ -110,14 +110,14 @@ function createDAGWithIfElse(): FlowIR {
 }
 
 /**
- * Boss 2 場景：If/Else true 分支的下游鏈
+ * Boss 2 Scenario: If/Else true branch downstream chain
  *
  * trigger ──→ if_1 ──true──→ fetch_a ──→ write_db
  *                   └false──→ response_err (400)
  *            └──→ response_ok (200, uses write_db result)
  *
- * fetch_a 和 write_db 都必須在 if (true) { ... } 區塊內。
- * write_db 不能外洩到頂層。
+ * fetch_a and write_db must both be inside the if (true) { ... } block.
+ * write_db must not leak to the top level.
  */
 function createIfElseWithDownstreamChain(): FlowIR {
   return {
@@ -197,70 +197,70 @@ function createIfElseWithDownstreamChain(): FlowIR {
 }
 
 // ============================================================
-// Boss 1: DAG 重複生成修復
+// Boss 1: DAG Duplicate Generation Fix
 // ============================================================
 
-describe("Boss 1: DAG 不重複生成子區塊節點", () => {
-  it("If/Else 子節點不應出現在頂層 DAG promise", () => {
+describe("Boss 1: DAG should not duplicate sub-block nodes", () => {
+  it("If/Else child nodes should not appear in top-level DAG promise", () => {
     const ir = createDAGWithIfElse();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // fetch_child 不應有自己的頂層 promise IIFE
+    // fetch_child should not have its own top-level promise IIFE
     expect(code).not.toMatch(/const p_fetch_child\s*=/);
 
-    // fetch_child 應該在 if 區塊內被生成
+    // fetch_child should be generated inside the if block
     expect(code).toContain("if (");
     expect(code).toContain("Fetch Child");
   });
 
-  it("fetch_child 的代碼只應出現一次（不重複宣告）", () => {
+  it("fetch_child's code should only appear once (no duplicate declarations)", () => {
     const ir = createDAGWithIfElse();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // Fetch Child 的註解標記只應出現一次
+    // Fetch Child's comment marker should only appear once
     const mentions = code.match(/--- Fetch Child/g);
     expect(mentions).toHaveLength(1);
   });
 });
 
 // ============================================================
-// Boss 2: Control Flow 子節點下游不外洩
+// Boss 2: Control Flow Child Node Downstream Leak Prevention
 // ============================================================
 
-describe("Boss 2: Control Flow 後代節點不外洩到頂層", () => {
-  it("write_db 應在 if 區塊內（不在頂層）", () => {
+describe("Boss 2: Control Flow descendant nodes should not leak to top level", () => {
+  it("write_db should be inside the if block (not at top level)", () => {
     const ir = createIfElseWithDownstreamChain();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // write_db 應被生成（存在於代碼中）
+    // write_db should be generated (exists in the code)
     expect(code).toContain("Write DB");
 
-    // 定位 if 區塊和 write_db 的位置
+    // Locate the position of the if block and write_db
     const ifPos = code.indexOf("if (");
     const writeDbPos = code.indexOf("Write DB");
 
-    // write_db 應出現在 if 之後（表示它在 if 區塊內）
+    // write_db should appear after if (meaning it's inside the if block)
     expect(ifPos).toBeGreaterThan(-1);
     expect(writeDbPos).toBeGreaterThan(ifPos);
 
-    // write_db 不應以頂層獨立語句出現在 if 區塊外面
-    // 檢查 write_db 註解出現在 if 區塊的大括號 {} 之間
+    // write_db should not appear as a top-level independent statement outside the if block
+    // Check that write_db comment appears between the if block's braces {}
     const ifBlock = code.substring(ifPos);
     const firstCloseBrace = findMatchingBrace(ifBlock);
     const writeDbRelPos = ifBlock.indexOf("Write DB");
     expect(writeDbRelPos).toBeLessThan(firstCloseBrace);
   });
 
-  it("fetch_a 也必須在 if 區塊內", () => {
+  it("fetch_a must also be inside the if block", () => {
     const ir = createIfElseWithDownstreamChain();
     const result = compile(ir);
 
@@ -276,40 +276,40 @@ describe("Boss 2: Control Flow 後代節點不外洩到頂層", () => {
 });
 
 // ============================================================
-// Boss 3: Promise 安全性
+// Boss 3: Promise Safety
 // ============================================================
 
-describe("Boss 3: DAG Promise 安全性", () => {
-  it("每個 DAG promise 應有 .catch 防護", () => {
+describe("Boss 3: DAG Promise Safety", () => {
+  it("each DAG promise should have .catch guard", () => {
     const ir = createDAGWithIfElse();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // 找到所有 DAG promise 變數
+    // Find all DAG promise variables
     const promiseDecls = code.match(/const (p_\w+)\s*=\s*\(async/g);
     expect(promiseDecls).toBeTruthy();
     expect(promiseDecls!.length).toBeGreaterThan(0);
 
-    // 每個 promise 都應該有對應的 .catch
+    // Each promise should have a corresponding .catch
     for (const decl of promiseDecls!) {
       const varName = decl.match(/const (p_\w+)/)?.[1];
       expect(code).toContain(`${varName}.catch(() => {`);
     }
   });
 
-  it("Output 前應有 Promise.allSettled barrier", () => {
+  it("should have Promise.allSettled barrier before Output", () => {
     const ir = createDAGWithIfElse();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
     const code = result.code!;
 
-    // 應包含 Promise.allSettled
+    // Should contain Promise.allSettled
     expect(code).toContain("Promise.allSettled");
 
-    // Promise.allSettled 應在 Output 節點標記之前
+    // Promise.allSettled should be before the Output node marker
     const barrierPos = code.indexOf("Promise.allSettled");
     const outputCommentMatch = code.match(/\/\/ --- Return \(return_response\)/);
     const outputCommentPos = outputCommentMatch ? code.indexOf(outputCommentMatch[0]) : -1;
@@ -323,7 +323,7 @@ describe("Boss 3: DAG Promise 安全性", () => {
 // Helper
 // ============================================================
 
-/** 簡易大括號匹配：找到第一個 { 對應的 } 位置 */
+/** Simple brace matching: find the position of } corresponding to the first { */
 function findMatchingBrace(code: string): number {
   let depth = 0;
   let started = false;

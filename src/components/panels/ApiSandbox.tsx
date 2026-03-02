@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * API 測試沙盒元件 — shadcn/ui 版
+ * API Test Sandbox Component — shadcn/ui version
  */
 
 import { useState, useCallback } from "react";
@@ -63,7 +63,7 @@ export default function ApiSandbox({
       try {
         parsedHeaders = JSON.parse(headers);
       } catch {
-        setError("Headers JSON 格式錯誤");
+        setError("Invalid Headers JSON format");
         setLoading(false);
         return;
       }
@@ -107,7 +107,7 @@ export default function ApiSandbox({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[820px] max-h-[85vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-5 pt-5 pb-3">
-          <DialogTitle>🧪 API 測試沙盒</DialogTitle>
+          <DialogTitle>🧪 API Test Sandbox</DialogTitle>
         </DialogHeader>
 
         {/* Request */}
@@ -196,7 +196,7 @@ export default function ApiSandbox({
 
           {!response && !error && !loading && (
             <p className="text-muted-foreground text-xs text-center py-8">
-              點擊 Send 發送請求
+              Click Send to make a request
             </p>
           )}
         </ScrollArea>

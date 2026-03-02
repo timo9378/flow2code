@@ -1,55 +1,55 @@
 /**
  * Flow2Code Split Storage
  * 
- * 解決 keypoint.md #2「JSON Diff Hell」問題。
+ * Solves keypoint.md #2 "JSON Diff Hell" problem.
  * 
- * 將單一 .flow.json 拆分為目錄結構：
+ * Splits a single .flow.json into a directory structure:
  * 
  *   my-flow/
- *   ├── meta.yaml        ← 工作流元資料
- *   ├── edges.yaml        ← 所有連線
+ *   ├── meta.yaml        ← Workflow metadata
+ *   ├── edges.yaml        ← All edges
  *   └── nodes/
  *       ├── trigger_1.yaml
  *       ├── fetch_1.yaml
  *       └── response_1.yaml
  * 
- * 每個節點是獨立檔案，大幅降低 Git merge conflict 機率。
+ * Each node is an independent file, greatly reducing Git merge conflict probability.
  */
 
 import { stringify, parse } from "yaml";
 import type { FlowIR, FlowNode, FlowEdge } from "../ir/types";
 
 // ============================================================
-// 類型定義
+// Type Definitions
 // ============================================================
 
-/** 拆分後的檔案結構 */
+/** Split file structure */
 export interface SplitFiles {
-  /** meta.yaml 內容 */
+  /** meta.yaml content */
   meta: string;
-  /** edges.yaml 內容 */
+  /** edges.yaml content */
   edges: string;
-  /** 節點檔案：filename → yaml 內容 */
+  /** Node files: filename → yaml content */
   nodes: Map<string, string>;
 }
 
-/** meta.yaml 的結構 */
+/** meta.yaml structure */
 interface MetaYaml {
   version: string;
   name: string;
   description?: string;
   createdAt: string;
   updatedAt: string;
-  /** 節點 ID 列表（保持順序） */
+  /** Node ID list (preserving order) */
   nodeOrder: string[];
 }
 
 // ============================================================
-// 拆分：FlowIR → SplitFiles
+// Split: FlowIR → SplitFiles
 // ============================================================
 
 /**
- * 將 FlowIR 拆分為多個 YAML 檔案
+ * Split FlowIR into multiple YAML files
  */
 export function splitIR(ir: FlowIR): SplitFiles {
   // meta.yaml
@@ -96,23 +96,23 @@ export function splitIR(ir: FlowIR): SplitFiles {
 }
 
 // ============================================================
-// 合併：SplitFiles → FlowIR
+// Merge: SplitFiles → FlowIR
 // ============================================================
 
 /**
- * 將 YAML 檔案合併為 FlowIR
+ * Merge YAML files into FlowIR
  */
 export function mergeIR(files: SplitFiles): FlowIR {
   const meta = parse(files.meta) as MetaYaml;
 
-  // 解析所有節點
+  // Parse all nodes
   const nodeMap = new Map<string, FlowNode>();
   for (const [_filename, yaml] of files.nodes) {
     const node = parse(yaml) as FlowNode;
     nodeMap.set(node.id, node);
   }
 
-  // 按 meta.nodeOrder 排列（缺少的節點放最後）
+  // Arrange by meta.nodeOrder (missing nodes placed at the end)
   const orderedNodes: FlowNode[] = [];
   const seen = new Set<string>();
 
@@ -126,14 +126,14 @@ export function mergeIR(files: SplitFiles): FlowIR {
     }
   }
 
-  // 加入不在 nodeOrder 中的節點
+  // Add nodes not in nodeOrder
   for (const [id, node] of nodeMap) {
     if (!seen.has(id)) {
       orderedNodes.push(node);
     }
   }
 
-  // 解析邊
+  // Parse edges
   const edgesRaw = parse(files.edges) as Array<{
     id: string;
     source: string;
@@ -166,11 +166,11 @@ export function mergeIR(files: SplitFiles): FlowIR {
 }
 
 // ============================================================
-// 檔案系統操作（供 CLI 使用）
+// File System Operations (for CLI use)
 // ============================================================
 
 /**
- * 將 FlowIR 寫入目錄
+ * Write FlowIR to directory
  */
 export function splitToFileSystem(
   ir: FlowIR,
@@ -184,22 +184,22 @@ export function splitToFileSystem(
   const files = splitIR(ir);
   const written: string[] = [];
 
-  // 確保目錄存在
+  // Ensure directory exists
   fs.mkdirSync(dirPath, { recursive: true });
   const nodesDir = path.join(dirPath, "nodes");
   fs.mkdirSync(nodesDir, { recursive: true });
 
-  // 寫入 meta.yaml
+  // Write meta.yaml
   const metaPath = path.join(dirPath, "meta.yaml");
   fs.writeFileSync(metaPath, files.meta);
   written.push(metaPath);
 
-  // 寫入 edges.yaml
+  // Write edges.yaml
   const edgesPath = path.join(dirPath, "edges.yaml");
   fs.writeFileSync(edgesPath, files.edges);
   written.push(edgesPath);
 
-  // 寫入 nodes/*.yaml
+  // Write nodes/*.yaml
   for (const [filename, content] of files.nodes) {
     const nodePath = path.join(nodesDir, filename);
     fs.writeFileSync(nodePath, content);
@@ -210,7 +210,7 @@ export function splitToFileSystem(
 }
 
 /**
- * 從目錄讀取為 FlowIR
+ * Read FlowIR from directory
  */
 export function mergeFromFileSystem(
   dirPath: string,
@@ -247,7 +247,7 @@ export function mergeFromFileSystem(
 }
 
 // ============================================================
-// 輔助函式
+// Helper Functions
 // ============================================================
 
 function addHeader(title: string, content: string): string {

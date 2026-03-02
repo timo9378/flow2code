@@ -1,20 +1,20 @@
 /**
- * API Base URL 配置
+ * API Base URL Configuration
  *
- * - Next.js dev mode (pnpm dev): "" (same-origin, API routes 在 /api/*)
+ * - Next.js dev mode (pnpm dev): "" (same-origin, API routes at /api/*)
  * - Standalone server (flow2code dev): "http://localhost:3100"
- * - 可透過 NEXT_PUBLIC_API_URL 環境變數覆寫
+ * - Can be overridden via NEXT_PUBLIC_API_URL environment variable
  */
 export function getApiBase(): string {
-  // 環境變數優先
+  // Environment variable takes priority
   if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
   }
 
-  // Browser 端：偵測是否透過 Next.js dev server 或靜態匯出存取
+  // Browser: detect whether accessed via Next.js dev server or static export
   if (typeof window !== "undefined") {
-    // 如果頁面來自 standalone server (port 3100)，用同源
-    // 如果頁面來自 Next.js dev (port 3000)，也用同源 (API routes 仍存在)
+    // If page is from standalone server (port 3100), use same-origin
+    // If page is from Next.js dev (port 3000), also use same-origin (API routes still exist)
     return "";
   }
 

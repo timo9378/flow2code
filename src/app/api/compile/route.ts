@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // 支援新格式 { ir, write } 和舊格式（直接傳 IR）
+    // Support new format { ir, write } and legacy format (direct IR)
     const ir: FlowIR = body.ir ?? body;
     const result = compile(ir);
 
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
         success: true,
         code: result.code,
         filePath: result.filePath,
-        writtenTo: null, // Next.js dev mode 不寫入檔案
+        writtenTo: null, // Next.js dev mode does not write files
         dependencies: result.dependencies,
         sourceMap: result.sourceMap,
       });
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: `伺服器錯誤: ${err instanceof Error ? err.message : String(err)}`,
+        error: `Server error: ${err instanceof Error ? err.message : String(err)}`,
       },
       { status: 500 }
     );

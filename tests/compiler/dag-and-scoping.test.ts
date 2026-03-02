@@ -1,11 +1,11 @@
 /**
- * Phase 3.1 — 作用域遮蔽 / 符號表洩漏 / DAG 排程 / 靜態引入 測試
+ * Phase 3.1 — Scope Shadowing / Symbol Table Leaking / DAG Scheduling / Static Import Tests
  *
- * 驗證四個修復：
- *   1. 巢狀迴圈不再有 _loopScope 遮蔽（動態 scope 變數名稱）
- *   2. If/Else 子區塊節點不洩漏 Symbol Table 別名
- *   3. DAG 模式 per-node promise 排程（取代階層式 Promise.all）
- *   4. callSubflowPlugin 使用靜態 import（非 runtime await import）
+ * Verifies four fixes:
+ *   1. Nested loops no longer have _loopScope shadowing (dynamic scope variable names)
+ *   2. If/Else sub-block nodes do not leak Symbol Table aliases
+ *   3. DAG mode per-node promise scheduling (replaces hierarchical Promise.all)
+ *   4. callSubflowPlugin uses static import (not runtime await import)
  */
 
 import { describe, it, expect } from "vitest";
@@ -28,7 +28,7 @@ registerPlugins(builtinPlugins);
 // Fixtures
 // ============================================================
 
-/** 巢狀迴圈：外層迴圈 + 內層迴圈 */
+/** Nested loops: outer loop + inner loop */
 function createNestedLoopFlow(): FlowIR {
   return {
     version: "1.0.0",
@@ -100,7 +100,7 @@ function createNestedLoopFlow(): FlowIR {
   };
 }
 
-/** If/Else 分支 + 下游引用子節點 */
+/** If/Else branching + downstream references to child nodes */
 function createIfElseWithDownstreamFlow(): FlowIR {
   return {
     version: "1.0.0",
@@ -158,7 +158,7 @@ function createIfElseWithDownstreamFlow(): FlowIR {
   };
 }
 
-/** DAG 測試流：兩個並發 → 一個只依賴其中一個 → response */
+/** DAG test flow: two concurrent → one depends on only one of them → response */
 function createDAGFlow(): FlowIR {
   return {
     version: "1.0.0",
@@ -224,94 +224,94 @@ function createDAGFlow(): FlowIR {
 }
 
 // ============================================================
-// 1. 巢狀迴圈 — 確認無 Scope Shadowing
+// 1. Nested Loops — Verify No Scope Shadowing
 // ============================================================
 
 describe("Scope Shadowing (Nested Loops)", () => {
-  it("巢狀迴圈應使用不同的 scope 變數名稱", () => {
+  it("nested loops should use different scope variable names", () => {
     const ir = createNestedLoopFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // 外層迴圈的 scope 變數（含 node ID）
+    // Outer loop's scope variable (includes node ID)
     expect(result.code).toContain("_scope_loop_users");
-    // 內層迴圈的 scope 變數（含不同的 node ID）
+    // Inner loop's scope variable (includes different node ID)
     expect(result.code).toContain("_scope_loop_orders");
   });
 
-  it("巢狀迴圈不應有兩個同名的 const 宣告", () => {
+  it("nested loops should not have two const declarations with the same name", () => {
     const ir = createNestedLoopFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // 不應有 hardcoded _loopScope（這會導致遮蔽）
+    // Should not have hardcoded _loopScope (this would cause shadowing)
     expect(result.code).not.toContain("const _loopScope");
   });
 
-  it("內層迴圈子節點的表達式應解析到正確的 scope 變數", () => {
+  it("inner loop child node expressions should resolve to the correct scope variable", () => {
     const ir = createNestedLoopFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // fetch_order 的 body `{{loop_orders}}` 應解析到內層 scope
+    // fetch_order's body `{{loop_orders}}` should resolve to inner scope
     expect(result.code).toContain("_scope_loop_orders['loop_orders']");
   });
 
-  it("內層迴圈引用外層迴圈的迭代項應解析到外層 scope", () => {
+  it("inner loop referencing outer loop iteration item should resolve to outer scope", () => {
     const ir = createNestedLoopFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // 內層迴圈的 iterableExpression `{{loop_users.orders}}` 應解析到外層 scope
+    // Inner loop's iterableExpression `{{loop_users.orders}}` should resolve to outer scope
     expect(result.code).toContain("_scope_loop_users['loop_users'].orders");
   });
 });
 
 // ============================================================
-// 2. Symbol Table 洩漏 — If/Else 子區塊
+// 2. Symbol Table Leaking — If/Else Sub-blocks
 // ============================================================
 
 describe("Symbol Table Block Scoping", () => {
-  it("if/else 子區塊節點不應產生 const alias", () => {
+  it("if/else sub-block nodes should not produce const alias", () => {
     const ir = createIfElseWithDownstreamFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // fetch_user 在 if 區塊內生成，不應有頂層 const fetchUser 宣告
+    // fetch_user is generated inside the if block, should not have top-level const fetchUser declaration
     expect(result.code).not.toContain("const fetchUser = flowState");
   });
 
-  it("下游節點引用子區塊節點應使用 flowState，而非 Symbol Table 別名", () => {
+  it("downstream nodes referencing sub-block nodes should use flowState, not Symbol Table alias", () => {
     const ir = createIfElseWithDownstreamFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // response_1 的 bodyExpression `{{fetch_user}}` 應使用 flowState
+    // response_1's bodyExpression `{{fetch_user}}` should use flowState
     expect(result.code).toContain("flowState['fetch_user']");
-    // 不應包含 Symbol Table 生成的別名（fetchUser 不是合法的頂層變數）
-    // 只有 flowState['fetch_user'] 是安全的
+    // Should not contain Symbol Table generated alias (fetchUser is not a valid top-level variable)
+    // Only flowState['fetch_user'] is safe
   });
 
-  it("子區塊節點不應在拓撲排序的頂層被重複生成", () => {
+  it("sub-block nodes should not be duplicated at the top level of topological sort", () => {
     const ir = createIfElseWithDownstreamFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // fetch_user 的程式碼只應出現在 if 區塊內，不應在頂層重複
+    // fetch_user's code should only appear inside the if block, not duplicated at top level
     const fetchCount = (result.code!.match(/Fetch User/g) || []).length;
-    // 最多 3 次：節點標記註解、console.error、可能的 throw error message
-    // 重點是不應有第二組獨立的 fetch 代碼區塊
+    // At most 3 times: node marker comment, console.error, possible throw error message
+    // The key point is there should not be a second independent fetch code block
     expect(fetchCount).toBeLessThanOrEqual(3);
   });
 
-  it("expression-parser: blockScopedNodeIds 應跳過 Symbol Table", () => {
+  it("expression-parser: blockScopedNodeIds should skip Symbol Table", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -330,8 +330,8 @@ describe("Symbol Table Block Scoping", () => {
     };
     const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
 
-    // 使用 Symbol Table 但 fetch_1 被標記為 block-scoped
-    // 建一個模擬 symbolTable
+    // Using Symbol Table but fetch_1 is marked as block-scoped
+    // Create a mock symbolTable
     const symbolTable = {
       hasVar: (id: string) => id === "fetch_1",
       getVarName: (id: string) => id === "fetch_1" ? "fetchData" : id,
@@ -344,18 +344,18 @@ describe("Symbol Table Block Scoping", () => {
       blockScopedNodeIds: new Set(["fetch_1"]),
     };
 
-    // 即使 Symbol Table 有 fetch_1 → fetchData，也應 fallback 到 flowState
+    // Even if Symbol Table has fetch_1 → fetchData, it should fallback to flowState
     const result = parseExpression("{{fetch_1.data}}", ctx);
     expect(result).toBe("flowState['fetch_1'].data");
   });
 });
 
 // ============================================================
-// 3. DAG 並發排程
+// 3. DAG Concurrent Scheduling
 // ============================================================
 
 describe("DAG Concurrent Scheduling", () => {
-  it("有並發機會的流程應使用 DAG 模式", () => {
+  it("flows with concurrency opportunities should use DAG mode", () => {
     const ir = createDAGFlow();
     const result = compile(ir);
 
@@ -363,7 +363,7 @@ describe("DAG Concurrent Scheduling", () => {
     expect(result.code).toContain("DAG Concurrent Execution");
   });
 
-  it("每個 worker 節點應包裝為獨立的 promise", () => {
+  it("each worker node should be wrapped as an independent promise", () => {
     const ir = createDAGFlow();
     const result = compile(ir);
 
@@ -373,15 +373,15 @@ describe("DAG Concurrent Scheduling", () => {
     expect(result.code).toContain("const p_transform_1");
   });
 
-  it("transform 只 await fetch_fast（不等待 fetch_slow）", () => {
+  it("transform should only await fetch_fast (not wait for fetch_slow)", () => {
     const ir = createDAGFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // transform 的 promise IIFE 內應 await p_fetch_fast
-    // 但不應 await p_fetch_slow
-    // 只擷取 transform IIFE 區塊（到 )(); 為止），不含後面的 output 段
+    // transform's promise IIFE should await p_fetch_fast
+    // but should not await p_fetch_slow
+    // Only extract the transform IIFE block (up to )();), excluding the output section after it
     const transformStart = result.code!.indexOf("const p_transform_1");
     const transformEnd = result.code!.indexOf(")();", transformStart) + 4;
     const transformBlock = result.code!.substring(transformStart, transformEnd);
@@ -389,30 +389,30 @@ describe("DAG Concurrent Scheduling", () => {
     expect(transformBlock).not.toContain("await p_fetch_slow");
   });
 
-  it("output 節點應 await 所有直接上游 promise", () => {
+  it("output node should await all direct upstream promises", () => {
     const ir = createDAGFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
 
-    // response 節點依賴 fetch_slow 和 transform_1
-    // 應在 output 區段同時 await 兩者
+    // response node depends on fetch_slow and transform_1
+    // Should await both in the output section
     const outputSection = result.code!.split("// --- Return")[1];
     expect(outputSection).toBeDefined();
   });
 
-  it("DAG 模式不應使用舊版 Promise.all", () => {
+  it("DAG mode should not use legacy Promise.all", () => {
     const ir = createDAGFlow();
     const result = compile(ir);
 
     expect(result.success).toBe(true);
-    // 不應出現舊式 Promise.all（但允許 Promise.allSettled 作為 sync barrier）
+    // Should not use legacy Promise.all (but Promise.allSettled is allowed as sync barrier)
     expect(result.code).not.toMatch(/Promise\.all\s*\(/);
     expect(result.code).toContain("Promise.allSettled");
   });
 
-  it("純循序流程不應啟用 DAG 模式", () => {
-    // 簡單流程：trigger → fetch → response（無並發）
+  it("purely sequential flow should not enable DAG mode", () => {
+    // Simple flow: trigger → fetch → response (no concurrency)
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "Sequential", createdAt: "", updatedAt: "" },
@@ -453,19 +453,19 @@ describe("DAG Concurrent Scheduling", () => {
 
     const result = compile(ir);
     expect(result.success).toBe(true);
-    // 循序流程不應有 DAG marker
+    // Sequential flow should not have DAG marker
     expect(result.code).not.toContain("DAG Concurrent Execution");
-    // 循序流程應保留 Symbol Table 別名
+    // Sequential flow should preserve Symbol Table aliases
     expect(result.code).toContain("const fetchData = flowState['fetch_1']");
   });
 });
 
 // ============================================================
-// 4. 靜態引入 callSubflow
+// 4. Static Import callSubflow
 // ============================================================
 
 describe("Static Subflow Import", () => {
-  it("不應使用 runtime await import()", () => {
+  it("should not use runtime await import()", () => {
     const ir: FlowIR = {
       version: "1.0.0",
       meta: { name: "Subflow Static", createdAt: "", updatedAt: "" },
@@ -511,9 +511,9 @@ describe("Static Subflow Import", () => {
     const result = compile(ir);
     expect(result.success).toBe(true);
 
-    // 不應有 runtime import
+    // Should not have runtime import
     expect(result.code).not.toContain("await import(");
-    // 函式名稱應直接呼叫（由頂層 import 提供）
+    // Function name should be called directly (provided by top-level import)
     expect(result.code).toContain("sendEmail");
     expect(result.code).toContain("flowState['subflow_1']");
   });

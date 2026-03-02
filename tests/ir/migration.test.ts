@@ -1,7 +1,7 @@
 /**
- * IR Migration Engine 測試
+ * IR Migration Engine Tests
  *
- * 驗證版本遷移邏輯、鏈式遷移、錯誤處理。
+ * Verifies version migration logic, chain migration, and error handling.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -23,39 +23,39 @@ describe("IR Migration Engine", () => {
   });
 
   describe("compareVersions", () => {
-    it("相同版本應回傳 0", () => {
+    it("same version should return 0", () => {
       expect(compareVersions("1.0.0", "1.0.0")).toBe(0);
     });
 
-    it("較新版本應回傳正數", () => {
+    it("newer version should return a positive number", () => {
       expect(compareVersions("1.1.0", "1.0.0")).toBeGreaterThan(0);
     });
 
-    it("較舊版本應回傳負數", () => {
+    it("older version should return a negative number", () => {
       expect(compareVersions("1.0.0", "2.0.0")).toBeLessThan(0);
     });
 
-    it("應正確比較 patch 版本", () => {
+    it("should correctly compare patch versions", () => {
       expect(compareVersions("1.0.1", "1.0.0")).toBeGreaterThan(0);
     });
   });
 
   describe("needsMigration", () => {
-    it("目前版本不需要遷移", () => {
+    it("current version does not need migration", () => {
       expect(needsMigration(CURRENT_IR_VERSION)).toBe(false);
     });
 
-    it("舊版本需要遷移", () => {
+    it("old version needs migration", () => {
       expect(needsMigration("0.9.0")).toBe(true);
     });
   });
 
   describe("registerMigration + migrateIR", () => {
-    it("應成功執行單步遷移", () => {
+    it("should successfully execute single-step migration", () => {
       registerMigration({
         fromVersion: "0.9.0",
         toVersion: "1.0.0",
-        description: "升級到 v1.0.0",
+        description: "Upgrade to v1.0.0",
         migrate(ir) {
           return { ...ir, version: "1.0.0" };
         },
@@ -74,7 +74,7 @@ describe("IR Migration Engine", () => {
       expect(result.applied).toHaveLength(1);
     });
 
-    it("應成功執行鏈式遷移", () => {
+    it("should successfully execute chain migration", () => {
       registerMigration({
         fromVersion: "0.8.0",
         toVersion: "0.9.0",
@@ -105,7 +105,7 @@ describe("IR Migration Engine", () => {
       expect(result.applied).toHaveLength(2);
     });
 
-    it("已是目標版本時不應遷移", () => {
+    it("should not migrate when already at target version", () => {
       const raw: RawFlowIR = {
         version: "1.0.0",
         meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -118,7 +118,7 @@ describe("IR Migration Engine", () => {
       expect(result.applied).toHaveLength(0);
     });
 
-    it("找不到遷移路徑時應拋出 MigrationError", () => {
+    it("should throw MigrationError when no migration path found", () => {
       const raw: RawFlowIR = {
         version: "0.5.0",
         meta: { name: "test", createdAt: "", updatedAt: "" },
@@ -129,11 +129,11 @@ describe("IR Migration Engine", () => {
       expect(() => migrateIR(raw, "1.0.0")).toThrow(MigrationError);
     });
 
-    it("遷移應能修改 IR 結構", () => {
+    it("migration should be able to modify IR structure", () => {
       registerMigration({
         fromVersion: "0.9.0",
         toVersion: "1.0.0",
-        description: "加入 meta.updatedAt",
+        description: "Add meta.updatedAt",
         migrate(ir) {
           return {
             ...ir,
@@ -157,7 +157,7 @@ describe("IR Migration Engine", () => {
       expect(result.ir.meta.updatedAt).toBeTruthy();
     });
 
-    it("不允許重複註冊", () => {
+    it("should not allow duplicate registration", () => {
       registerMigration({
         fromVersion: "0.9.0",
         toVersion: "1.0.0",
@@ -172,12 +172,12 @@ describe("IR Migration Engine", () => {
           description: "duplicate",
           migrate: (ir) => ({ ...ir, version: "1.0.0" }),
         })
-      ).toThrow("重複");
+      ).toThrow("Duplicate");
     });
   });
 
   describe("getMigrationPath", () => {
-    it("應回傳正確的遷移路徑", () => {
+    it("should return the correct migration path", () => {
       registerMigration({
         fromVersion: "0.8.0",
         toVersion: "0.9.0",
@@ -197,7 +197,7 @@ describe("IR Migration Engine", () => {
       expect(path[1].toVersion).toBe("1.0.0");
     });
 
-    it("無路徑時應回傳空陣列", () => {
+    it("should return an empty array when no path exists", () => {
       const path = getMigrationPath("0.5.0", "1.0.0");
       expect(path).toHaveLength(0);
     });

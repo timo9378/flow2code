@@ -1,13 +1,13 @@
 /**
  * Environment Variable Schema Validator
  *
- * 在編譯時期驗證所有 IR 中引用的環境變數是否已宣告。
- * 防止部署後才發現 process.env.XXXXX 是 undefined。
+ * Validates at compile time that all environment variables referenced in the IR are declared.
+ * Prevents discovering that process.env.XXXXX is undefined only after deployment.
  *
- * 掃描策略：
- *   1. 掃描所有節點的字串參數，尋找 ${VAR_NAME} 模式
- *   2. 對比已宣告的環境變數（來自 .env / .env.example / 明確列表）
- *   3. 回傳缺失 / 未使用的環境變數警告
+ * Scanning strategy:
+ *   1. Scan all string parameters of every node for ${VAR_NAME} patterns
+ *   2. Compare against declared environment variables (from .env / .env.example / explicit list)
+ *   3. Return warnings for missing / unused environment variables
  */
 
 import type { FlowIR, FlowNode } from "../ir/types";
@@ -18,24 +18,24 @@ import { ActionType } from "../ir/types";
 // ============================================================
 
 export interface EnvValidationResult {
-  /** 驗證是否通過（無缺失變數） */
+  /** Whether validation passed (no missing variables) */
   valid: boolean;
-  /** 在 IR 中被引用的所有環境變數 */
+  /** All environment variables referenced in the IR */
   usedVars: string[];
-  /** 已宣告但未被使用的環境變數 */
+  /** Declared but unused environment variables */
   unusedVars: string[];
-  /** 被引用但未宣告的環境變數 */
+  /** Referenced but undeclared environment variables */
   missingVars: string[];
-  /** 詳細的使用報告：變數名 → 引用位置 */
+  /** Detailed usage report: variable name → reference locations */
   usageMap: Map<string, EnvVarUsage[]>;
 }
 
 export interface EnvVarUsage {
-  /** 引用此環境變數的節點 ID */
+  /** Node ID that references this environment variable */
   nodeId: string;
-  /** 節點 label */
+  /** Node label */
   nodeLabel: string;
-  /** 引用此環境變數的參數名稱 */
+  /** Parameter name that references this environment variable */
   paramKey: string;
 }
 
@@ -43,14 +43,14 @@ export interface EnvVarUsage {
 // Env Var Collection
 // ============================================================
 
-/** 匹配 ${VAR_NAME} 的 Regex（不含 process.env. 前綴） */
+/** Regex matching ${VAR_NAME} (without process.env. prefix) */
 const ENV_VAR_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 /**
- * 從 FlowIR 中掃描所有被引用的環境變數
+ * Scan all referenced environment variables from a FlowIR.
  *
  * @param ir - Flow IR
- * @returns 環境變數名稱 → 使用位置 的映射
+ * @returns Mapping of environment variable names → usage locations
  */
 export function collectEnvVars(ir: FlowIR): Map<string, EnvVarUsage[]> {
   const usageMap = new Map<string, EnvVarUsage[]>();
@@ -63,7 +63,7 @@ export function collectEnvVars(ir: FlowIR): Map<string, EnvVarUsage[]> {
 }
 
 /**
- * 掃描單個節點的所有參數
+ * Scan all parameters of a single node.
  */
 function scanNodeParams(
   node: FlowNode,
@@ -74,7 +74,7 @@ function scanNodeParams(
     if (typeof value === "string") {
       scanString(value, node, key, usageMap);
     } else if (typeof value === "object" && value !== null) {
-      // 遞迴掃描巢狀物件（e.g. headers）
+      // Recursively scan nested objects (e.g. headers)
       scanObject(value as Record<string, unknown>, node, key, usageMap);
     }
   }
@@ -87,7 +87,7 @@ function scanString(
   usageMap: Map<string, EnvVarUsage[]>
 ): void {
   let match: RegExpExecArray | null;
-  // 必須 reset lastIndex（因為 global flag）
+  // Must reset lastIndex (due to global flag)
   ENV_VAR_PATTERN.lastIndex = 0;
   while ((match = ENV_VAR_PATTERN.exec(str)) !== null) {
     const varName = match[1];
@@ -123,11 +123,11 @@ function scanObject(
 // ============================================================
 
 /**
- * 驗證 IR 中的環境變數引用
+ * Validate environment variable references in the IR.
  *
  * @param ir - Flow IR
- * @param declaredVars - 已宣告的環境變數名稱列表
- * @returns 驗證結果
+ * @param declaredVars - List of declared environment variable names
+ * @returns Validation result
  */
 export function validateEnvVars(
   ir: FlowIR,
@@ -156,8 +156,8 @@ export function validateEnvVars(
 // ============================================================
 
 /**
- * 從 .env 格式的字串中解析環境變數名稱
- * 支援格式：
+ * Parse environment variable names from a .env-formatted string.
+ * Supported formats:
  *   VAR_NAME=value
  *   VAR_NAME="value"
  *   # comment
@@ -169,15 +169,15 @@ export function parseEnvFile(content: string): string[] {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
 
-    // 跳過空行和註解
+    // Skip empty lines and comments
     if (!trimmed || trimmed.startsWith("#")) continue;
 
-    // 移除 export 前綴
+    // Remove export prefix
     const withoutExport = trimmed.startsWith("export ")
       ? trimmed.slice(7).trim()
       : trimmed;
 
-    // 提取變數名稱（= 之前的部分）
+    // Extract variable name (part before =)
     const eqIndex = withoutExport.indexOf("=");
     if (eqIndex > 0) {
       const varName = withoutExport.slice(0, eqIndex).trim();
@@ -191,23 +191,23 @@ export function parseEnvFile(content: string): string[] {
 }
 
 /**
- * 格式化驗證結果為人類可讀的報告
+ * Format the validation result into a human-readable report.
  */
 export function formatEnvValidationReport(result: EnvValidationResult): string {
   const lines: string[] = [];
 
   if (result.valid) {
-    lines.push(`✅ 環境變數驗證通過 (${result.usedVars.length} 個變數)`);
+    lines.push(`✅ Environment variable validation passed (${result.usedVars.length} variables)`);
   } else {
-    lines.push(`❌ 環境變數驗證失敗`);
+    lines.push(`❌ Environment variable validation failed`);
     lines.push("");
-    lines.push("缺失的環境變數：");
+    lines.push("Missing environment variables:");
     for (const varName of result.missingVars) {
       const usages = result.usageMap.get(varName) ?? [];
       lines.push(`  ⚠️  ${varName}`);
       for (const usage of usages) {
         lines.push(
-          `      → 被 "${usage.nodeLabel}" (${usage.nodeId}) 的 ${usage.paramKey} 引用`
+          `      → Referenced by "${usage.nodeLabel}" (${usage.nodeId}) in ${usage.paramKey}`
         );
       }
     }
@@ -215,7 +215,7 @@ export function formatEnvValidationReport(result: EnvValidationResult): string {
 
   if (result.unusedVars.length > 0) {
     lines.push("");
-    lines.push("💡 已宣告但未使用的環境變數：");
+    lines.push("💡 Declared but unused environment variables:");
     for (const varName of result.unusedVars) {
       lines.push(`   ${varName}`);
     }

@@ -1,7 +1,7 @@
 /**
- * AI Prompt 系統提示詞測試
+ * AI Prompt System Prompt Tests
  * 
- * 驗證 prompt 模組的正確性
+ * Verify the correctness of the prompt module
  */
 
 import { describe, it, expect } from "vitest";
@@ -33,8 +33,8 @@ describe("AI Prompt", () => {
     expect(FLOW_IR_SYSTEM_PROMPT).toContain("No cycles");
   });
 
-  it("should have example prompts in Chinese", () => {
+  it("should have example prompts", () => {
     expect(EXAMPLE_PROMPTS.length).toBeGreaterThan(0);
-    expect(EXAMPLE_PROMPTS[0]).toContain("建立");
+    expect(EXAMPLE_PROMPTS[0]).toContain("Create");
   });
 });

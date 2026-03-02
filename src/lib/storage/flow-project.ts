@@ -1,25 +1,25 @@
 /**
- * Flow2Code FlowProject — 統一的 Flow 載入 / 儲存介面
+ * Flow2Code FlowProject — Unified Flow load / save interface
  *
- * 解決「Git 版控偽解法」問題：
- * 開發者不需手動執行 split / merge，
- * 所有 load / save 操作自動判斷格式、預設以 split YAML 目錄格式存儲。
+ * Solves the "Git version control workaround" problem:
+ * Developers don't need to manually run split / merge;
+ * all load / save operations auto-detect format and default to split YAML directory storage.
  *
- * 支援兩種格式：
- * 1. **Split YAML（預設）** — `my-flow/` 目錄（`meta.yaml` + `edges.yaml` + `nodes/*.yaml`）
- * 2. **Single JSON（向下相容）** — `my-flow.flow.json`
+ * Supports two formats:
+ * 1. **Split YAML (default)** — `my-flow/` directory (`meta.yaml` + `edges.yaml` + `nodes/*.yaml`)
+ * 2. **Single JSON (backward compatible)** — `my-flow.flow.json`
  *
  * @example
  * ```ts
  * import { loadFlowProject, saveFlowProject } from "flow2code/compiler";
  *
- * // 載入（自動偵測格式）
+ * // Load (auto-detect format)
  * const ir = loadFlowProject("./flows/my-flow");
  *
- * // 儲存（預設寫成 split YAML 目錄）
+ * // Save (defaults to split YAML directory)
  * saveFlowProject(ir, "./flows/my-flow");
  *
- * // 強制存成 .flow.json
+ * // Force save as .flow.json
  * saveFlowProject(ir, "./flows/my-flow.flow.json", { format: "json" });
  * ```
  */
@@ -34,64 +34,64 @@ import type { FlowIR } from "../ir/types";
 export type FlowProjectFormat = "split" | "json";
 
 export interface SaveOptions {
-  /** 存儲格式，預設 "split"（YAML 目錄） */
+  /** Storage format, default "split" (YAML directory) */
   format?: FlowProjectFormat;
-  /** 是否清除目錄中多餘的舊節點檔（預設 true） */
+  /** Whether to clean orphaned node files in directory (default true) */
   cleanOrphanNodes?: boolean;
 }
 
 export interface FlowProjectInfo {
-  /** 實際載入路徑 */
+  /** Actual loaded path */
   path: string;
-  /** 偵測到的格式 */
+  /** Detected format */
   format: FlowProjectFormat;
-  /** 載入的 IR */
+  /** Loaded IR */
   ir: FlowIR;
 }
 
 // ── Format Detection ──
 
 /**
- * 偵測路徑的流程格式
+ * Detect flow project format from path
  *
- * 偵測順序：
- * 1. 路徑以 `.flow.json` 結尾 → json
- * 2. 路徑是目錄且含 `meta.yaml` → split
- * 3. 路徑 + `.flow.json` 檔案存在 → json
- * 4. 路徑是目錄（推測為 split） → split
+ * Detection order:
+ * 1. Path ends with `.flow.json` → json
+ * 2. Path is a directory containing `meta.yaml` → split
+ * 3. Path + `.flow.json` file exists → json
+ * 4. Path is a directory (assumed split) → split
  */
 export function detectFormat(inputPath: string): { resolvedPath: string; format: FlowProjectFormat } {
-  // Case 1: 明確的 .flow.json 檔案
+  // Case 1: Explicit .flow.json file
   if (inputPath.endsWith(".flow.json") && existsSync(inputPath)) {
     return { resolvedPath: inputPath, format: "json" };
   }
 
-  // Case 2: 目錄中含 meta.yaml → split
+  // Case 2: Directory containing meta.yaml → split
   if (existsSync(inputPath) && statSync(inputPath).isDirectory()) {
     if (existsSync(join(inputPath, "meta.yaml"))) {
       return { resolvedPath: inputPath, format: "split" };
     }
   }
 
-  // Case 3: 加上 .flow.json 後綴存在
+  // Case 3: Appending .flow.json suffix finds a file
   const jsonPath = inputPath.endsWith(".json") ? inputPath : `${inputPath}.flow.json`;
   if (existsSync(jsonPath)) {
     return { resolvedPath: jsonPath, format: "json" };
   }
 
-  // Case 4: 目錄存在（可能還沒建立 meta.yaml，視為 split）
+  // Case 4: Directory exists (may not have meta.yaml yet, treated as split)
   if (existsSync(inputPath) && statSync(inputPath).isDirectory()) {
     return { resolvedPath: inputPath, format: "split" };
   }
 
-  // Default: 尚未存在的路徑 → 預設 split
+  // Default: Path does not exist yet → default to split
   return { resolvedPath: inputPath, format: "split" };
 }
 
 // ── Load ──
 
 /**
- * 載入 Flow 專案（自動偵測格式）
+ * Load Flow project (auto-detect format)
  */
 export function loadFlowProject(inputPath: string): FlowProjectInfo {
   const { resolvedPath, format } = detectFormat(inputPath);
@@ -111,7 +111,7 @@ export function loadFlowProject(inputPath: string): FlowProjectInfo {
   }
   const metaPath = join(resolvedPath, "meta.yaml");
   if (!existsSync(metaPath)) {
-    throw new Error(`meta.yaml not found in ${resolvedPath} — 不是有效的 Flow 目錄`);
+    throw new Error(`meta.yaml not found in ${resolvedPath} — not a valid Flow directory`);
   }
 
   const meta = readFileSync(metaPath, "utf-8");
@@ -134,9 +134,9 @@ export function loadFlowProject(inputPath: string): FlowProjectInfo {
 // ── Save ──
 
 /**
- * 儲存 Flow 專案
+ * Save Flow project
  *
- * @param format - 預設 "split"。Pass "json" to save as single .flow.json.
+ * @param format - Default "split". Pass "json" to save as single .flow.json.
  */
 export function saveFlowProject(
   ir: FlowIR,
@@ -186,7 +186,7 @@ export function saveFlowProject(
     newNodeFiles.add(filename);
   }
 
-  // 清理多餘的舊節點檔案（節點被刪除後殘留的 YAML）
+  // Clean up orphaned node files (YAML files left after nodes are deleted)
   if (cleanOrphanNodes && existsSync(nodesDir)) {
     const existing = readdirSync(nodesDir).filter((f) => f.endsWith(".yaml"));
     for (const file of existing) {
@@ -202,8 +202,8 @@ export function saveFlowProject(
 // ── Utilities ──
 
 /**
- * 將 .flow.json 遷移為 split YAML 目錄
- * 回傳寫入的檔案列表。原始 .flow.json 不會被刪除。
+ * Migrate .flow.json to split YAML directory
+ * Returns list of written files. The original .flow.json is not deleted.
  */
 export function migrateToSplit(jsonPath: string): string[] {
   if (!existsSync(jsonPath)) {

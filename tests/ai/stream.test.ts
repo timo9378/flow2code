@@ -10,7 +10,7 @@ import {
 } from "../../src/lib/ai/stream";
 
 describe("estimateTokenCount", () => {
-  it("英文文字估算 ~0.25 token/char", () => {
+  it("English text estimates ~0.25 token/char", () => {
     const text = "Hello world this is a test sentence for token estimation";
     const tokens = estimateTokenCount(text);
     // ~56 chars → ~14 tokens
@@ -18,42 +18,42 @@ describe("estimateTokenCount", () => {
     expect(tokens).toBeLessThan(30);
   });
 
-  it("中文文字估算 ~0.67 token/char", () => {
+  it("Chinese text estimates ~0.67 token/char", () => {
     const text = "這是一段中文測試文字用來估算代幣數量";
     const tokens = estimateTokenCount(text);
-    // 18 中文字 → ~12 tokens
+    // 18 Chinese chars → ~12 tokens
     expect(tokens).toBeGreaterThan(8);
     expect(tokens).toBeLessThan(25);
   });
 
-  it("混合中英文", () => {
+  it("mixed Chinese and English text", () => {
     const text = "Hello 世界 this is 測試";
     const tokens = estimateTokenCount(text);
     expect(tokens).toBeGreaterThan(3);
     expect(tokens).toBeLessThan(20);
   });
 
-  it("空字串返回 0", () => {
+  it("empty string returns 0", () => {
     expect(estimateTokenCount("")).toBe(0);
   });
 });
 
 describe("checkTokenBudget", () => {
-  it("短 prompt 不超過預算", () => {
+  it("short prompt stays within budget", () => {
     const result = checkTokenBudget("You are an assistant.", "Generate a simple flow");
     expect(result.withinBudget).toBe(true);
     expect(result.estimated).toBeGreaterThan(0);
     expect(result.limit).toBe(8000);
   });
 
-  it("超長 prompt 超出預算", () => {
+  it("very long prompt exceeds budget", () => {
     const longText = "x".repeat(100000); // ~25000 tokens
     const result = checkTokenBudget(longText, "generate");
     expect(result.withinBudget).toBe(false);
     expect(result.estimated).toBeGreaterThan(8000);
   });
 
-  it("自訂 maxTokens", () => {
+  it("custom maxTokens", () => {
     const text = "a".repeat(100); // ~25 tokens
     const result = checkTokenBudget("system", text, 20);
     expect(result.withinBudget).toBe(false);
@@ -61,14 +61,14 @@ describe("checkTokenBudget", () => {
 });
 
 describe("withRetry", () => {
-  it("成功時直接返回", async () => {
+  it("returns directly on success", async () => {
     const fn = vi.fn().mockResolvedValue("ok");
     const result = await withRetry(fn, { maxRetries: 3 });
     expect(result).toBe("ok");
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it("失敗後重試並成功", async () => {
+  it("retries after failure and succeeds", async () => {
     const fn = vi
       .fn()
       .mockRejectedValueOnce(new Error("fail"))
@@ -82,7 +82,7 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it("超出重試次數則拋出", async () => {
+  it("throws when retry count is exceeded", async () => {
     const fn = vi.fn().mockRejectedValue(new Error("always fail"));
 
     await expect(
@@ -91,7 +91,7 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
   });
 
-  it("AbortError 不重試", async () => {
+  it("AbortError does not retry", async () => {
     const abortErr = new DOMException("Aborted", "AbortError");
     const fn = vi.fn().mockRejectedValue(abortErr);
 
@@ -101,9 +101,9 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(1); // no retry
   });
 
-  it("4xx 類錯誤不重試", async () => {
+  it("4xx errors do not retry", async () => {
     // withRetry checks message.includes("(4") for 4xx detection
-    const err = new Error("AI API 錯誤 (400): Bad Request");
+    const err = new Error("AI API Error (400): Bad Request");
     const fn = vi.fn().mockRejectedValue(err);
 
     await expect(
@@ -112,7 +112,7 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it("onRetry callback 被呼叫", async () => {
+  it("onRetry callback is called", async () => {
     const onRetry = vi.fn();
     const fn = vi
       .fn()

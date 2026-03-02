@@ -1,7 +1,7 @@
 /**
- * Dependency Sync 和 Source Map 測試
+ * Dependency Sync and Source Map Tests
  * 
- * 驗證編譯器能正確追蹤依賴套件和生成 Source Map
+ * Verifies that the compiler correctly tracks dependency packages and generates Source Maps.
  */
 
 import { describe, it, expect } from "vitest";
@@ -276,7 +276,7 @@ describe("Source Map", () => {
     const result = compile(ir);
     const sourceMap = result.sourceMap!;
 
-    // 取得 fetch_1 的映射範圍
+    // Get the mapping range for fetch_1
     const fetchMapping = sourceMap.mappings["fetch_1"];
     if (fetchMapping) {
       const trace = traceLineToNode(sourceMap, fetchMapping.startLine);
@@ -290,7 +290,7 @@ describe("Source Map", () => {
     const result = compile(ir);
     const sourceMap = result.sourceMap!;
 
-    // 第 0 行不存在
+    // Line 0 does not exist
     const trace = traceLineToNode(sourceMap, 0);
     expect(trace).toBeNull();
   });

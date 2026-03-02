@@ -1,7 +1,7 @@
 /**
- * useFileOps — 檔案操作相關的業務邏輯 hook
+ * useFileOps — File operations business logic hook
  *
- * 從 Toolbar.tsx 提取，專注於 JSON/OpenAPI/TypeScript 檔案匯入匯出。
+ * Extracted from Toolbar.tsx, focused on JSON/OpenAPI/TypeScript file import/export.
  */
 
 import { useState, useCallback } from "react";
@@ -47,7 +47,7 @@ export function useFileOps(
           const validation = validateFlowIR(ir);
           if (!validation.valid) {
             const msg =
-              "❌ 載入的 IR 驗證失敗：\n" +
+              "❌ Loaded IR validation failed:\n" +
               validation.errors
                 .map((err) => `  [${err.code}] ${err.message}`)
                 .join("\n");
@@ -56,11 +56,11 @@ export function useFileOps(
             return;
           }
           loadIR(ir);
-          const msg = `✅ 已載入流程圖：「${ir.meta?.name ?? "Untitled"}」`;
+          const msg = `✅ Flow diagram loaded: "${ir.meta?.name ?? "Untitled"}"`;
           onOutput(msg);
           resolve(msg);
         } catch {
-          const msg = "❌ JSON 解析失敗，請確認檔案格式正確";
+          const msg = "❌ JSON parse failed. Please verify the file format.";
           onOutput(msg);
           resolve(msg);
         }
@@ -90,11 +90,11 @@ export function useFileOps(
           setShowOpenAPIDialog(true);
         } else {
           onOutput(
-            `❌ OpenAPI 匯入失敗: ${data.errors?.join(", ") ?? "沒有找到任何端點"}`
+            `❌ OpenAPI import failed: ${data.errors?.join(", ") ?? "No endpoints found"}`
           );
         }
       } catch {
-        onOutput("❌ JSON 解析失敗，請確認檔案為 OpenAPI 3.x JSON 格式");
+        onOutput("❌ JSON parse failed. Please verify the file is in OpenAPI 3.x JSON format.");
       }
     };
     input.click();
@@ -104,7 +104,7 @@ export function useFileOps(
     (flow: FlowIR): string => {
       loadIR(flow);
       setShowOpenAPIDialog(false);
-      const msg = `✅ 已載入端點：「${flow.meta?.name ?? "Untitled"}」\n共 ${flow.nodes?.length ?? 0} 個節點`;
+      const msg = `✅ Endpoint loaded: "${flow.meta?.name ?? "Untitled"}"\nTotal ${flow.nodes?.length ?? 0} nodes`;
       onOutput(msg);
       return msg;
     },
@@ -125,25 +125,25 @@ export function useFileOps(
         if (result.success && result.ir) {
           loadIR(result.ir);
           const confidencePercent = Math.round(result.confidence * 100);
-          let msg = `✅ TypeScript → IR 反向解析成功\n`;
-          msg += `📊 信心分數: ${confidencePercent}%\n`;
+          let msg = `✅ TypeScript → IR decompilation successful\n`;
+          msg += `📊 Confidence score: ${confidencePercent}%\n`;
           msg += `📁 ${file.name}\n`;
-          msg += `\n共 ${result.ir.nodes.length} 個節點、${result.ir.edges.length} 條連線`;
+          msg += `\nTotal ${result.ir.nodes.length} nodes, ${result.ir.edges.length} edges`;
           if (result.errors?.length) {
-            msg += `\n\n⚠️ 部分警告:\n${result.errors.join("\n")}`;
+            msg += `\n\n⚠️ Warnings:\n${result.errors.join("\n")}`;
           }
           if (confidencePercent < 50) {
-            msg += `\n\n💡 信心分數較低，建議手動檢查節點配置`;
+            msg += `\n\n💡 Low confidence score — manual review of node configuration recommended`;
           }
           onOutput(msg);
         } else {
           onOutput(
-            `❌ 反向解析失敗:\n${result.errors?.join("\n") ?? "未知錯誤"}`
+            `❌ Decompilation failed:\n${result.errors?.join("\n") ?? "Unknown error"}`
           );
         }
       } catch (err) {
         onOutput(
-          `❌ 解析錯誤: ${err instanceof Error ? err.message : String(err)}`
+          `❌ Parse error: ${err instanceof Error ? err.message : String(err)}`
         );
       }
     };

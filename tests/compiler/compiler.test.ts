@@ -1,7 +1,7 @@
 /**
- * AST 編譯器核心測試
+ * AST Compiler Core Tests
  * 
- * 使用 TDD 模式：先定義預期輸出，確保編譯器的正確性。
+ * Uses TDD approach: define expected output first to ensure compiler correctness.
  */
 
 import { describe, it, expect } from "vitest";
@@ -15,8 +15,8 @@ import {
 } from "../fixtures";
 
 describe("AST Compiler", () => {
-  describe("基礎編譯", () => {
-    it("應成功編譯簡單的 GET 流程", () => {
+  describe("Basic Compilation", () => {
+    it("should successfully compile a simple GET flow", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
@@ -25,36 +25,36 @@ describe("AST Compiler", () => {
       expect(result.filePath).toBe("src/app/api/hello/route.ts");
     });
 
-    it("生成的代碼應包含 NextResponse import", () => {
+    it("generated code should contain NextResponse import", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
-      // GET 請求會同時 import NextRequest（用於 searchParams）
+      // GET requests will also import NextRequest (for searchParams)
       expect(result.code).toContain('import { NextRequest, NextResponse } from "next/server"');
     });
 
-    it("生成的代碼應包含 export async function GET", () => {
+    it("generated code should contain export async function GET", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
       expect(result.code).toContain("export async function GET");
-      // GET 使用 NextRequest 才能存取 req.nextUrl.searchParams
+      // GET uses NextRequest to access req.nextUrl.searchParams
       expect(result.code).toContain("req: NextRequest");
     });
 
-    it("生成的代碼應包含具型別的 flowState 初始化", () => {
+    it("generated code should contain typed flowState initialization", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
-      // v2: 使用 FlowState interface 取代 Record<string, any>
+      // v2: uses FlowState interface instead of Record<string, any>
       expect(result.code).toContain("interface FlowState");
       expect(result.code).toContain("const flowState: Partial<FlowState> = {}");
-      // 應包含節點 ID 的型別定義（optional fields）
+      // Should contain type definitions for node IDs (optional fields)
       expect(result.code).toContain("'trigger_1'?:");
       expect(result.code).toContain("'response_1'?:");
     });
 
-    it("生成的代碼應包含 NextResponse.json 回傳", () => {
+    it("generated code should contain NextResponse.json return", () => {
       const ir = createSimpleGetFlow();
       const result = compile(ir);
 
@@ -64,7 +64,7 @@ describe("AST Compiler", () => {
   });
 
   describe("POST + Fetch API", () => {
-    it("應成功編譯 POST 帶 Fetch 的流程", () => {
+    it("should successfully compile POST with Fetch flow", () => {
       const ir = createPostWithFetchFlow();
       const result = compile(ir);
 
@@ -72,14 +72,14 @@ describe("AST Compiler", () => {
       expect(result.code).toContain("export async function POST");
     });
 
-    it("生成的代碼應解析 request body", () => {
+    it("generated code should parse request body", () => {
       const ir = createPostWithFetchFlow();
       const result = compile(ir);
 
       expect(result.code).toContain("await req.json()");
     });
 
-    it("生成的代碼應包含 fetch 呼叫", () => {
+    it("generated code should contain fetch call", () => {
       const ir = createPostWithFetchFlow();
       const result = compile(ir);
 
@@ -87,7 +87,7 @@ describe("AST Compiler", () => {
       expect(result.code).toContain("jsonplaceholder");
     });
 
-    it("生成的代碼應將 fetch 結果存入 flowState", () => {
+    it("generated code should store fetch result in flowState", () => {
       const ir = createPostWithFetchFlow();
       const result = compile(ir);
 
@@ -95,15 +95,15 @@ describe("AST Compiler", () => {
     });
   });
 
-  describe("If/Else 分支", () => {
-    it("應成功編譯 If/Else 流程", () => {
+  describe("If/Else Branching", () => {
+    it("should successfully compile If/Else flow", () => {
       const ir = createIfElseFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
     });
 
-    it("生成的代碼應包含 if 條件", () => {
+    it("generated code should contain if condition", () => {
       const ir = createIfElseFlow();
       const result = compile(ir);
 
@@ -111,14 +111,14 @@ describe("AST Compiler", () => {
       expect(result.code).toContain("flowState['trigger_1']");
     });
 
-    it("生成的代碼應包含 else 分支", () => {
+    it("generated code should contain else branch", () => {
       const ir = createIfElseFlow();
       const result = compile(ir);
 
       expect(result.code).toContain("else");
     });
 
-    it("應在 true 分支返回 200，false 分支返回 400", () => {
+    it("should return 200 in true branch and 400 in false branch", () => {
       const ir = createIfElseFlow();
       const result = compile(ir);
 
@@ -127,35 +127,35 @@ describe("AST Compiler", () => {
     });
   });
 
-  describe("並發執行 (DAG Scheduling)", () => {
-    it("應成功編譯並發流程", () => {
+  describe("Concurrent Execution (DAG Scheduling)", () => {
+    it("should successfully compile concurrent flow", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
 
       expect(result.success).toBe(true);
     });
 
-    it("生成的代碼應使用 per-node promise (DAG 模式)", () => {
+    it("generated code should use per-node promise (DAG mode)", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
 
-      // DAG 模式：每個節點是獨立的 promise IIFE
+      // DAG mode: each node is an independent promise IIFE
       expect(result.code).toContain("const p_");
       expect(result.code).toContain("(async () =>");
     });
 
-    it("生成的代碼應有兩個並發 promise", () => {
+    it("generated code should have two concurrent promises", () => {
       const ir = createConcurrentFlow();
       const result = compile(ir);
 
-      // 應有兩個 promise 變數
+      // Should have two promise variables
       expect(result.code).toContain("const p_fetch_1");
       expect(result.code).toContain("const p_fetch_2");
     });
   });
 
-  describe("環境變數處理", () => {
-    it("應將 ${VAR} 轉為 process.env.VAR", () => {
+  describe("Environment Variable Handling", () => {
+    it("should convert ${VAR} to process.env.VAR", () => {
       const ir = createEnvVarFlow();
       const result = compile(ir);
 
@@ -165,8 +165,8 @@ describe("AST Compiler", () => {
     });
   });
 
-  describe("錯誤處理", () => {
-    it("應拒絕沒有觸發器的 IR", () => {
+  describe("Error Handling", () => {
+    it("should reject IR without a trigger", () => {
       const ir = createSimpleGetFlow();
       ir.nodes = ir.nodes.filter((n) => n.category !== "trigger");
 
@@ -177,8 +177,8 @@ describe("AST Compiler", () => {
       expect(result.errors!.length).toBeGreaterThan(0);
     });
 
-    it("應拒絕帶環路的 IR", () => {
-      // 直接建構一個環路 IR
+    it("should reject IR with cycles", () => {
+      // Directly construct a cyclic IR
       const result = compile({
         version: "1.0.0",
         meta: { name: "test", createdAt: "", updatedAt: "" },

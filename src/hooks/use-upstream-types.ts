@@ -1,12 +1,12 @@
 /**
- * useUpstreamTypes — 即時推斷上游節點的 flowState 型別
+ * useUpstreamTypes — Real-time inference of upstream node flowState types
  *
- * 解決「畫布盲打問題」：
- * 在編輯 Custom Code / Expression 時，開發者需要知道
- * `flowState` 裡有哪些欄位 & 對應的 TypeScript 型別。
+ * Solves the "canvas blind typing problem":
+ * When editing Custom Code / Expression, developers need to know
+ * what fields are in `flowState` & their corresponding TypeScript types.
  *
- * 此 hook 從目前 store 的 nodes + edges 建構一個「截至所選節點為止的 partial IR」，
- * 呼叫 inferFlowStateTypes 取得上游節點輸出的型別資訊。
+ * This hook constructs a "partial IR up to the selected node" from the current
+ * store's nodes + edges, and calls inferFlowStateTypes to get upstream node output types.
  *
  * @example
  * ```tsx
@@ -36,11 +36,11 @@ export interface UpstreamTypeEntry {
 }
 
 export interface UpstreamTypes {
-  /** 上游節點的型別列表（按拓撲順序） */
+  /** List of upstream node types (in topological order) */
   entries: UpstreamTypeEntry[];
-  /** 完整的 interface FlowState { ... } 原始碼 */
+  /** Full interface FlowState { ... } source code */
   interfaceCode: string;
-  /** 是否有可用的型別資訊 */
+  /** Whether type information is available */
   hasTypes: boolean;
 }
 
@@ -49,9 +49,9 @@ const EMPTY: UpstreamTypes = { entries: [], interfaceCode: "", hasTypes: false }
 // ── Hook ──
 
 /**
- * 推斷指定節點的上游 flowState 可用型別
+ * Infer the available flowState types for upstream nodes of the specified node
  *
- * @param selectedNodeId - 目前選中的節點 ID（為 null 時回傳空結果）
+ * @param selectedNodeId - Currently selected node ID (returns empty result when null)
  */
 export function useUpstreamTypes(selectedNodeId: string | null): UpstreamTypes {
   const nodes = useFlowStore((s) => s.nodes);
@@ -61,14 +61,14 @@ export function useUpstreamTypes(selectedNodeId: string | null): UpstreamTypes {
     if (!selectedNodeId) return EMPTY;
     if (nodes.length === 0) return EMPTY;
 
-    // 找出所有上游節點（透過 edges 反向走訪）
+    // Find all upstream nodes (by traversing edges backwards)
     const upstreamIds = collectUpstream(selectedNodeId, edges);
 
-    // 也將自身排除（我們要的是「可在這個節點中使用的」flowState）
+    // Exclude self (we want flowState that is "usable within this node")
     const upstreamNodes = nodes.filter((n) => upstreamIds.has(n.id));
     if (upstreamNodes.length === 0) return EMPTY;
 
-    // 建構 partial IR（只包含上游節點 + 相關 edges）
+    // Build partial IR (only upstream nodes + related edges)
     const irNodes: FlowNode[] = upstreamNodes.map((n) => ({
       id: n.id,
       nodeType: n.data.nodeType as NodeType,
@@ -120,12 +120,12 @@ export function useUpstreamTypes(selectedNodeId: string | null): UpstreamTypes {
 
 // ── Helpers ──
 
-/** 找出指定節點的所有上游節點（BFS 反向走訪） */
+/** Find all upstream nodes of the specified node (BFS reverse traversal) */
 function collectUpstream(
   targetId: string,
   edges: Array<{ source: string; target: string }>
 ): Set<string> {
-  // 建構反向鄰接表
+  // Build reverse adjacency list
   const incoming = new Map<string, string[]>();
   for (const e of edges) {
     const list = incoming.get(e.target) ?? [];

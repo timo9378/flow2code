@@ -14,10 +14,10 @@ interface State {
 }
 
 /**
- * FlowCanvas 專用 React Error Boundary
+ * FlowCanvas-specific React Error Boundary
  *
- * 當 React Flow 或節點渲染拋錯時，顯示友善的錯誤畫面，
- * 避免整個頁面白屏。
+ * When React Flow or node rendering throws an error, displays a friendly error screen
+ * to prevent the entire page from going blank.
  */
 export class FlowErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -43,17 +43,17 @@ export class FlowErrorBoundary extends Component<Props, State> {
         <div className="flex-1 flex items-center justify-center bg-background/50">
           <div className="max-w-sm text-center space-y-3 p-6">
             <h3 className="text-lg font-semibold text-red-400">
-              ⚠️ {this.props.fallbackMessage ?? "畫布渲染錯誤"}
+              ⚠️ {this.props.fallbackMessage ?? "Canvas rendering error"}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {this.state.error?.message ?? "未知錯誤"}
+              {this.state.error?.message ?? "Unknown error"}
             </p>
             <Button
               variant="outline"
               size="sm"
               onClick={this.handleReset}
             >
-              重新嘗試
+              Retry
             </Button>
           </div>
         </div>

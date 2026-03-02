@@ -45,7 +45,7 @@
     --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* Flow2Code 預設使用暗色主題 — 不需要 .dark class */
+/* Flow2Code uses dark theme by default — no .dark class needed */
 :root {
     --radius: 0.625rem;
     --background: oklch(0.12 0 0);
