@@ -231,11 +231,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   const project = new Project({ useInMemoryFileSystem: true });
   const sourceFile = project.createSourceFile("generated.ts", "");
 
-  try {
-    generateCode(sourceFile, trigger, context);
-  } catch (err) {
-    throw err;
-  }
+  generateCode(sourceFile, trigger, context);
 
   // 6. Format and output
   sourceFile.formatText({
