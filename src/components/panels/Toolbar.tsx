@@ -237,7 +237,7 @@ export default function Toolbar() {
 
       {/* ── AI Generate Dialog ── */}
       <Dialog open={showAIDialog} onOpenChange={setShowAIDialog}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>✨ AI Generate Flow Diagram</DialogTitle>
             <DialogDescription>
@@ -245,7 +245,7 @@ export default function Toolbar() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-3 py-2">
+          <div className="flex flex-col gap-3 py-2 overflow-y-auto min-h-0">
             <Textarea
               ref={promptRef}
               value={ai.aiPrompt}
@@ -264,8 +264,8 @@ export default function Toolbar() {
             {ai.aiLoading && ai.aiStreamContent && (
               <div className="bg-secondary/50 rounded-md p-3">
                 <div className="text-[10px] text-muted-foreground mb-1 font-semibold">📡 Live Stream</div>
-                <ScrollArea className="max-h-[120px] w-full">
-                  <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words">
+                <ScrollArea className="max-h-[200px] w-full">
+                  <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words overflow-hidden">
                     {ai.aiStreamContent.length > 500 ? `...${ai.aiStreamContent.slice(-500)}` : ai.aiStreamContent}
                   </pre>
                 </ScrollArea>

@@ -104,7 +104,7 @@ export default function FlowCanvas() {
 
         {/* Center: Canvas */}
         <FlowErrorBoundary>
-          <div className="flex-1 relative">
+          <div className="flex-1 min-w-0 relative">
             <ReactFlow
             nodes={nodes}
             edges={edges}

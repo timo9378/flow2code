@@ -402,8 +402,8 @@ program
     console.log("\n🎉 Zero Pollution init complete!");
     console.log("  All Flow2Code files are stored in .flow2code/ directory");
     console.log("  Get started with:");
-    console.log("  npx flow2code compile .flow2code/flows/hello.flow.json --dry-run");
-    console.log("  npx flow2code watch .flow2code/flows/");
+    console.log(`  npx ${pkgJson.name} compile .flow2code/flows/hello.flow.json --dry-run`);
+    console.log(`  npx ${pkgJson.name} watch .flow2code/flows/`);
   });
 
 // ============================================================

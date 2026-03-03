@@ -1,6 +1,6 @@
 {
   "name": "@timo9378/flow2code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
   "type": "module",
   "sideEffects": false,
@@ -44,6 +44,7 @@
   },
   "files": [
     "dist",
+    "out",
     "!dist/*.map",
     "README.md",
     "LICENSE",

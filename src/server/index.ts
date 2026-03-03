@@ -248,7 +248,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
     res.end(content);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("404 Not Found — UI has not been built yet, please run pnpm build:ui first");
+    res.end("404 Not Found — UI static files not found. If you installed via npm, please update to the latest version.");
   }
 }
 
