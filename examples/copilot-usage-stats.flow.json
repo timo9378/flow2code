@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "meta": {
     "name": "Copilot Usage Stats",
-    "description": "GET /api/usage → 取得 Copilot 使用量與配額",
+    "description": "GET /api/usage → Fetch usage stats and token quota from a copilot-api backend.",
     "createdAt": "2025-01-01T00:00:00Z",
     "updatedAt": "2025-01-01T00:00:00Z"
   },

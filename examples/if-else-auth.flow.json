@@ -29,10 +29,10 @@
       "category": "logic",
       "label": "Valid Credentials?",
       "params": {
-        "condition": "$trigger.body.email === 'admin@example.com' && $trigger.body.password === 'secret'"
+        "condition": "flowState['trigger_login'].body.email === 'admin@example.com' && flowState['trigger_login'].body.password === 'secret'"
       },
       "inputs": [
-        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+        { "id": "data", "label": "Data", "dataType": "any", "required": true }
       ],
       "outputs": [
         { "id": "true", "label": "Valid", "dataType": "any" },
@@ -46,10 +46,10 @@
       "label": "Login Success",
       "params": {
         "statusCode": 200,
-        "body": "{ \"token\": \"jwt-token-here\", \"message\": \"Login successful\" }"
+        "bodyExpression": "{ token: \"jwt-token-here\", message: \"Login successful\" }"
       },
       "inputs": [
-        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+        { "id": "data", "label": "Data", "dataType": "any", "required": true }
       ],
       "outputs": []
     },
@@ -60,10 +60,10 @@
       "label": "Unauthorized",
       "params": {
         "statusCode": 401,
-        "body": "{ \"error\": \"Invalid credentials\" }"
+        "bodyExpression": "{ error: \"Invalid credentials\" }"
       },
       "inputs": [
-        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+        { "id": "data", "label": "Data", "dataType": "any", "required": true }
       ],
       "outputs": []
     }
@@ -71,24 +71,24 @@
   "edges": [
     {
       "id": "e_trigger_check",
-      "source": "trigger_login",
-      "target": "check_credentials",
-      "sourceHandle": "body",
-      "targetHandle": "input"
+      "sourceNodeId": "trigger_login",
+      "sourcePortId": "body",
+      "targetNodeId": "check_credentials",
+      "targetPortId": "data"
     },
     {
       "id": "e_check_ok",
-      "source": "check_credentials",
-      "target": "response_ok",
-      "sourceHandle": "true",
-      "targetHandle": "input"
+      "sourceNodeId": "check_credentials",
+      "sourcePortId": "true",
+      "targetNodeId": "response_ok",
+      "targetPortId": "data"
     },
     {
       "id": "e_check_fail",
-      "source": "check_credentials",
-      "target": "response_401",
-      "sourceHandle": "false",
-      "targetHandle": "input"
+      "sourceNodeId": "check_credentials",
+      "sourcePortId": "false",
+      "targetNodeId": "response_401",
+      "targetPortId": "data"
     }
   ]
 }

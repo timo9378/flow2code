@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "meta": {
     "name": "Copilot Models List",
-    "description": "GET /api/models → 列出 copilot-api 可用模型",
+    "description": "GET /api/models → List available models from a copilot-api backend.",
     "createdAt": "2025-01-01T00:00:00Z",
     "updatedAt": "2025-01-01T00:00:00Z"
   },

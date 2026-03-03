@@ -29,10 +29,10 @@
       "label": "Return Greeting",
       "params": {
         "statusCode": 200,
-        "body": "{ \"message\": \"Hello from Flow2Code!\" }"
+        "bodyExpression": "{ message: \"Hello from Flow2Code!\" }"
       },
       "inputs": [
-        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+        { "id": "data", "label": "Data", "dataType": "any", "required": true }
       ],
       "outputs": []
     }
@@ -40,10 +40,10 @@
   "edges": [
     {
       "id": "e_trigger_response",
-      "source": "trigger_hello",
-      "target": "response_ok",
-      "sourceHandle": "request",
-      "targetHandle": "input"
+      "sourceNodeId": "trigger_hello",
+      "sourcePortId": "request",
+      "targetNodeId": "response_ok",
+      "targetPortId": "data"
     }
   ]
 }

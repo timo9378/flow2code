@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "meta": {
     "name": "Copilot Chat Completions Proxy",
-    "description": "POST /api/chat/completions → 轉發至 copilot-api，支援 streaming",
+    "description": "POST /api/chat/completions → Proxy chat completions to a copilot-api backend with streaming support.",
     "createdAt": "2025-01-01T00:00:00Z",
     "updatedAt": "2025-01-01T00:00:00Z"
   },

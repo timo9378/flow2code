@@ -33,7 +33,7 @@
         "headers": {}
       },
       "inputs": [
-        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+        { "id": "data", "label": "Data", "dataType": "any", "required": true }
       ],
       "outputs": [
         { "id": "response", "label": "Response", "dataType": "object" }
@@ -46,10 +46,10 @@
       "label": "Return Users",
       "params": {
         "statusCode": 200,
-        "body": "flowState['fetch_users']"
+        "bodyExpression": "flowState['fetch_users'].data"
       },
       "inputs": [
-        { "id": "input", "label": "Input", "dataType": "any", "required": true }
+        { "id": "data", "label": "Data", "dataType": "any", "required": true }
       ],
       "outputs": []
     }
@@ -57,17 +57,17 @@
   "edges": [
     {
       "id": "e_trigger_fetch",
-      "source": "trigger_users",
-      "target": "fetch_users",
-      "sourceHandle": "request",
-      "targetHandle": "input"
+      "sourceNodeId": "trigger_users",
+      "sourcePortId": "request",
+      "targetNodeId": "fetch_users",
+      "targetPortId": "data"
     },
     {
       "id": "e_fetch_response",
-      "source": "fetch_users",
-      "target": "response_users",
-      "sourceHandle": "response",
-      "targetHandle": "input"
+      "sourceNodeId": "fetch_users",
+      "sourcePortId": "response",
+      "targetNodeId": "response_users",
+      "targetPortId": "data"
     }
   ]
 }
