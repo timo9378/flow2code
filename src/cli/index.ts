@@ -178,7 +178,13 @@ program
         console.log(output);
       }
     } else if (fmt === "mermaid") {
-      console.log(irToMermaid(result.ir!));
+      const mermaidOutput = irToMermaid(result.ir!);
+      if (options.output) {
+        writeFileSync(resolve(options.output), mermaidOutput, "utf-8");
+        console.log(`✅ Mermaid diagram written to: ${options.output}`);
+      } else {
+        console.log(mermaidOutput);
+      }
     } else {
       // summary (default)
       console.log(`\n🔍 Flow2Code Audit: ${filePath}`);
@@ -203,6 +209,13 @@ program
         }
       }
       console.log("");
+
+      // Also save IR to file if -o is specified (regardless of display format)
+      if (options.output) {
+        const irJson = JSON.stringify(result.ir, null, 2);
+        writeFileSync(resolve(options.output), irJson, "utf-8");
+        console.log(`✅ IR written to: ${options.output}`);
+      }
     }
   });
 
@@ -767,5 +780,10 @@ function generateEnvExample(): void {
 // ============================================================
 // Execute
 // ============================================================
+
+// Show help if no command provided
+if (process.argv.length <= 2) {
+  program.help();
+}
 
 program.parse();

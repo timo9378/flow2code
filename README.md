@@ -57,28 +57,64 @@
 
 ## Quick Start
 
+### Install
+
 ```bash
-# Install dependencies
-pnpm install
+npm install flow2code
+```
+
+### CLI Usage
+
+```bash
+# Initialize flow2code in your project
+npx flow2code init
+
+# Compile a .flow.json to TypeScript
+npx flow2code compile .flow2code/flows/hello.flow.json --dry-run
+
+# Compile with output
+npx flow2code compile .flow2code/flows/hello.flow.json -o src/app/api/hello/route.ts
+
+# Audit (decompile) any TypeScript file into a visual FlowIR
+npx flow2code audit src/app/api/users/route.ts
+
+# Start the visual editor
+npx flow2code dev
+
+# Watch mode (auto-compile on file change)
+npx flow2code watch .flow2code/flows/
+
+# Source Map trace — find which canvas node generated a line
+npx flow2code trace src/app/api/hello/route.ts 15
+```
+
+### Library Usage
+
+```ts
+import { compile, validate, decompile } from "flow2code";
+
+// Compile: FlowIR → TypeScript
+const result = compile(ir, { platform: "nextjs" });
+
+// Validate: Check IR structure
+const check = validate(ir);
+
+// Decompile: TypeScript → FlowIR (code audit)
+const audit = decompile(code);
+```
+
+## Development
+
+```bash
+# Clone and install
+git clone https://github.com/timo9378/flow2code.git
+cd flow2code && pnpm install
 
 # Start dev server (visual canvas)
 pnpm dev
 
 # Run tests
 pnpm test:run
-
-# Compile a single .flow.json (preview mode)
-npx tsx src/cli/index.ts compile flows/hello.flow.json --dry-run
-
-# Compile for a specific platform
-npx tsx src/cli/index.ts compile flows/hello.flow.json --platform express
-
-# Watch mode (auto-compile on file change)
-npx tsx src/cli/index.ts watch flows/
-
-# Build CLI + Compiler
-pnpm build:cli
-```
 
 ## Headless Usage (No UI Required)
 

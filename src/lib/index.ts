@@ -61,7 +61,7 @@ export {
 } from "./ir/types";
 
 // ── IR Utilities ──
-export { validateFlowIR } from "./ir/validator";
+export { validateFlowIR, validateFlowIR as validate } from "./ir/validator";
 export { validateIRSecurity, formatSecurityReport } from "./ir/security";
 export type { SecurityFinding, SecurityCheckResult } from "./ir/security";
 export { topologicalSort } from "./ir/topological-sort";

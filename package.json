@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
   "type": "module",
+  "main": "./dist/compiler.js",
+  "module": "./dist/compiler.js",
+  "types": "./dist/compiler.d.ts",
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:server": "tsx src/server/index.ts",
     "build": "pnpm build:ui && pnpm build:cli",
     "build:ui": "next build",
-    "build:cli": "tsup",
+    "build:cli": "tsup && cp src/server/server.d.ts dist/server.d.ts",
     "start": "node dist/server.js",
     "lint": "eslint .",
     "test": "vitest",
@@ -32,12 +35,13 @@
       "types": "./dist/compiler.d.ts"
     },
     "./server": {
-      "import": "./dist/server.js"
+      "import": "./dist/server.js",
+      "types": "./dist/server.d.ts"
     }
   },
   "files": [
     "dist",
-    "out",
+    "!dist/*.map",
     "README.md",
     "LICENSE"
   ],
@@ -46,7 +50,11 @@
     "visual-programming",
     "ast",
     "compiler",
+    "decompiler",
     "typescript",
+    "code-generator",
+    "workflow",
+    "api-builder",
     "next.js"
   ],
   "author": "timo9378",
