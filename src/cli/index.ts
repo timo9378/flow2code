@@ -14,6 +14,7 @@ import { Command } from "commander";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { join, dirname, resolve, extname, basename } from "node:path";
 import { watch } from "chokidar";
+import { fileURLToPath } from "node:url";
 import { compile, traceLineToNode } from "../lib/compiler/compiler";
 import type { SourceMap } from "../lib/compiler/compiler";
 import type { PlatformName } from "../lib/compiler/platforms/types";
@@ -24,12 +25,16 @@ import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib
 import { semanticDiff, formatDiff } from "../lib/diff/semantic-diff";
 import type { FlowIR, InputPort, OutputPort } from "../lib/ir/types";
 
+const __cliFilename = fileURLToPath(import.meta.url);
+const __cliDirname = dirname(__cliFilename);
+const pkgJson = JSON.parse(readFileSync(join(__cliDirname, "..", "package.json"), "utf-8"));
+
 const program = new Command();
 
 program
   .name("flow2code")
   .description("Visual AST Compiler: Compile .flow.json into native TypeScript")
-  .version("0.1.0");
+  .version(pkgJson.version);
 
 // ============================================================
 // compile command

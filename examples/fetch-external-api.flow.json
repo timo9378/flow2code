@@ -30,7 +30,8 @@
       "params": {
         "url": "https://jsonplaceholder.typicode.com/users",
         "method": "GET",
-        "headers": {}
+        "headers": {},
+        "parseJson": true
       },
       "inputs": [
         { "id": "data", "label": "Data", "dataType": "any", "required": true }

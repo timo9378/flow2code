@@ -3,8 +3,8 @@
   "meta": {
     "name": "Copilot Usage Stats",
     "description": "GET /api/usage → Fetch usage stats and token quota from a copilot-api backend.",
-    "createdAt": "2025-01-01T00:00:00Z",
-    "updatedAt": "2025-01-01T00:00:00Z"
+    "createdAt": "2026-02-27T00:00:00Z",
+    "updatedAt": "2026-02-27T00:00:00Z"
   },
   "nodes": [
     {

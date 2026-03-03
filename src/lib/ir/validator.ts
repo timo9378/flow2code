@@ -63,8 +63,6 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
     };
   }
 
-  const nodeMap = new Map<NodeId, FlowNode>(ir.nodes.map((n) => [n.id, n]));
-
   // 1. Version handling: auto-migrate
   let workingIR = ir;
   let migrated = false;

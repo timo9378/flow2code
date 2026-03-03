@@ -8,10 +8,10 @@ A hands-on guide showing every user workflow — from visual-flow compilation to
 
 ```bash
 # Install globally (from npm)
-npm install -g flow2code
+npm install -g @timo9378/flow2code
 
 # Or use directly with npx
-npx flow2code --help
+npx @timo9378/flow2code --help
 ```
 
 ---
@@ -195,7 +195,7 @@ flow2code env-check myflow.flow.json
 ## 9. Headless Compiler API (Programmatic Use)
 
 ```typescript
-import { compile, decompile, validateFlowIR } from "flow2code/compiler";
+import { compile, decompile, validateFlowIR } from "@timo9378/flow2code/compiler";
 
 // Validate IR
 const validation = validateFlowIR(myIR);

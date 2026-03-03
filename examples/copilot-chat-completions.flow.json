@@ -3,8 +3,8 @@
   "meta": {
     "name": "Copilot Chat Completions Proxy",
     "description": "POST /api/chat/completions → Proxy chat completions to a copilot-api backend with streaming support.",
-    "createdAt": "2025-01-01T00:00:00Z",
-    "updatedAt": "2025-01-01T00:00:00Z"
+    "createdAt": "2026-02-27T00:00:00Z",
+    "updatedAt": "2026-02-27T00:00:00Z"
   },
   "nodes": [
     {

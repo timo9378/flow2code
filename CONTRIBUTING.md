@@ -31,6 +31,8 @@ src/
       platforms/   # Platform Adapters (Next.js / Express / Cloudflare)
     storage/       # .flow.json split/merge
     diff/          # Semantic Diff
+    ai/            # AI Flow Generator
+    openapi/       # OpenAPI import
   cli/             # CLI tools (compile / watch / init)
   server/          # Standalone HTTP Server
   app/             # Next.js UI (Visual Canvas)
@@ -47,8 +49,8 @@ tests/             # Vitest tests
 ## Adding a New Node Plugin
 
 ```typescript
-// src/lib/compiler/plugins/builtin/my-plugin.ts
-import type { NodePlugin } from "../types";
+// src/lib/compiler/plugins/my-plugin.ts
+import type { NodePlugin } from "./types";
 
 export const myPlugin: NodePlugin = {
   nodeType: "my_custom_action",
@@ -63,7 +65,7 @@ export const myPlugin: NodePlugin = {
 };
 ```
 
-Then register it in `src/lib/compiler/plugins/builtin/index.ts`.
+Then register it in `src/lib/compiler/plugins/index.ts`.
 
 ## Adding a New Platform Adapter
 

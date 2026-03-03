@@ -13,6 +13,7 @@
 
 import type { FlowIR, FlowNode, NodeType } from "../ir/types";
 import { getPlugin } from "./plugins/types";
+import type { PluginRegistry } from "./plugins/types";
 
 // ============================================================
 // Type Inference API
@@ -31,11 +32,11 @@ export interface FlowStateTypeInfo {
  * @param ir - Flow IR
  * @returns FlowStateTypeInfo containing the generated interface and per-node type mappings
  */
-export function inferFlowStateTypes(ir: FlowIR): FlowStateTypeInfo {
+export function inferFlowStateTypes(ir: FlowIR, registry?: PluginRegistry): FlowStateTypeInfo {
   const nodeTypes = new Map<string, string>();
 
   for (const node of ir.nodes) {
-    const type = inferNodeOutputType(node);
+    const type = inferNodeOutputType(node, registry);
     nodeTypes.set(node.id, type);
   }
 
@@ -66,9 +67,9 @@ export function generateFlowStateDeclaration(ir: FlowIR): string {
 // Single Node Type Inference
 // ============================================================
 
-function inferNodeOutputType(node: FlowNode): string {
-  // 1. Try to get type from Plugin
-  const plugin = getPlugin(node.nodeType);
+function inferNodeOutputType(node: FlowNode, registry?: PluginRegistry): string {
+  // 1. Try to get type from Plugin (prefer per-instance registry, fallback to global)
+  const plugin = registry?.get(node.nodeType) ?? getPlugin(node.nodeType);
   if (plugin?.getOutputType) {
     return plugin.getOutputType(node);
   }

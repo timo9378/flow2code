@@ -234,7 +234,6 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   try {
     generateCode(sourceFile, trigger, context);
   } catch (err) {
-    console.error("COMPILER CRASH:", err);
     throw err;
   }
 
@@ -317,7 +316,7 @@ function generateFunctionBody(
   const { ir } = context;
 
   // ── Type-safe flowState declaration ──
-  const typeInfo = inferFlowStateTypes(ir);
+  const typeInfo = inferFlowStateTypes(ir, context.pluginRegistry);
   writer.writeLine(typeInfo.interfaceCode);
   writer.writeLine("const flowState: Partial<FlowState> = {};");
   writer.blankLine();

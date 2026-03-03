@@ -1,8 +1,9 @@
 {
-  "name": "flow2code",
+  "name": "@timo9378/flow2code",
   "version": "0.1.0",
   "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/compiler.js",
   "module": "./dist/compiler.js",
   "types": "./dist/compiler.d.ts",
@@ -45,8 +46,12 @@
     "dist",
     "!dist/*.map",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "flow",
     "visual-programming",

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 #### Core
 - **Visual AST Compiler** — Flow-based IR → production-ready TypeScript
-- **Headless compiler** — `import { compile } from "flow2code/compiler"` can be used standalone
+- **Headless compiler** — `import { compile } from "@timo9378/flow2code/compiler"` can be used standalone
 - **CLI** — `flow2code compile`, `flow2code watch`, `flow2code migrate` commands
 - **Standalone dev server** — Zero-dependency HTTP server (`flow2code serve`)
 - **Plugin system** — `NodePlugin` interface + `PluginRegistry` factory pattern
@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 #### Quality
 - TypeScript strict mode
 - ESLint v10 flat config (0 errors)
-- 332 tests / 29 test files (vitest)
+- 354 tests / 31 test files (vitest)
 - GitHub Actions CI (Node.js 20/22 matrix)
 - `.husky/pre-push` CI guard
 - Content-Security-Policy headers

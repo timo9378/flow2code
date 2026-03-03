@@ -6,7 +6,8 @@
 
 [![CI](https://github.com/timo9378/flow2code/actions/workflows/ci.yml/badge.svg)](https://github.com/timo9378/flow2code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/flow2code.svg)](https://www.npmjs.com/package/flow2code)
+[![npm version](https://img.shields.io/npm/v/@timo9378/flow2code.svg)](https://www.npmjs.com/package/@timo9378/flow2code)
+[![npm downloads](https://img.shields.io/npm/dm/@timo9378/flow2code.svg)](https://www.npmjs.com/package/@timo9378/flow2code)
 
 ```
             ┌──────────────────────────────────┐
@@ -52,7 +53,7 @@
 | Platform Adapters | NextjsPlatform / ExpressPlatform / CloudflarePlatform |
 | Plugin System | `createPluginRegistry()` factory (per-instance) |
 | CLI | Commander.js + Chokidar |
-| Testing | Vitest 4 — 350+ tests |
+| Testing | Vitest 4 — 354 tests across 31 test files |
 | CI | GitHub Actions (Node 20/22 matrix) |
 
 ## Quick Start
@@ -60,38 +61,38 @@
 ### Install
 
 ```bash
-npm install flow2code
+npm install @timo9378/flow2code
 ```
 
 ### CLI Usage
 
 ```bash
 # Initialize flow2code in your project
-npx flow2code init
+npx @timo9378/flow2code init
 
 # Compile a .flow.json to TypeScript
-npx flow2code compile .flow2code/flows/hello.flow.json --dry-run
+npx @timo9378/flow2code compile .flow2code/flows/hello.flow.json --dry-run
 
 # Compile with output
-npx flow2code compile .flow2code/flows/hello.flow.json -o src/app/api/hello/route.ts
+npx @timo9378/flow2code compile .flow2code/flows/hello.flow.json -o src/app/api/hello/route.ts
 
 # Audit (decompile) any TypeScript file into a visual FlowIR
-npx flow2code audit src/app/api/users/route.ts
+npx @timo9378/flow2code audit src/app/api/users/route.ts
 
 # Start the visual editor
-npx flow2code dev
+npx @timo9378/flow2code dev
 
 # Watch mode (auto-compile on file change)
-npx flow2code watch .flow2code/flows/
+npx @timo9378/flow2code watch .flow2code/flows/
 
 # Source Map trace — find which canvas node generated a line
-npx flow2code trace src/app/api/hello/route.ts 15
+npx @timo9378/flow2code trace src/app/api/hello/route.ts 15
 ```
 
 ### Library Usage
 
 ```ts
-import { compile, validate, decompile } from "flow2code";
+import { compile, validate, decompile } from "@timo9378/flow2code";
 
 // Compile: FlowIR → TypeScript
 const result = compile(ir, { platform: "nextjs" });
@@ -120,7 +121,7 @@ pnpm test:run
 ## Headless Usage (No UI Required)
 
 ```ts
-import { compile } from "flow2code/compiler";
+import { compile } from "@timo9378/flow2code/compiler";
 
 const ir = JSON.parse(fs.readFileSync("my-api.flow.json", "utf-8"));
 const result = compile(ir, { platform: "express" });
@@ -133,7 +134,7 @@ if (result.success) {
 ## Decompiler (TypeScript → Visual Flow)
 
 ```ts
-import { decompile } from "flow2code/compiler";
+import { decompile } from "@timo9378/flow2code/compiler";
 
 const code = fs.readFileSync("route.ts", "utf-8");
 const result = decompile(code);
@@ -165,8 +166,9 @@ flow2code/
 │   │   │   ├── type-inference.ts    # Type inference engine
 │   │   │   ├── symbol-table.ts      # Human-readable variable naming
 │   │   │   ├── plugins/             # Plugin system (extensible)
-│   │   │   │   ├── types.ts         # PluginRegistry interface
-│   │   │   │   └── builtin.ts       # 14 built-in plugins
+│   │   │   │   ├── index.ts          # Plugin registry factory + exports
+│   │   │   │   ├── types.ts          # PluginRegistry interface
+│   │   │   │   └── builtin.ts        # 15 built-in plugins
 │   │   │   └── platforms/           # Platform adapters
 │   │   │       ├── types.ts         # PlatformAdapter interface
 │   │   │       ├── nextjs.ts        # Next.js App Router
@@ -176,7 +178,7 @@ flow2code/
 │   │   └── storage/                 # .flow.json split/merge
 │   ├── cli/                         # CLI (compile/watch/init)
 │   └── server/                      # Standalone HTTP Server
-├── tests/                           # 350+ tests (Vitest)
+├── tests/                           # 354 tests (Vitest)
 ├── .github/workflows/ci.yml         # GitHub Actions CI
 ├── CONTRIBUTING.md
 └── vitest.config.ts
@@ -213,6 +215,8 @@ flow2code/
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For detailed usage examples and workflows, see [USAGE.md](USAGE.md).
 
 ## License
 
