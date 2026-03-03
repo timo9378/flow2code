@@ -63,10 +63,13 @@ export class ExpressPlatform implements PlatformAdapter {
         writer.writeLine(`res.setHeader(${JSON.stringify(key)}, ${JSON.stringify(value)});`);
       }
     }
-    writer.writeLine(`return res.status(${statusCode}).json(${bodyExpr});`);
+    writer.writeLine(`throw new EarlyResponse(() => res.status(${statusCode}).json(${bodyExpr}));`);
   }
 
   generateErrorResponse(writer: CodeBlockWriter): void {
+    writer.write("if (error instanceof EarlyResponse) ").block(() => {
+      writer.writeLine("return error.send();");
+    });
     writer.writeLine('console.error("Workflow failed:", error);');
     writer.writeLine(
       'return res.status(500).json({ error: error instanceof Error ? error.message : "Internal Server Error" });'
@@ -167,6 +170,13 @@ export class ExpressPlatform implements PlatformAdapter {
         { name: "req", type: "Request" },
         { name: "res", type: "Response" },
       ],
+    });
+
+    sourceFile.insertStatements(funcDecl.getChildIndex(), (writer) => {
+      writer.writeLine("class EarlyResponse extends Error {");
+      writer.writeLine("  constructor(public send: () => void) { super(); }");
+      writer.writeLine("}");
+      writer.blankLine();
     });
 
     funcDecl.addStatements((writer) => {

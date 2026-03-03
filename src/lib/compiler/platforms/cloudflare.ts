@@ -56,11 +56,14 @@ export class CloudflarePlatform implements PlatformAdapter {
       ? `, { status: ${statusCode}, headers: ${JSON.stringify({ "Content-Type": "application/json", ...headers })} }`
       : `, { status: ${statusCode}, headers: { "Content-Type": "application/json" } }`;
     writer.writeLine(
-      `return new Response(JSON.stringify(${bodyExpr})${headersObj});`
+      `throw new EarlyResponse(new Response(JSON.stringify(${bodyExpr})${headersObj}));`
     );
   }
 
   generateErrorResponse(writer: CodeBlockWriter): void {
+    writer.write("if (error instanceof EarlyResponse) ").block(() => {
+      writer.writeLine("return error.response;");
+    });
     writer.writeLine('console.error("Workflow failed:", error);');
     writer.writeLine(
       `return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Internal Server Error" }), { status: 500, headers: { "Content-Type": "application/json" } });`
@@ -175,6 +178,13 @@ export class CloudflarePlatform implements PlatformAdapter {
         { name: "env", type: "Env" },
         { name: "ctx", type: "ExecutionContext" },
       ],
+    });
+
+    sourceFile.insertStatements(funcDecl.getChildIndex(), (writer) => {
+      writer.writeLine("class EarlyResponse extends Error {");
+      writer.writeLine("  constructor(public response: Response) { super(); }");
+      writer.writeLine("}");
+      writer.blankLine();
     });
 
     funcDecl.addStatements((writer) => {

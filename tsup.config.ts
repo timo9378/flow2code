@@ -48,7 +48,7 @@ export default defineConfig([
   // Headless Compiler bundle (pure compiler, no UI/Server)
   {
     entry: { compiler: "src/lib/index.ts" },
-    format: ["esm"],
+    format: ["esm", "cjs"],
     target: "node20",
     platform: "node",
     outDir: "dist",

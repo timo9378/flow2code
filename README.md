@@ -115,6 +115,7 @@ pnpm dev
 
 # Run tests
 pnpm test:run
+```
 
 ## Headless Usage (No UI Required)
 

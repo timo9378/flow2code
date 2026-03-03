@@ -13,10 +13,10 @@ If you discover a security vulnerability in flow2code, please **do not** report 
 ### How to Report
 
 1. **GitHub Security Advisories** (Recommended)  
-   Go to [Security Advisories](../../security/advisories/new) to create a private security report.
+   Go to [Security Advisories](https://github.com/timo9378/flow2code/security/advisories/new) to create a private security report.
 
-2. **Email**  
-   Send a detailed description to the maintainer's email (see the author field in package.json).
+2. **GitHub Issues (Private)**  
+   If the advisory option is unavailable, open a [new issue](https://github.com/timo9378/flow2code/issues/new) and mark it as confidential in the description.
 
 ### What to Include
 
