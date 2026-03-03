@@ -337,9 +337,10 @@ export default function Toolbar() {
             <DialogDescription>Output from compilation, validation, or AI generation</DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 max-h-[60vh] w-full">
-            <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre leading-relaxed">
+            <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap break-words leading-relaxed">
               {output}
             </pre>
+            <ScrollBar orientation="vertical" />
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </DialogContent>

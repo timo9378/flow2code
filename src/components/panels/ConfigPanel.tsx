@@ -283,10 +283,86 @@ export default function ConfigPanel() {
   const updateNodeParams = useFlowStore((s) => s.updateNodeParams);
   const updateNodeLabel = useFlowStore((s) => s.updateNodeLabel);
   const removeNode = useFlowStore((s) => s.removeNode);
+  const removeSelectedNodes = useFlowStore((s) => s.removeSelectedNodes);
+  const getSelectedNodeIds = useFlowStore((s) => s.getSelectedNodeIds);
 
+  const selectedIds = getSelectedNodeIds();
+  const multiSelected = selectedIds.length > 1;
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const upstreamTypes = useUpstreamTypes(selectedNodeId);
 
+  // ── Multi-select view ──
+  if (multiSelected) {
+    const selectedNodes = nodes.filter((n) => selectedIds.includes(n.id));
+    const categories = [...new Set(selectedNodes.map((n) => (n.data as FlowNodeData).category))];
+
+    return (
+      <div className="w-72 bg-card border-l border-border flex flex-col h-full shrink-0">
+        <ScrollArea className="flex-1">
+          <div className="p-3 flex flex-col gap-3">
+            <Card className="border-border">
+              <CardHeader className="p-3 pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Multi-Select</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeSelectedNodes()}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 text-xs"
+                  >
+                    Delete All
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="px-3 pb-3 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {selectedIds.length} nodes selected
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {categories.map((cat) => (
+                    <Badge key={cat} variant="secondary" className="text-[10px]">
+                      {cat}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Separator />
+
+            <Card className="border-border">
+              <CardHeader className="p-3 pb-2">
+                <CardTitle className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Selected Nodes</CardTitle>
+              </CardHeader>
+              <CardContent className="px-3 pb-3 space-y-1.5">
+                {selectedNodes.map((node) => {
+                  const d = node.data as FlowNodeData;
+                  return (
+                    <div key={node.id} className="flex items-center justify-between gap-1 py-1 px-2 rounded-md bg-accent/30">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs">{d.icon as string}</span>
+                        <span className="text-xs text-foreground truncate">{d.label}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-5 h-5 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                        onClick={() => removeNode(node.id)}
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // ── No selection ──
   if (!selectedNode) {
     return (
       <div className="w-72 bg-card border-l border-border flex items-center justify-center h-full shrink-0">

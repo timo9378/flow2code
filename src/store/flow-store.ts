@@ -93,6 +93,10 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
   updateNodeLabel: (nodeId: string, label: string) => void;
   selectNode: (nodeId: string | null) => void;
   removeNode: (nodeId: string) => void;
+  /** Remove all currently selected nodes (for batch delete) */
+  removeSelectedNodes: () => void;
+  /** Get IDs of all selected nodes */
+  getSelectedNodeIds: () => string[];
 
   /** Take snapshot and push to undo stack (zero-arg convenience version) */
   snapshot: () => void;
@@ -238,6 +242,24 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
       });
     },
 
+    removeSelectedNodes: () => {
+      const selectedIds = get().nodes.filter((n) => n.selected).map((n) => n.id);
+      if (selectedIds.length === 0) return;
+      get().snapshot();
+      const idSet = new Set(selectedIds);
+      set({
+        nodes: get().nodes.filter((n) => !idSet.has(n.id)),
+        edges: get().edges.filter(
+          (e) => !idSet.has(e.source) && !idSet.has(e.target)
+        ),
+        selectedNodeId: idSet.has(get().selectedNodeId ?? "") ? null : get().selectedNodeId,
+      });
+    },
+
+    getSelectedNodeIds: () => {
+      return get().nodes.filter((n) => n.selected).map((n) => n.id);
+    },
+
     exportIR: (): FlowIR => {
       const { nodes, edges } = get();
 
@@ -304,7 +326,7 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
         sourceHandle: e.sourcePortId,
         target: e.targetNodeId,
         targetHandle: e.targetPortId,
-        animated: true,
+        type: "smoothstep",
       }));
 
       set({ nodes, edges, selectedNodeId: null, flowCreatedAt: ir.meta?.createdAt ?? new Date().toISOString() });

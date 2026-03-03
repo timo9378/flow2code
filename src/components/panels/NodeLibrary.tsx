@@ -45,9 +45,18 @@ export default function NodeLibrary() {
     addFlowNode(template.nodeType as NodeType, template.category, { x, y });
   };
 
-  if (collapsed) {
-    return (
-      <div className="w-12 bg-card border-r border-border flex flex-col items-center py-3 gap-2 shrink-0">
+  return (
+    <div
+      className={`bg-card border-r border-border flex flex-col shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
+        collapsed ? "w-12" : "w-56"
+      }`}
+    >
+      {/* Collapsed: icon strip */}
+      <div
+        className={`flex flex-col items-center py-3 gap-2 transition-opacity duration-200 ${
+          collapsed ? "opacity-100" : "opacity-0 hidden"
+        }`}
+      >
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -71,53 +80,56 @@ export default function NodeLibrary() {
           </Tooltip>
         ))}
       </div>
-    );
-  }
 
-  return (
-    <div className="w-56 bg-card border-r border-border flex flex-col shrink-0">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
-        <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Node Library</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="w-6 h-6 text-muted-foreground hover:text-foreground"
-          onClick={() => setCollapsed(true)}
-        >
-          «
-        </Button>
-      </div>
-
-      {/* Node list */}
-      <ScrollArea className="flex-1">
-        <div className="p-2 flex flex-col gap-1">
-          {Object.entries(nodeTemplates).map(([category, group]) => (
-            <Collapsible key={category} defaultOpen>
-              <CollapsibleTrigger className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground w-full rounded-md hover:bg-accent transition-colors cursor-pointer">
-                <span>{group.icon}</span>
-                <span className={group.color}>{category}</span>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="flex flex-col gap-0.5 py-0.5 pl-2">
-                  {group.templates.map((template) => (
-                    <button
-                      key={template.nodeType}
-                      onClick={() => handleAddNode(template)}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs
-                        text-muted-foreground hover:text-foreground
-                        hover:bg-accent transition-colors cursor-pointer text-left group"
-                    >
-                      <span className="text-sm group-hover:scale-110 transition-transform">{template.icon}</span>
-                      <span>{template.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          ))}
+      {/* Expanded: full node list */}
+      <div
+        className={`flex flex-col flex-1 min-w-0 transition-opacity duration-200 ${
+          collapsed ? "opacity-0 hidden" : "opacity-100"
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
+          <span className="text-xs font-semibold text-foreground uppercase tracking-wider whitespace-nowrap">Node Library</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-6 h-6 text-muted-foreground hover:text-foreground"
+            onClick={() => setCollapsed(true)}
+          >
+            «
+          </Button>
         </div>
-      </ScrollArea>
+
+        {/* Node list */}
+        <ScrollArea className="flex-1">
+          <div className="p-2 flex flex-col gap-1">
+            {Object.entries(nodeTemplates).map(([category, group]) => (
+              <Collapsible key={category} defaultOpen>
+                <CollapsibleTrigger className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground w-full rounded-md hover:bg-accent transition-colors cursor-pointer">
+                  <span>{group.icon}</span>
+                  <span className={group.color}>{category}</span>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="flex flex-col gap-0.5 py-0.5 pl-2">
+                    {group.templates.map((template) => (
+                      <button
+                        key={template.nodeType}
+                        onClick={() => handleAddNode(template)}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs
+                          text-muted-foreground hover:text-foreground
+                          hover:bg-accent transition-colors cursor-pointer text-left group"
+                      >
+                        <span className="text-sm group-hover:scale-110 transition-transform">{template.icon}</span>
+                        <span>{template.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   );
 }

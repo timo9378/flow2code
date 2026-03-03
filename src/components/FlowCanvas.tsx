@@ -14,6 +14,7 @@ import {
   MiniMap,
   Background,
   BackgroundVariant,
+  SelectionMode,
   type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -39,6 +40,7 @@ export default function FlowCanvas() {
   const onConnect = useFlowStore((s) => s.onConnect);
   const selectNode = useFlowStore((s) => s.selectNode);
   const removeNode = useFlowStore((s) => s.removeNode);
+  const removeSelectedNodes = useFlowStore((s) => s.removeSelectedNodes);
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
   const undo = useFlowStore((s) => s.undoFlow);
   const redo = useFlowStore((s) => s.redoFlow);
@@ -53,10 +55,16 @@ export default function FlowCanvas() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      // Delete / Backspace: delete the selected node
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
-        e.preventDefault();
-        removeNode(selectedNodeId);
+      // Delete / Backspace: delete selected node(s)
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const selectedIds = useFlowStore.getState().getSelectedNodeIds();
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          removeSelectedNodes();
+        } else if (selectedNodeId) {
+          e.preventDefault();
+          removeNode(selectedNodeId);
+        }
       }
 
       // Ctrl+Z / Cmd+Z：Undo
@@ -77,7 +85,7 @@ export default function FlowCanvas() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodeId, removeNode, undo, redo]);
+  }, [selectedNodeId, removeNode, removeSelectedNodes, undo, redo]);
 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
@@ -117,9 +125,12 @@ export default function FlowCanvas() {
             fitView
             snapToGrid
             snapGrid={[16, 16]}
+            panOnDrag={[1]}
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
             defaultEdgeOptions={{
-              animated: true,
-              style: { stroke: "oklch(0.65 0.2 260)", strokeWidth: 2 },
+              type: "smoothstep",
+              style: { stroke: "oklch(0.65 0.15 260)", strokeWidth: 2 },
             }}
             style={{ background: "transparent" }}
           >
