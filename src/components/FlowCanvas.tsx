@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Flow2Code Main Canvas Component — Koimsurai Style
+ * Flow2Code Main Canvas Component
  *
  * Uses React Flow (@xyflow/react) to build an interactive visual editing canvas.
- * Dark background + dot grid + glowing connections
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ReactFlow,
   Controls,
@@ -24,6 +23,7 @@ import FlowNodeComponent from "@/components/nodes/FlowNode";
 import NodeLibrary from "@/components/panels/NodeLibrary";
 import ConfigPanel from "@/components/panels/ConfigPanel";
 import Toolbar from "@/components/panels/Toolbar";
+import WelcomeOverlay from "@/components/panels/WelcomeOverlay";
 import { FlowErrorBoundary } from "@/components/FlowErrorBoundary";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useHighlightFromURL } from "@/hooks/use-highlight-from-url";
@@ -41,51 +41,65 @@ export default function FlowCanvas() {
   const selectNode = useFlowStore((s) => s.selectNode);
   const removeNode = useFlowStore((s) => s.removeNode);
   const removeSelectedNodes = useFlowStore((s) => s.removeSelectedNodes);
+  const removeSelectedEdges = useFlowStore((s) => s.removeSelectedEdges);
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
-  const undo = useFlowStore((s) => s.undoFlow);
-  const redo = useFlowStore((s) => s.redoFlow);
+  const undoFlow = useFlowStore((s) => s.undoFlow);
+  const redoFlow = useFlowStore((s) => s.redoFlow);
+
+  const [showWelcome, setShowWelcome] = useState(true);
+  const isEmpty = nodes.length === 0;
 
   // ── Deep link highlight (works with Runtime Tracer) ──
   useHighlightFromURL();
 
-  // ── Keyboard Shortcuts ──
+  // ── Keyboard Shortcuts (capture phase to run before React Flow) ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept keyboard when focus is in input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      // Also skip contentEditable
+      if ((e.target as HTMLElement)?.isContentEditable) return;
 
-      // Delete / Backspace: delete selected node(s)
+      // Delete / Backspace: delete selected nodes and/or edges
       if (e.key === "Delete" || e.key === "Backspace") {
-        const selectedIds = useFlowStore.getState().getSelectedNodeIds();
-        if (selectedIds.length > 0) {
+        const state = useFlowStore.getState();
+        const selectedNodeIds = state.getSelectedNodeIds();
+        const selectedEdgeIds = state.edges.filter((ed) => ed.selected).map((ed) => ed.id);
+
+        if (selectedNodeIds.length > 0 || selectedEdgeIds.length > 0) {
           e.preventDefault();
-          removeSelectedNodes();
+          e.stopPropagation();
+          removeSelectedNodes(); // Also removes selected edges now
         } else if (selectedNodeId) {
           e.preventDefault();
+          e.stopPropagation();
           removeNode(selectedNodeId);
         }
       }
 
-      // Ctrl+Z / Cmd+Z：Undo
+      // Ctrl+Z / Cmd+Z: Undo
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        e.stopPropagation();
+        undoFlow();
       }
 
-      // Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y：Redo
+      // Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y: Redo
       if (
         ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) ||
         ((e.ctrlKey || e.metaKey) && e.key === "y")
       ) {
         e.preventDefault();
-        redo();
+        e.stopPropagation();
+        redoFlow();
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodeId, removeNode, removeSelectedNodes, undo, redo]);
+    // Use capture phase so we handle before React Flow
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [selectedNodeId, removeNode, removeSelectedNodes, removeSelectedEdges, undoFlow, redoFlow]);
 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
@@ -128,20 +142,25 @@ export default function FlowCanvas() {
             panOnDrag={[1]}
             selectionOnDrag
             selectionMode={SelectionMode.Partial}
+            edgesFocusable
+            edgesReconnectable
             defaultEdgeOptions={{
               type: "smoothstep",
-              style: { stroke: "oklch(0.65 0.15 260)", strokeWidth: 2 },
+              animated: false,
+              interactionWidth: 20,
+              focusable: true,
+              style: { stroke: "oklch(0.45 0 0)", strokeWidth: 1.5 },
             }}
             style={{ background: "transparent" }}
           >
             <Controls
               position="bottom-left"
-              className="!bg-card !border-border !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent"
+              className="bg-card! border-border! shadow-lg! [&>button]:bg-card! [&>button]:border-border! [&>button]:text-foreground! [&>button:hover]:bg-accent!"
               style={{ marginLeft: "1rem", marginBottom: "1rem" }}
             />
             <MiniMap
               position="bottom-right"
-              className="!bg-card !border !border-border !rounded-lg !shadow-lg"
+              className="bg-card! border! border-border! rounded-lg! shadow-lg!"
               style={{ marginRight: "1rem", marginBottom: "1rem" }}
               maskColor="rgba(0, 0, 0, 0.6)"
               nodeColor={(node) => {
@@ -168,6 +187,11 @@ export default function FlowCanvas() {
           <ErrorBoundary name="ConfigPanel">
             <ConfigPanel />
           </ErrorBoundary>
+
+          {/* Welcome / onboarding overlay (shown when canvas is empty) */}
+          {isEmpty && showWelcome && (
+            <WelcomeOverlay onDismiss={() => setShowWelcome(false)} />
+          )}
         </div>
         </FlowErrorBoundary>
       </div>

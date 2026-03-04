@@ -116,6 +116,8 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
   removeNode: (nodeId: string) => void;
   /** Remove all currently selected nodes (for batch delete) */
   removeSelectedNodes: () => void;
+  /** Remove all currently selected edges */
+  removeSelectedEdges: () => void;
   /** Get IDs of all selected nodes */
   getSelectedNodeIds: () => string[];
 
@@ -217,10 +219,20 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
     },
 
     onNodesChange: (changes) => {
+      // Snapshot before removing nodes so Ctrl+Z can restore them
+      const hasRemoval = changes.some((c) => c.type === "remove");
+      if (hasRemoval) {
+        get().pushSnapshot(createSnapshot(get().nodes, get().edges));
+      }
       set({ nodes: applyNodeChanges(changes, get().nodes) as Node<FlowNodeData>[] });
     },
 
     onEdgesChange: (changes) => {
+      // Snapshot before removing edges so Ctrl+Z can restore them
+      const hasRemoval = changes.some((c) => c.type === "remove");
+      if (hasRemoval) {
+        get().pushSnapshot(createSnapshot(get().nodes, get().edges));
+      }
       set({ edges: applyEdgeChanges(changes, get().edges) });
     },
 
@@ -301,17 +313,27 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
     },
 
     removeSelectedNodes: () => {
-      const selectedIds = get().nodes.filter((n) => n.selected).map((n) => n.id);
-      if (selectedIds.length === 0) return;
+      const selectedNodeIds = get().nodes.filter((n) => n.selected).map((n) => n.id);
+      const selectedEdgeIds = get().edges.filter((e) => e.selected).map((e) => e.id);
+      if (selectedNodeIds.length === 0 && selectedEdgeIds.length === 0) return;
       get().snapshot();
-      const idSet = new Set(selectedIds);
+      const nodeIdSet = new Set(selectedNodeIds);
+      const edgeIdSet = new Set(selectedEdgeIds);
       set({
-        nodes: get().nodes.filter((n) => !idSet.has(n.id)),
+        nodes: get().nodes.filter((n) => !nodeIdSet.has(n.id)),
         edges: get().edges.filter(
-          (e) => !idSet.has(e.source) && !idSet.has(e.target)
+          (e) => !nodeIdSet.has(e.source) && !nodeIdSet.has(e.target) && !edgeIdSet.has(e.id)
         ),
-        selectedNodeId: idSet.has(get().selectedNodeId ?? "") ? null : get().selectedNodeId,
+        selectedNodeId: nodeIdSet.has(get().selectedNodeId ?? "") ? null : get().selectedNodeId,
       });
+    },
+
+    removeSelectedEdges: () => {
+      const selected = get().edges.filter((e) => e.selected);
+      if (selected.length === 0) return;
+      get().snapshot();
+      const idSet = new Set(selected.map((e) => e.id));
+      set({ edges: get().edges.filter((e) => !idSet.has(e.id)) });
     },
 
     getSelectedNodeIds: () => {
@@ -363,13 +385,14 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
     },
 
     loadIR: (ir: FlowIR) => {
-      // ── Save current state to history + undo stack before replacing ──
+      // ── Always save current state to undo stack (enables Ctrl+Z even from empty canvas) ──
       const currentNodes = get().nodes;
+      const currentEdges = get().edges;
+      const metaName = (ir.meta as { name?: string } | undefined)?.name ?? "Untitled";
       if (currentNodes.length > 0) {
-        const metaName = (ir.meta as { name?: string } | undefined)?.name ?? "Untitled";
         get().pushHistory(`Before loading "${metaName}"`);
-        get().pushSnapshot(createSnapshot(currentNodes, get().edges));
       }
+      get().pushSnapshot(createSnapshot(currentNodes, currentEdges));
 
       _nodeCounter = ir.nodes.length;
 

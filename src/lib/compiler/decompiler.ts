@@ -904,10 +904,16 @@ function buildEdges(ctx: DecompileContext): void {
     }
   }
 
+  // Helper: resolve target port — use the node's first declared input port id
+  const resolveTargetPort = (targetNodeId: string, fallback: string): string => {
+    const tgt = ctx.nodes.get(targetNodeId);
+    return tgt?.inputs?.[0]?.id ?? fallback;
+  };
+
   // 2. Control flow edges (if/else branches, loop bodies, try/catch)
   for (const [parentId, children] of ctx.controlFlowChildren) {
     for (const child of children) {
-      addEdge(parentId, child.portId, child.nodeId, "input");
+      addEdge(parentId, child.portId, child.nodeId, resolveTargetPort(child.nodeId, "input"));
       connectedTargets.add(child.nodeId);
     }
   }
@@ -918,7 +924,7 @@ function buildEdges(ctx: DecompileContext): void {
     const predNode = ctx.nodes.get(predId);
     if (!predNode) continue;
     const sourcePort = predNode.outputs[0]?.id ?? "output";
-    addEdge(predId, sourcePort, nodeId, "input");
+    addEdge(predId, sourcePort, nodeId, resolveTargetPort(nodeId, "input"));
   }
 }
 
@@ -1111,7 +1117,10 @@ function trackVariableUses(nodeId: string, expression: string, ctx: DecompileCon
 
     // Only track if this variable has a known definition
     if (ctx.varDefs.has(ident)) {
-      uses.push({ nodeId, portId: "input", varName: ident });
+      // Resolve actual target port — use the node's first declared input port id
+      const targetNode = ctx.nodes.get(nodeId);
+      const portId = targetNode?.inputs?.[0]?.id ?? "input";
+      uses.push({ nodeId, portId, varName: ident });
     }
   }
 

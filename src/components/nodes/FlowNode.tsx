@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Flow2Code Unified Custom Node Component — Dark Theme Version
+ * Flow2Code Node Component
  *
- * Node cards use semi-transparent dark backgrounds with category-colored top accent bars.
+ * Minimal card design with left color bar, clean typography, and
+ * properly spaced connection handles.
  */
 
 import { memo } from "react";
@@ -11,124 +12,140 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import type { FlowNodeData } from "@/store/flow-store";
 import { NodeCategory } from "@/lib/ir/types";
 
-// Category colors — dark variants (matching Koimsurai dark background)
-const categoryStyles: Record<NodeCategory, { accent: string; bg: string; text: string; handleIn: string; handleOut: string }> = {
-  [NodeCategory.TRIGGER]: {
-    accent: "bg-emerald-500",
-    bg: "bg-emerald-500/5 border-emerald-500/20",
-    text: "text-emerald-400",
-    handleIn: "#10b981",
-    handleOut: "#10b981",
-  },
-  [NodeCategory.ACTION]: {
-    accent: "bg-blue-500",
-    bg: "bg-blue-500/5 border-blue-500/20",
-    text: "text-blue-400",
-    handleIn: "#3b82f6",
-    handleOut: "#3b82f6",
-  },
-  [NodeCategory.LOGIC]: {
-    accent: "bg-amber-500",
-    bg: "bg-amber-500/5 border-amber-500/20",
-    text: "text-amber-400",
-    handleIn: "#f59e0b",
-    handleOut: "#f59e0b",
-  },
-  [NodeCategory.VARIABLE]: {
-    accent: "bg-purple-500",
-    bg: "bg-purple-500/5 border-purple-500/20",
-    text: "text-purple-400",
-    handleIn: "#8b5cf6",
-    handleOut: "#8b5cf6",
-  },
-  [NodeCategory.OUTPUT]: {
-    accent: "bg-rose-500",
-    bg: "bg-rose-500/5 border-rose-500/20",
-    text: "text-rose-400",
-    handleIn: "#f43f5e",
-    handleOut: "#f43f5e",
-  },
+// ── Category Theme ──
+// Each category gets a single accent color used for the side bar and handles.
+const theme: Record<NodeCategory, { bar: string; color: string }> = {
+  [NodeCategory.TRIGGER]:  { bar: "#22c55e", color: "#22c55e" },
+  [NodeCategory.ACTION]:   { bar: "#3b82f6", color: "#3b82f6" },
+  [NodeCategory.LOGIC]:    { bar: "#eab308", color: "#eab308" },
+  [NodeCategory.VARIABLE]: { bar: "#a855f7", color: "#a855f7" },
+  [NodeCategory.OUTPUT]:   { bar: "#f43f5e", color: "#f43f5e" },
 };
 
-const categoryIcons: Record<NodeCategory, string> = {
-  [NodeCategory.TRIGGER]: "⚡",
-  [NodeCategory.ACTION]: "🔧",
-  [NodeCategory.LOGIC]: "🔀",
-  [NodeCategory.VARIABLE]: "📦",
-  [NodeCategory.OUTPUT]: "📤",
+const categoryTag: Record<NodeCategory, string> = {
+  [NodeCategory.TRIGGER]:  "TRIGGER",
+  [NodeCategory.ACTION]:   "ACTION",
+  [NodeCategory.LOGIC]:    "LOGIC",
+  [NodeCategory.VARIABLE]: "VARIABLE",
+  [NodeCategory.OUTPUT]:   "OUTPUT",
 };
 
 type FlowNodeType = Node<FlowNodeData>;
 
 function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
-  const style = categoryStyles[data.category] ?? categoryStyles[NodeCategory.ACTION];
-  const icon = categoryIcons[data.category] ?? "📦";
+  const t = theme[data.category] ?? theme[NodeCategory.ACTION];
+  const tag = categoryTag[data.category] ?? "NODE";
+  const inputs = data.inputs ?? [];
+  const outputs = data.outputs ?? [];
+  const portRows = Math.max(inputs.length, outputs.length, 0);
 
   return (
     <div
-      className={`
-        rounded-lg border min-w-[200px] max-w-[280px] backdrop-blur-sm
-        ${style.bg}
-        ${selected ? "ring-2 ring-primary/50 shadow-lg shadow-primary/10" : "shadow-md shadow-black/30"}
-        transition-all duration-200
-      `}
+      className="flex group"
+      style={{ minWidth: 220, maxWidth: 300 }}
     >
-      {/* Top accent bar */}
-      <div className={`h-1 ${style.accent} rounded-t-lg`} />
+      {/* Left color bar */}
+      <div
+        className="w-[3px] rounded-l-md shrink-0"
+        style={{ background: t.bar }}
+      />
 
-      {/* Header */}
-      <div className="px-3 py-2 flex items-center gap-1.5">
-        <span className="text-sm">{icon}</span>
-        <span className="text-xs font-semibold text-foreground truncate flex-1">
-          {data.label}
-        </span>
-        <span className={`text-[9px] uppercase font-medium ${style.text}`}>
-          {data.category}
-        </span>
+      {/* Card body */}
+      <div
+        className={[
+          "flex-1 rounded-r-md border border-l-0",
+          "bg-[oklch(0.17_0_0)] border-[oklch(0.25_0_0)]",
+          selected
+            ? "ring-1 ring-white/20 border-[oklch(0.35_0_0)]"
+            : "",
+          "transition-[border-color,box-shadow] duration-150",
+        ].join(" ")}
+      >
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1">
+          <span className="text-[13px] font-medium text-[oklch(0.93_0_0)] leading-tight truncate">
+            {data.label}
+          </span>
+          <span
+            className="text-[9px] tracking-wider font-semibold shrink-0 px-1.5 py-0.5 rounded"
+            style={{
+              color: t.color,
+              background: `color-mix(in oklch, ${t.color} 12%, transparent)`,
+            }}
+          >
+            {tag}
+          </span>
+        </div>
+
+        {/* Type label */}
+        <div className="px-3 pb-1.5">
+          <span className="font-mono text-[11px] text-[oklch(0.5_0_0)]">
+            {data.nodeType}
+          </span>
+        </div>
+
+        {/* Port labels (when ports exist) */}
+        {portRows > 0 && (
+          <div className="border-t border-[oklch(0.22_0_0)] px-3 py-1.5 flex flex-col gap-0.5">
+            {Array.from({ length: portRows }, (_, i) => (
+              <div key={i} className="flex items-center justify-between text-[10px] text-[oklch(0.55_0_0)]">
+                <span>{inputs[i]?.label ?? ""}</span>
+                <span>{outputs[i]?.label ?? ""}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Body */}
-      <div className="px-3 pb-2">
-        <span className="font-mono text-[10px] text-muted-foreground">{data.nodeType}</span>
-      </div>
+      {/* ── Handles ── */}
+      {inputs.map((input, i) => {
+        // Position handles in the port area if it exists, otherwise in the header
+        const top = portRows > 0
+          ? `calc(56px + ${i * 16}px + 8px)` // aligned to port label rows
+          : `${28 + i * 18}px`;
+        return (
+          <Handle
+            key={`in-${input.id}`}
+            type="target"
+            position={Position.Left}
+            id={input.id}
+            style={{
+              top,
+              left: -1,
+              width: 8,
+              height: 8,
+              borderRadius: 2,
+              background: t.color,
+              border: "none",
+            }}
+            title={`${input.label} (${input.dataType})`}
+          />
+        );
+      })}
 
-      {/* Input Handles */}
-      {(data.inputs ?? []).map((input, i) => (
-        <Handle
-          key={`input-${input.id}`}
-          type="target"
-          position={Position.Left}
-          id={input.id}
-          style={{
-            top: `${36 + i * 20}px`,
-            background: style.handleIn,
-            width: 9,
-            height: 9,
-            border: "2px solid rgba(0,0,0,0.4)",
-            boxShadow: `0 0 4px ${style.handleIn}40`,
-          }}
-          title={`${input.label} (${input.dataType})`}
-        />
-      ))}
-
-      {/* Output Handles */}
-      {(data.outputs ?? []).map((output, i) => (
-        <Handle
-          key={`output-${output.id}`}
-          type="source"
-          position={Position.Right}
-          id={output.id}
-          style={{
-            top: `${36 + i * 20}px`,
-            background: style.handleOut,
-            width: 9,
-            height: 9,
-            border: "2px solid rgba(0,0,0,0.4)",
-            boxShadow: `0 0 4px ${style.handleOut}40`,
-          }}
-          title={`${output.label} (${output.dataType})`}
-        />
-      ))}
+      {outputs.map((output, i) => {
+        const top = portRows > 0
+          ? `calc(56px + ${i * 16}px + 8px)`
+          : `${28 + i * 18}px`;
+        return (
+          <Handle
+            key={`out-${output.id}`}
+            type="source"
+            position={Position.Right}
+            id={output.id}
+            style={{
+              top,
+              right: -1,
+              width: 8,
+              height: 8,
+              borderRadius: 2,
+              background: t.color,
+              border: "none",
+            }}
+            title={`${output.label} (${output.dataType})`}
+          />
+        );
+      })}
     </div>
   );
 }

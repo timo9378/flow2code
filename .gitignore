@@ -40,3 +40,5 @@ coverage/
 docs/api/
 flow2code-*.tgz
 test.md
+.playwright-mcp/
+nul
