@@ -15,11 +15,11 @@ import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
-import { handleCompile, handleGenerate, handleImportOpenAPI } from "./handlers.js";
+import { handleCompile, handleGenerate, handleImportOpenAPI, handleDecompile } from "./handlers.js";
 
 // Re-export handlers for programmatic use
-export { handleCompile, handleGenerate, handleImportOpenAPI } from "./handlers.js";
-export type { ApiResponse, CompileRequest } from "./handlers.js";
+export { handleCompile, handleGenerate, handleImportOpenAPI, handleDecompile } from "./handlers.js";
+export type { ApiResponse, CompileRequest, DecompileRequest } from "./handlers.js";
 
 // ── Path Management ──
 // __dirname → package-internal assets (out/ static files)
@@ -232,6 +232,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
       return;
     }
 
+    if (pathname === "/api/decompile") {
+      const result = handleDecompile(body as import("./handlers.js").DecompileRequest);
+      sendJson(res, result.status, result.body);
+      return;
+    }
+
     sendJson(res, 404, { error: `Unknown API route: ${pathname}` });
     return;
   }
@@ -278,6 +284,8 @@ export function startServer(options: ServerOptions = {}) {
     });
   });
 
+  const hasUI = existsSync(join(staticDir, "index.html"));
+
   server.listen(port, host, () => {
     const url = `http://localhost:${port}`;
     if (options.onReady) {
@@ -287,7 +295,15 @@ export function startServer(options: ServerOptions = {}) {
       console.log(`  ├─ Local:   ${url}`);
       console.log(`  ├─ API:     ${url}/api/compile`);
       console.log(`  ├─ Static:  ${staticDir}`);
-      console.log(`  └─ Project: ${projectRoot}\n`);
+      console.log(`  └─ Project: ${projectRoot}`);
+      if (!hasUI) {
+        console.log();
+        console.log(`  ⚠️  UI files not found (out/index.html missing).`);
+        console.log(`     The API endpoints still work, but the visual editor won't load.`);
+        console.log(`     To fix: run "pnpm build:ui" in the flow2code source directory,`);
+        console.log(`     or reinstall from npm: npm i @timo9378/flow2code@latest`);
+      }
+      console.log();
     }
   });
 

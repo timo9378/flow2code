@@ -114,23 +114,39 @@ export function useFileOps(
   const handleDecompileTS = useCallback(() => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".ts,.js";
+    input.accept = ".ts,.tsx,.js,.jsx,.txt";
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const text = await file.text();
+
+      if (text.trim().length === 0) {
+        onOutput("❌ File is empty.");
+        return;
+      }
+
       try {
-        const { decompile } = await import("@/lib/compiler/decompiler");
-        const result = decompile(text, { fileName: file.name });
-        if (result.success && result.ir) {
-          loadIR(result.ir);
-          const confidencePercent = Math.round(result.confidence * 100);
+        // Decompile runs server-side (ts-morph requires Node.js)
+        const { getApiBase } = await import("@/lib/api-base");
+        const res = await fetch(`${getApiBase()}/api/decompile`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: text,
+            fileName: file.name.endsWith(".txt") ? file.name.replace(/\.txt$/, ".ts") : file.name,
+          }),
+        });
+        const data = await res.json();
+
+        if (data.success && data.ir) {
+          loadIR(data.ir as FlowIR);
+          const confidencePercent = Math.round((data.confidence ?? 0) * 100);
           let msg = `✅ TypeScript → IR decompilation successful\n`;
           msg += `📊 Confidence score: ${confidencePercent}%\n`;
           msg += `📁 ${file.name}\n`;
-          msg += `\nTotal ${result.ir.nodes.length} nodes, ${result.ir.edges.length} edges`;
-          if (result.errors?.length) {
-            msg += `\n\n⚠️ Warnings:\n${result.errors.join("\n")}`;
+          msg += `\nTotal ${data.ir.nodes?.length ?? 0} nodes, ${data.ir.edges?.length ?? 0} edges`;
+          if (data.errors?.length) {
+            msg += `\n\n⚠️ Warnings:\n${data.errors.join("\n")}`;
           }
           if (confidencePercent < 50) {
             msg += `\n\n💡 Low confidence score — manual review of node configuration recommended`;
@@ -138,12 +154,12 @@ export function useFileOps(
           onOutput(msg);
         } else {
           onOutput(
-            `❌ Decompilation failed:\n${result.errors?.join("\n") ?? "Unknown error"}`
+            `❌ Decompilation failed:\n${data.errors?.join("\n") ?? data.error ?? "Unknown error"}`
           );
         }
       } catch (err) {
         onOutput(
-          `❌ Parse error: ${err instanceof Error ? err.message : String(err)}`
+          `❌ Decompile error: ${err instanceof Error ? err.message : String(err)}\n\nMake sure the dev server is running (npx flow2code dev or pnpm dev).`
         );
       }
     };

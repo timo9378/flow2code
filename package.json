@@ -1,6 +1,6 @@
 {
   "name": "@timo9378/flow2code",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
   "type": "module",
   "sideEffects": false,
@@ -21,7 +21,8 @@
     "docs:api": "typedoc",
     "compile": "node --loader ts-node/esm src/cli/index.ts compile",
     "watch": "node --loader ts-node/esm src/cli/index.ts watch",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "pnpm build",
+    "postinstall": "node scripts/postinstall.cjs || true"
   },
   "bin": {
     "flow2code": "dist/cli.js"
@@ -45,6 +46,7 @@
   "files": [
     "dist",
     "out",
+    "scripts",
     "!dist/*.map",
     "README.md",
     "LICENSE",

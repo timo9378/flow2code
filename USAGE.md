@@ -10,6 +10,12 @@ A hands-on guide showing every user workflow — from visual-flow compilation to
 # Install globally (from npm)
 npm install -g @timo9378/flow2code
 
+# pnpm
+pnpm add -g @timo9378/flow2code
+
+# yarn
+yarn global add @timo9378/flow2code
+
 # Or use directly with npx
 npx @timo9378/flow2code --help
 ```

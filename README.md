@@ -61,7 +61,14 @@
 ### Install
 
 ```bash
+# npm
 npm install @timo9378/flow2code
+
+# pnpm
+pnpm add @timo9378/flow2code
+
+# yarn
+yarn add @timo9378/flow2code
 ```
 
 ### CLI Usage

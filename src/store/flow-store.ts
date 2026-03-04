@@ -64,6 +64,21 @@ interface FlowSnapshot {
 }
 
 // ============================================================
+// History Entry (for labeled history timeline)
+// ============================================================
+
+export interface HistoryEntry {
+  id: string;
+  label: string;
+  timestamp: string;
+  nodeCount: number;
+  edgeCount: number;
+  snapshot: FlowSnapshot;
+}
+
+const MAX_HISTORY_ENTRIES = 30;
+
+// ============================================================
 // Store State Interface
 // ============================================================
 
@@ -77,6 +92,12 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
 
   /** Flow creation time */
   flowCreatedAt: string | null;
+
+  // ── History (labeled snapshots) ──
+  flowHistory: HistoryEntry[];
+  pushHistory: (label: string) => void;
+  restoreFromHistory: (id: string) => void;
+  clearFlowHistory: () => void;
 
   // Node operations
   onNodesChange: OnNodesChange;
@@ -142,6 +163,43 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
     edges: [],
     selectedNodeId: null,
     flowCreatedAt: null,
+    flowHistory: [],
+
+    // ── History (labeled snapshots for timeline) ──
+    pushHistory: (label: string) => {
+      const { nodes, edges, flowHistory } = get();
+      if (nodes.length === 0 && edges.length === 0) return;
+      const entry: HistoryEntry = {
+        id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        label,
+        timestamp: new Date().toISOString(),
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        snapshot: createSnapshot(nodes, edges),
+      };
+      const newHistory = [...flowHistory, entry];
+      if (newHistory.length > MAX_HISTORY_ENTRIES) newHistory.shift();
+      set({ flowHistory: newHistory });
+    },
+
+    restoreFromHistory: (id: string) => {
+      const entry = get().flowHistory.find((h) => h.id === id);
+      if (!entry) return;
+      // Save current state before restoring
+      const { nodes, edges } = get();
+      if (nodes.length > 0) {
+        get().pushHistory("Before restore");
+      }
+      get().pushSnapshot(createSnapshot(nodes, edges));
+      set({
+        nodes: entry.snapshot.nodes.map((n) => ({ ...n, data: { ...n.data } })),
+        edges: entry.snapshot.edges.map((e) => ({ ...e })),
+      });
+    },
+
+    clearFlowHistory: () => {
+      set({ flowHistory: [] });
+    },
 
     // ── Zero-arg convenience methods (for UI / keyboard shortcuts) ──
     snapshot: () => {
@@ -295,12 +353,24 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
     },
 
     reset: () => {
+      // Save current state to history before clearing
+      if (get().nodes.length > 0) {
+        get().pushHistory("Before reset");
+      }
       _nodeCounter = 0;
       get().clearHistory();
       set({ nodes: [], edges: [], selectedNodeId: null, flowCreatedAt: null });
     },
 
     loadIR: (ir: FlowIR) => {
+      // ── Save current state to history + undo stack before replacing ──
+      const currentNodes = get().nodes;
+      if (currentNodes.length > 0) {
+        const metaName = (ir.meta as { name?: string } | undefined)?.name ?? "Untitled";
+        get().pushHistory(`Before loading "${metaName}"`);
+        get().pushSnapshot(createSnapshot(currentNodes, get().edges));
+      }
+
       _nodeCounter = ir.nodes.length;
 
       const nodes: Node<FlowNodeData>[] = ir.nodes.map((n, i) => {

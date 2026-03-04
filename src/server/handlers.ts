@@ -6,6 +6,7 @@
  */
 
 import { compile } from "../lib/compiler/compiler";
+import { decompile } from "../lib/compiler/decompiler";
 import { validateFlowIR } from "../lib/ir/validator";
 import { validateIRSecurity, formatSecurityReport } from "../lib/ir/security";
 import { convertOpenAPIToFlowIR } from "../lib/openapi/converter";
@@ -259,6 +260,68 @@ export function handleImportOpenAPI(body: { spec?: unknown; filter?: { tags?: st
     return {
       status: 500,
       body: { error: error instanceof Error ? error.message : "Internal Server Error" },
+    };
+  }
+}
+
+// ── POST /api/decompile ──
+
+export interface DecompileRequest {
+  code?: string;
+  fileName?: string;
+  functionName?: string;
+}
+
+/**
+ * Server-side decompile handler.
+ * ts-morph requires Node.js (node:fs), so decompile MUST run server-side.
+ */
+export function handleDecompile(body: DecompileRequest): ApiResponse {
+  try {
+    const { code, fileName, functionName } = body;
+
+    if (!code || typeof code !== "string") {
+      return { status: 400, body: { success: false, error: "Missing 'code' string in request body" } };
+    }
+
+    if (code.trim().length === 0) {
+      return { status: 400, body: { success: false, error: "Code is empty" } };
+    }
+
+    const result = decompile(code, {
+      fileName: fileName ?? "input.ts",
+      functionName,
+      audit: true,
+    });
+
+    if (!result.success) {
+      return {
+        status: 422,
+        body: {
+          success: false,
+          errors: result.errors ?? ["Decompile failed"],
+          confidence: result.confidence,
+        },
+      };
+    }
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        ir: result.ir as unknown,
+        confidence: result.confidence,
+        errors: result.errors ?? [],
+        audit: (result.audit ?? []) as unknown,
+      },
+    };
+  } catch (err) {
+    return {
+      status: 500,
+      body: {
+        success: false,
+        error: `Decompile error: ${err instanceof Error ? err.message : String(err)}`,
+      },
     };
   }
 }

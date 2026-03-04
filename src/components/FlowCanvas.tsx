@@ -110,7 +110,7 @@ export default function FlowCanvas() {
           <NodeLibrary />
         </ErrorBoundary>
 
-        {/* Center: Canvas */}
+        {/* Center: Canvas + Config Panel overlay */}
         <FlowErrorBoundary>
           <div className="flex-1 min-w-0 relative">
             <ReactFlow
@@ -163,13 +163,13 @@ export default function FlowCanvas() {
               color="oklch(0.3 0 0)"
             />
           </ReactFlow>
+
+          {/* n8n-style overlay config panel */}
+          <ErrorBoundary name="ConfigPanel">
+            <ConfigPanel />
+          </ErrorBoundary>
         </div>
         </FlowErrorBoundary>
-
-        {/* Right: Configuration Panel */}
-        <ErrorBoundary name="ConfigPanel">
-          <ConfigPanel />
-        </ErrorBoundary>
       </div>
     </div>
   );

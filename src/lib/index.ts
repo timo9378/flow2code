@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * import { compile } from "flow2code/compiler";
+ * import { compile } from "@timo9378/flow2code/compiler";
  *
  * const result = compile(ir, { platform: "nextjs" });
  * if (result.success) {

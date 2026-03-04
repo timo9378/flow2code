@@ -16,6 +16,7 @@ import { useAIGenerate } from "@/hooks/use-ai-generate";
 import { useFileOps } from "@/hooks/use-file-ops";
 import ApiSandbox from "./ApiSandbox";
 import AISettingsDialog from "./AISettingsDialog";
+import HistoryPanel from "./HistoryPanel";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,7 @@ export default function Toolbar() {
   const [sandboxMethod, setSandboxMethod] = useState("GET");
   const [sandboxPath, setSandboxPath] = useState("/api/hello");
   const [showAISettings, setShowAISettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const aiSettings = useAISettingsStore();
 
@@ -216,6 +218,16 @@ export default function Toolbar() {
           <TooltipContent>Open API test sandbox</TooltipContent>
         </Tooltip>
 
+        {/* History */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={() => setShowHistory(true)}>
+              📜 History
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>View flow history and restore previous states</TooltipContent>
+        </Tooltip>
+
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -262,12 +274,12 @@ export default function Toolbar() {
 
             {/* Streaming Live Preview */}
             {ai.aiLoading && ai.aiStreamContent && (
-              <div className="bg-secondary/50 rounded-md p-3">
+              <div className="bg-secondary/50 rounded-md p-3 overflow-hidden">
                 <div className="text-[10px] text-muted-foreground mb-1 font-semibold">📡 Live Stream</div>
                 <ScrollArea className="max-h-[200px] w-full">
-                  <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words overflow-hidden">
-                    {ai.aiStreamContent.length > 500 ? `...${ai.aiStreamContent.slice(-500)}` : ai.aiStreamContent}
-                  </pre>
+                  <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words">{ai.aiStreamContent.length > 500 ? `...${ai.aiStreamContent.slice(-500)}` : ai.aiStreamContent}</pre>
+                  <ScrollBar orientation="vertical" />
+                  <ScrollBar orientation="horizontal" />
                 </ScrollArea>
               </div>
             )}
@@ -390,6 +402,19 @@ export default function Toolbar() {
 
       {/* ── AI Settings Dialog ── */}
       <AISettingsDialog open={showAISettings} onOpenChange={setShowAISettings} />
+
+      {/* ── History Dialog ── */}
+      <Dialog open={showHistory} onOpenChange={setShowHistory}>
+        <DialogContent className="sm:max-w-[520px] max-h-[80vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>📜 Flow History</DialogTitle>
+            <DialogDescription>
+              Browse and restore previous flow states. History is automatically saved on AI generation, file load, and reset.
+            </DialogDescription>
+          </DialogHeader>
+          <HistoryPanel />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
