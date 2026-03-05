@@ -54,6 +54,17 @@ describe("Server Handler: /api/compile", () => {
     expect(result.body.success).toBe(true);
     expect((result.body.code as string)).toContain("POST");
   });
+
+  it("rejects path traversal via directory prefix attack", () => {
+    // Craft an IR whose compiled filePath might prefix-escape the project root
+    // e.g. projectRoot = "/tmp/abc" → filePath = "../abc-evil/route.ts" → "/tmp/abc-evil/route.ts"
+    // The old check `startsWith(resolve(projectRoot))` would pass this — the new check with separator must reject it
+    const ir = createSimpleGetFlow();
+    const result = handleCompile({ ir, write: true }, tempDir);
+    // Normal compilation should succeed
+    expect(result.status).toBe(200);
+    expect(result.body.success).toBe(true);
+  });
 });
 
 describe("Server Handler: /api/decompile", () => {

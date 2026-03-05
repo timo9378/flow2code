@@ -145,10 +145,10 @@ const MAX_UNDO_HISTORY = 50;
 /** Module-internal counter — not exposed as global mutable state */
 let _nodeCounter = 0;
 
-/** Create a deep-copy snapshot of current nodes/edges */
+/** Create a deep-copy snapshot of current nodes/edges (structuredClone prevents nested reference sharing) */
 function createSnapshot(nodes: Node<FlowNodeData>[], edges: Edge[]): FlowSnapshot {
   return {
-    nodes: nodes.map((n) => ({ ...n, data: { ...n.data } })),
+    nodes: nodes.map((n) => ({ ...n, data: structuredClone(n.data) })),
     edges: edges.map((e) => ({ ...e })),
   };
 }

@@ -55,8 +55,10 @@ export function handleCompile(body: CompileRequest, projectRoot: string): ApiRes
     if (shouldWrite && result.filePath && result.code) {
       const fullPath = resolve(join(projectRoot, result.filePath));
 
-      // Security: prevent path traversal outside project root
-      if (!fullPath.startsWith(resolve(projectRoot))) {
+      // Security: prevent path traversal outside project root (append separator to prevent prefix attacks)
+      const resolvedRoot = resolve(projectRoot);
+      const sep = resolvedRoot.endsWith('/') || resolvedRoot.endsWith('\\') ? '' : (process.platform === 'win32' ? '\\' : '/');
+      if (!fullPath.startsWith(resolvedRoot + sep)) {
         return {
           status: 400,
           body: { success: false, error: "Output path escapes project root" },

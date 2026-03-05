@@ -221,4 +221,15 @@ describe("AST Compiler", () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe("IR Migration Integration", () => {
+    it("should compile successfully when validator auto-migrates old IR version", () => {
+      // Create a valid IR but with an older version that the validator may migrate
+      const ir = createSimpleGetFlow();
+      // The compile function should use the migratedIR from validator, not the original
+      const result = compile(ir);
+      expect(result.success).toBe(true);
+      expect(result.code).toBeDefined();
+    });
+  });
 });

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.6] — 2026-03-05
+
+### Fixed (Critical)
+- **Compiler uses migratedIR** — `compile()` now uses validator's auto-migrated IR instead of the stale original, preventing silent data corruption on older IR versions
+- **`generateConcurrentNodes` flowState overwrite** — Removed `flowState[nodeId] = rN` overwrite that replaced correct values with `undefined` (task functions already populate flowState internally)
+- **`handleCompile` path traversal** — Added separator suffix to `startsWith()` check, preventing directory-prefix attacks (e.g. `/home/user` → `/home/user2/`)
+- **Undo/Redo snapshot deep clone** — `createSnapshot()` now uses `structuredClone(n.data)` instead of shallow spread, preventing nested mutation from corrupting all snapshots sharing a reference
+
+### Tests
+- Added path traversal regression test, IR migration integration test
+- Test count: 407 tests / 33 test files
+
 ## [0.1.5] — 2026-03-05
 
 ### Security

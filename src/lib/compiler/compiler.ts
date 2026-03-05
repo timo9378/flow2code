@@ -159,7 +159,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     pluginRegistry.registerAll(options.plugins);
   }
 
-  // 1. Validate IR
+  // 1. Validate IR (auto-migrates older versions)
   const validation = validateFlowIR(ir);
   if (!validation.valid) {
     return {
@@ -168,10 +168,13 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     };
   }
 
+  // Use migrated IR when validator performed auto-migration (e.g. version upgrade)
+  const workingIR: FlowIR = validation.migrated && validation.migratedIR ? validation.migratedIR : ir;
+
   // 2. Topological sort
   let plan: ExecutionPlan;
   try {
-    plan = topologicalSort(ir);
+    plan = topologicalSort(workingIR);
   } catch (err) {
     return {
       success: false,
@@ -180,13 +183,13 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   }
 
   // 3. Build context
-  const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
+  const nodeMap = new Map(workingIR.nodes.map((n) => [n.id, n]));
   const platformName = options?.platform ?? "nextjs";
   const platform = getPlatform(platformName);
-  const symbolTable = buildSymbolTable(ir);
+  const symbolTable = buildSymbolTable(workingIR);
 
   const context: CompilerContext = {
-    ir,
+    ir: workingIR,
     plan,
     nodeMap,
     envVars: new Set(),
@@ -205,10 +208,10 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   };
 
   // Detect concurrency: if execution plan has any concurrent steps, enable DAG scheduling
-  const trigger = ir.nodes.find((n) => n.category === NodeCategory.TRIGGER)!;
+  const trigger = workingIR.nodes.find((n) => n.category === NodeCategory.TRIGGER)!;
 
   // ── Pre-compute control flow child block nodes (fixes DAG duplicate generation + control flow leaks) ──
-  const preComputedBlockNodes = computeControlFlowDescendants(ir, trigger.id);
+  const preComputedBlockNodes = computeControlFlowDescendants(workingIR, trigger.id);
   for (const nodeId of preComputedBlockNodes) {
     context.childBlockNodeIds.add(nodeId);
     context.symbolTableExclusions.add(nodeId);
@@ -220,7 +223,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   if (hasConcurrency) {
     context.dagMode = true;
     // In DAG mode, Symbol Table aliases for all non-trigger nodes are not visible at top level
-    for (const node of ir.nodes) {
+    for (const node of workingIR.nodes) {
       if (node.category !== NodeCategory.TRIGGER) {
         context.symbolTableExclusions.add(node.id);
       }
@@ -243,10 +246,10 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
   const filePath = platform.getOutputFilePath(trigger);
 
   // Collect dependencies
-  collectRequiredPackages(ir, context);
+  collectRequiredPackages(workingIR, context);
 
   // Build Source Map
-  const sourceMap = buildSourceMap(code, ir, filePath);
+  const sourceMap = buildSourceMap(code, workingIR, filePath);
 
   const dependencies: DependencyReport = {
     all: [...context.requiredPackages].sort(),
@@ -685,15 +688,12 @@ function generateConcurrentNodes(
     writer.writeLine(";");
   }
 
+  // Execute all tasks concurrently — each task writes its result to flowState internally
   writer.writeLine(
-    `const [${taskNames.map((_, i) => `r${i}`).join(", ")}] = await Promise.all([${taskNames.map((t) => `${t}()`).join(", ")}]);`
+    `await Promise.all([${taskNames.map((t) => `${t}()`).join(", ")}]);`
   );
 
-  activeNodeIds.forEach((nodeId, i) => {
-    writer.writeLine(`flowState['${nodeId}'] = r${i};`);
-  });
-
-  // Generate named variable aliases
+  // Generate named variable aliases (flowState was already populated by each task)
   activeNodeIds.forEach((nodeId) => {
     const varName = context.symbolTable.getVarName(nodeId);
     writer.writeLine(`const ${varName} = flowState['${nodeId}'];`);
