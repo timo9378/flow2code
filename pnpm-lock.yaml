@@ -14,6 +14,9 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
       ts-morph:
         specifier: ^27.0.2
         version: 27.0.2

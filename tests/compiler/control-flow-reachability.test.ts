@@ -292,10 +292,10 @@ describe("Boss 3: DAG Promise Safety", () => {
     expect(promiseDecls).toBeTruthy();
     expect(promiseDecls!.length).toBeGreaterThan(0);
 
-    // Each promise should have a corresponding .catch
+    // Each promise should have a corresponding .catch with error logging
     for (const decl of promiseDecls!) {
       const varName = decl.match(/const (p_\w+)/)?.[1];
-      expect(code).toContain(`${varName}.catch(() => {`);
+      expect(code).toContain(`${varName}.catch((err) => { console.error("[Flow2Code DAG Error]", err); })`);
     }
   });
 

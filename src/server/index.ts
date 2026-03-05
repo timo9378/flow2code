@@ -11,11 +11,12 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { join, extname, dirname } from "node:path";
+import { join, extname, dirname, resolve, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
 import { handleCompile, handleGenerate, handleImportOpenAPI, handleDecompile } from "./handlers.js";
+import { logger } from "../lib/logger.js";
 
 // Re-export handlers for programmatic use
 export { handleCompile, handleGenerate, handleImportOpenAPI, handleDecompile } from "./handlers.js";
@@ -151,8 +152,18 @@ async function parseJsonBody(req: IncomingMessage): Promise<unknown> {
 // ── Static File Server ──
 
 async function serveStatic(staticDir: string, pathname: string, res: ServerResponse): Promise<boolean> {
+  // Decode URI components (handles spaces, CJK chars, etc.)
+  const decodedPath = decodeURIComponent(pathname);
+
   // Map / → /index.html
-  let filePath = join(staticDir, pathname === "/" ? "index.html" : pathname);
+  let filePath = join(staticDir, decodedPath === "/" ? "index.html" : decodedPath);
+
+  // 【Security】Prevent path traversal attacks (e.g. ../../etc/passwd, %2e%2e%2f)
+  const resolvedPath = resolve(filePath);
+  const resolvedStaticDir = resolve(staticDir);
+  if (!resolvedPath.startsWith(resolvedStaticDir + (resolvedStaticDir.endsWith('/') || resolvedStaticDir.endsWith('\\') ? '' : (process.platform === 'win32' ? '\\' : '/')))) {
+    return false;
+  }
 
   // If path has no extension, try .html (for Next.js export pages)
   if (!extname(filePath)) {
@@ -278,7 +289,7 @@ export function startServer(options: ServerOptions = {}) {
 
   const server = createServer((req, res) => {
     handleRequest(req, res, staticDir, projectRoot).catch((err) => {
-      console.error("[flow2code] Internal error:", err);
+      logger.error("Internal error:", err);
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Internal Server Error");
     });
@@ -291,19 +302,20 @@ export function startServer(options: ServerOptions = {}) {
     if (options.onReady) {
       options.onReady(url);
     } else {
-      console.log(`\n  🚀 Flow2Code Dev Server`);
-      console.log(`  ├─ Local:   ${url}`);
-      console.log(`  ├─ API:     ${url}/api/compile`);
-      console.log(`  ├─ Static:  ${staticDir}`);
-      console.log(`  └─ Project: ${projectRoot}`);
+      logger.blank();
+      logger.info("Flow2Code Dev Server");
+      logger.kv("Local:", url);
+      logger.kv("API:", `${url}/api/compile`);
+      logger.kv("Static:", staticDir);
+      logger.kvLast("Project:", projectRoot);
       if (!hasUI) {
-        console.log();
-        console.log(`  ⚠️  UI files not found (out/index.html missing).`);
-        console.log(`     The API endpoints still work, but the visual editor won't load.`);
-        console.log(`     To fix: run "pnpm build:ui" in the flow2code source directory,`);
-        console.log(`     or reinstall from npm: npm i @timo9378/flow2code@latest`);
+        logger.blank();
+        logger.warn("UI files not found (out/index.html missing).");
+        logger.raw("     The API endpoints still work, but the visual editor won't load.");
+        logger.raw('     To fix: run "pnpm build:ui" in the flow2code source directory,');
+        logger.raw("     or reinstall from npm: npm i @timo9378/flow2code@latest");
       }
-      console.log();
+      logger.blank();
     }
   });
 

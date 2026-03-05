@@ -1,6 +1,6 @@
 {
   "name": "@timo9378/flow2code",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
   "type": "module",
   "sideEffects": false,
@@ -8,8 +8,7 @@
   "module": "./dist/compiler.js",
   "types": "./dist/compiler.d.ts",
   "scripts": {
-    "dev": "next dev --webpack",
-    "dev:turbo": "next dev --turbopack",
+    "dev": "next dev --turbopack",
     "dev:server": "tsx src/server/index.ts",
     "build": "pnpm build:ui && pnpm build:cli",
     "build:ui": "next build",
@@ -85,6 +84,7 @@
   "dependencies": {
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",
+    "picocolors": "^1.1.1",
     "ts-morph": "^27.0.2",
     "yaml": "^2.8.2"
   },

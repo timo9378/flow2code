@@ -614,8 +614,8 @@ function generateNodeChainDAG(
       generateNodeBody(writer, node, context);
     });
     writer.writeLine(`)();`);
-    // Prevent Unhandled Promise Rejection (errors still propagate via downstream await)
-    writer.writeLine(`${promiseVar}.catch(() => {});`);
+    // Prevent Unhandled Promise Rejection (errors are logged, and still propagate via downstream await)
+    writer.writeLine(`${promiseVar}.catch((err) => { console.error("[Flow2Code DAG Error]", err); });`);
     writer.blankLine();
   }
 
@@ -730,7 +730,18 @@ function generateNodeBody(
 
   if (plugin) {
     const pluginCtx = createPluginContext(context);
-    plugin.generate(node, writer, pluginCtx);
+    try {
+      plugin.generate(node, writer, pluginCtx);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
+      throw new Error(
+        `[flow2code] Plugin "${node.nodeType}" threw an error while generating node "${node.label}" (${node.id}):\n` +
+        `  ${errMsg}` +
+        (stack ? `\n  Stack: ${stack}` : ""),
+        { cause: err }
+      );
+    }
   } else {
     throw new Error(
       `[flow2code] Unsupported node type: "${node.nodeType}". ` +
@@ -746,6 +757,18 @@ function generateNodeBody(
 function createPluginContext(
   context: CompilerContext
 ): PluginContext & { __platformResponse?: PlatformAdapter["generateResponse"] } {
+  // Track child block mutations locally, apply to context in a single pass
+  // (ensures unidirectional data flow — plugins don't scatter-write to global context)
+  const pendingChildBlockIds: NodeId[] = [];
+
+  const applyChildBlockRegistration = (nodeId: NodeId): void => {
+    pendingChildBlockIds.push(nodeId);
+    // Apply immediately (backward-compatible behavior), but via a centralized path
+    context.childBlockNodeIds.add(nodeId);
+    context.symbolTableExclusions.add(nodeId);
+    context.generatedBlockNodeIds.add(nodeId);
+  };
+
   return {
     ir: context.ir,
     nodeMap: context.nodeMap,
@@ -779,10 +802,8 @@ function createPluginContext(
     },
 
     generateChildNode(writer: CodeBlockWriter, node: FlowNode): void {
-      // Mark this node as "child block generated" to prevent top-level duplicate + Symbol Table alias leak
-      context.childBlockNodeIds.add(node.id);
-      context.symbolTableExclusions.add(node.id);
-      context.generatedBlockNodeIds.add(node.id);
+      // Register via centralized path (not scatter-writing to context)
+      applyChildBlockRegistration(node.id);
       writer.writeLine(`// --- ${node.label} (${node.nodeType}) [${node.id}] ---`);
       generateNodeBody(writer, node, context);
 
@@ -848,6 +869,14 @@ function collectRequiredPackages(ir: FlowIR, context: CompilerContext): void {
 // Source Map
 // ============================================================
 
+/**
+ * Build source map by scanning for node marker comments.
+ *
+ * Uses a robust indexOf-based scanner (not regex) so it survives
+ * Prettier / ESLint reformatting as long as the marker comments
+ * remain on a single line. The matching looks for the unique
+ * `[nodeId]` suffix token instead of the full line pattern.
+ */
 function buildSourceMap(
   code: string,
   ir: FlowIR,
@@ -856,34 +885,44 @@ function buildSourceMap(
   const lines = code.split("\n");
   const mappings: Record<string, { startLine: number; endLine: number }> = {};
 
-  // Match: // --- Label (nodeType) [nodeId] ---
-  const nodeMarkerRegex = /^[\s]*\/\/ --- .+? \(.+?\) \[(.+?)\] ---$/;
+  // Build a set of valid node IDs for fast lookup
+  const validNodeIds = new Set(ir.nodes.map((n) => n.id));
 
+  // Scan for marker comments: lines containing `[nodeId] ---`
+  // This is more robust than a full-line regex — only the `[id] ---` suffix matters
   let currentNodeId: string | null = null;
   let currentStartLine = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const lineNum = i + 1;
-    const match = lines[i].match(nodeMarkerRegex);
+    const line = lines[i];
 
-    if (match) {
-      if (currentNodeId) {
-        mappings[currentNodeId] = {
-          startLine: currentStartLine,
-          endLine: lineNum - 1,
-        };
-      }
+    // Quick guard: must contain the marker suffix pattern
+    const bracketOpen = line.indexOf("[");
+    const bracketClose = line.indexOf("] ---", bracketOpen);
+    if (bracketOpen === -1 || bracketClose === -1) continue;
 
-      const [, nodeId] = match;
-      if (ir.nodes.some((n) => n.id === nodeId)) {
-        currentNodeId = nodeId;
-        currentStartLine = lineNum;
-      } else {
-        currentNodeId = null;
-      }
+    // Must also be a comment line
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith("//")) continue;
+
+    // Extract the nodeId between [ and ] ---
+    const candidateId = line.slice(bracketOpen + 1, bracketClose);
+    if (!validNodeIds.has(candidateId)) continue;
+
+    // Found a valid marker — close previous range
+    if (currentNodeId) {
+      mappings[currentNodeId] = {
+        startLine: currentStartLine,
+        endLine: lineNum - 1,
+      };
     }
+
+    currentNodeId = candidateId;
+    currentStartLine = lineNum;
   }
 
+  // Close last range
   if (currentNodeId) {
     mappings[currentNodeId] = {
       startLine: currentStartLine,
@@ -891,6 +930,7 @@ function buildSourceMap(
     };
   }
 
+  // Fallback: if trigger node was not mapped (no marker comment), find function signature
   const trigger = ir.nodes.find((n) => n.category === NodeCategory.TRIGGER);
   if (trigger && !mappings[trigger.id]) {
     for (let i = 0; i < lines.length; i++) {

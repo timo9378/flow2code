@@ -12,10 +12,12 @@
 
 import { Command } from "commander";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from "node:fs";
+import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { join, dirname, resolve, extname, basename } from "node:path";
 import { watch } from "chokidar";
 import { fileURLToPath } from "node:url";
 import { compile, traceLineToNode } from "../lib/compiler/compiler";
+import { logger } from "../lib/logger";
 import type { SourceMap } from "../lib/compiler/compiler";
 import type { PlatformName } from "../lib/compiler/platforms/types";
 import { validateFlowIR } from "../lib/ir/validator";
@@ -276,19 +278,34 @@ program
       }
     );
 
-    /** Determine the file's flow project and compile */
+    /** Determine the file's flow project and compile (with debounce) */
+    const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    const DEBOUNCE_MS = 150;
+
     const handleChange = (filePath: string) => {
-      if (filePath.endsWith(".flow.json")) {
-        compileFile(filePath, projectRoot);
-      } else if (filePath.endsWith(".yaml")) {
-        // Find the flow root directory (directory containing meta.yaml)
+      // Determine the compile key (group YAML files by their flow root)
+      let compileKey = filePath;
+      if (filePath.endsWith(".yaml")) {
         let dir = dirname(filePath);
         if (basename(dir) === "nodes") dir = dirname(dir);
-        const metaPath = join(dir, "meta.yaml");
-        if (existsSync(metaPath)) {
-          compileFlowDir(dir, projectRoot);
-        }
+        compileKey = dir;
       }
+
+      // Debounce: cancel previous timer for the same key
+      const existing = pendingTimers.get(compileKey);
+      if (existing) clearTimeout(existing);
+
+      pendingTimers.set(compileKey, setTimeout(() => {
+        pendingTimers.delete(compileKey);
+        if (filePath.endsWith(".flow.json")) {
+          compileFileAsync(filePath, projectRoot);
+        } else if (filePath.endsWith(".yaml")) {
+          const metaPath = join(compileKey, "meta.yaml");
+          if (existsSync(metaPath)) {
+            compileFlowDirAsync(compileKey, projectRoot);
+          }
+        }
+      }, DEBOUNCE_MS));
     };
 
     watcher.on("change", handleChange);
@@ -627,7 +644,13 @@ program
       }
     }
 
-    const result = validateEnvVars(ir, declaredVars);
+    // Also include system environment variables (e.g. CI/CD pipeline injections)
+    const systemEnvKeys = Object.keys(process.env).filter(
+      (k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k)
+    );
+    const allDeclaredVars = [...new Set([...declaredVars, ...systemEnvKeys])];
+
+    const result = validateEnvVars(ir, allDeclaredVars);
     console.log(formatEnvValidationReport(result));
 
     if (!result.valid) {
@@ -671,14 +694,22 @@ program
   .description("Start Flow2Code visual editor (standalone dev server)")
   .option("-p, --port <port>", "Server port", "3100")
   .option("--no-open", "Do not auto-open browser")
-  .action(startDevServer);
+  .option("--silent", "Suppress non-error output (for CI/CD)")
+  .action((opts) => {
+    if (opts.silent) logger.level = "silent";
+    startDevServer(opts);
+  });
 
 program
   .command("ui")
   .description("Start Flow2Code visual editor (alias for dev)")
   .option("-p, --port <port>", "Server port", "3100")
   .option("--no-open", "Do not auto-open browser")
-  .action(startDevServer);
+  .option("--silent", "Suppress non-error output (for CI/CD)")
+  .action((opts) => {
+    if (opts.silent) logger.level = "silent";
+    startDevServer(opts);
+  });
 
 // ============================================================
 // Helper Functions
@@ -779,6 +810,96 @@ function generateEnvExample(): void {
       "utf-8"
     );
     console.log("📝 Generated .env.example");
+  }
+}
+
+// ============================================================
+// Async Compile Helpers (for watch mode — non-blocking I/O)
+// ============================================================
+
+async function compileFileAsync(filePath: string, projectRoot: string): Promise<void> {
+  const startTime = Date.now();
+
+  try {
+    const raw = await readFile(filePath, "utf-8");
+    const ir = JSON.parse(raw) as FlowIR;
+
+    const validation = validateFlowIR(ir);
+    if (!validation.valid) {
+      console.error(`❌ [${filePath}] Validation failed:`);
+      validation.errors.forEach((e) => console.error(`  ${e.message}`));
+      return;
+    }
+
+    const result = compile(ir);
+    if (!result.success) {
+      console.error(`❌ [${filePath}] Compilation failed:`);
+      result.errors?.forEach((e) => console.error(`  ${e}`));
+      return;
+    }
+
+    if (!result.code || !result.filePath) {
+      console.error(`❌ [${filePath}] Compile result missing code or filePath`);
+      return;
+    }
+    const outputPath = join(projectRoot, result.filePath);
+    const outputDir = dirname(outputPath);
+
+    if (!existsSync(outputDir)) {
+      await mkdir(outputDir, { recursive: true });
+    }
+
+    await writeFile(outputPath, result.code, "utf-8");
+
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ [${elapsed}ms] ${filePath} → ${outputPath}`);
+  } catch (err) {
+    console.error(
+      `❌ [${filePath}] Error: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+/** Async compile from YAML directory — used by watch */
+async function compileFlowDirAsync(dirPath: string, projectRoot: string): Promise<void> {
+  const startTime = Date.now();
+  try {
+    const project = loadFlowProject(dirPath);
+    const ir = project.ir;
+
+    const validation = validateFlowIR(ir);
+    if (!validation.valid) {
+      console.error(`❌ [${dirPath}] Validation failed:`);
+      validation.errors.forEach((e) => console.error(`  ${e.message}`));
+      return;
+    }
+
+    const result = compile(ir);
+    if (!result.success) {
+      console.error(`❌ [${dirPath}] Compilation failed:`);
+      result.errors?.forEach((e) => console.error(`  ${e}`));
+      return;
+    }
+
+    if (!result.code || !result.filePath) {
+      console.error(`❌ [${dirPath}] Compile result missing code or filePath`);
+      return;
+    }
+    const outputPath = join(projectRoot, result.filePath);
+    const outputDir = dirname(outputPath);
+
+    if (!existsSync(outputDir)) {
+      await mkdir(outputDir, { recursive: true });
+    }
+
+    await writeFile(outputPath, result.code, "utf-8");
+
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ [${elapsed}ms] ${dirPath}/ → ${outputPath}`);
+  } catch (err) {
+    console.error(
+      `❌ [${dirPath}] Error: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 }
 
