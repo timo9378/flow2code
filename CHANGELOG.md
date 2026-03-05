@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.8] — 2026-03-05
+
+### Security
+- **HTTP server request timeout** — Added `headersTimeout` (30s) and `requestTimeout` (60s) to prevent Slowloris-style DoS attacks (#16)
+- **Server `headersSent` guard** — Error handler now checks `res.headersSent` before writing 500 response, preventing `ERR_HTTP_HEADERS_SENT` crash (#14)
+- **Validate IR from server** — `handleDecompileTS` and `handleSelectOpenAPIFlow` now call `validateFlowIR()` before `loadIR()`, matching `handleLoadIRFromJSON` behavior (#22)
+
+### Fixed
+- **Validator iterative DFS** — Replaced recursive `dfs()` with explicit stack-based iteration to prevent stack overflow on deep graphs (5000+ nodes) (#11)
+- **`isFetchCall` AST-based detection** — Replaced `text.includes("fetch(")` string matching with proper AST walk using `CallExpression` + `Identifier` node types (#12)
+- **`hasAwaitExpression` AST walk** — Replaced `text.startsWith("await ")` fallback with recursive `forEachChild` AST traversal to detect nested awaits (#23)
+- **`trackVariableUses` strip strings** — Expression string now has string literals (`"..."`, `'...'`, `` `...` ``) stripped before identifier regex scan, preventing false-positive variable references (#13)
+- **`_nodeCounter` max ID parse** — After `loadIR`, counter is set to max numeric ID from existing node IDs (not `nodes.length`), preventing ID collisions (#15)
+- **`resolveTriggerRef` cache** — Trigger node lookup cached per IR reference, eliminating O(N) linear scan on every `$trigger` expression evaluation (#17)
+- **`$input` ambiguity warning** — `resolveInputRef` now emits `console.warn` when a node has multiple non-trigger upstream edges, identifying which source is used (#18)
+- **OpenAPI tags filter** — `handleImportOpenAPI` now implements `filter.tags` (case-insensitive match against `meta.tags`), which was previously accepted but silently ignored (#20)
+- **Clipboard fallback** — `handleExportIR` now catches clipboard write errors gracefully instead of letting promise rejection propagate (#21)
+
+### Added
+- **`createPlatformRegistry` factory** — New function for creating isolated platform registry instances, enabling safe test parallelism and concurrent compilation (#19)
+
+### Tests
+- Added iterative DFS deep graph test (5000 nodes, verifies no stack overflow)
+- Test count: 411 tests / 33 test files
+
 ## [0.1.7] — 2026-03-05
 
 ### Performance

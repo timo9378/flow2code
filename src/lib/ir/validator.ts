@@ -212,28 +212,40 @@ function detectCycles(
     color.set(node.id, WHITE);
   }
 
-  function dfs(nodeId: NodeId): void {
-    color.set(nodeId, GRAY);
+  // Iterative DFS using explicit stack to avoid stack overflow on deep graphs
+  for (const node of nodes) {
+    if (color.get(node.id) !== WHITE) continue;
 
-    for (const neighbor of adjacency.get(nodeId) ?? []) {
+    // Stack stores [nodeId, neighborIndex] pairs
+    const stack: [NodeId, number][] = [[node.id, 0]];
+    color.set(node.id, GRAY);
+
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      const [currentId, idx] = top;
+      const neighbors = adjacency.get(currentId) ?? [];
+
+      if (idx >= neighbors.length) {
+        // All neighbors processed — mark completed
+        color.set(currentId, BLACK);
+        stack.pop();
+        continue;
+      }
+
+      // Advance neighbor index
+      top[1] = idx + 1;
+      const neighbor = neighbors[idx];
+
       if (color.get(neighbor) === GRAY) {
         errors.push({
           code: "CYCLE_DETECTED",
-          message: `Cycle detected: node "${nodeId}" → "${neighbor}"`,
-          nodeId,
+          message: `Cycle detected: node "${currentId}" → "${neighbor}"`,
+          nodeId: currentId,
         });
-        // Don't return — continue to find all cycles
       } else if (color.get(neighbor) === WHITE) {
-        dfs(neighbor);
+        color.set(neighbor, GRAY);
+        stack.push([neighbor, 0]);
       }
-    }
-
-    color.set(nodeId, BLACK);
-  }
-
-  for (const node of nodes) {
-    if (color.get(node.id) === WHITE) {
-      dfs(node.id);
     }
   }
 

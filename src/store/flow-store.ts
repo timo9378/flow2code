@@ -394,7 +394,11 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
       }
       get().pushSnapshot(createSnapshot(currentNodes, currentEdges));
 
-      _nodeCounter = ir.nodes.length;
+      // Parse max numeric ID from existing node IDs to prevent collisions
+      _nodeCounter = ir.nodes.reduce((max, n) => {
+        const match = n.id.match(/^node_(\d+)/);
+        return match ? Math.max(max, Number(match[1])) : max;
+      }, ir.nodes.length);
 
       const nodes: Node<FlowNodeData>[] = ir.nodes.map((n, i) => {
         const defaults = getDefaultPorts(n.nodeType);

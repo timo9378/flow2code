@@ -248,6 +248,13 @@ export function handleImportOpenAPI(body: { spec?: unknown; filter?: { tags?: st
         paths.some((p) => flow.meta.name.includes(p))
       );
     }
+    if (body.filter?.tags && Array.isArray(body.filter.tags)) {
+      const tags = body.filter.tags.map((t) => t.toLowerCase());
+      filteredFlows = filteredFlows.filter((flow) => {
+        const flowTags = ((flow.meta as Record<string, unknown>).tags as string[] | undefined) ?? [];
+        return flowTags.some((t) => tags.includes(t.toLowerCase()));
+      });
+    }
 
     return {
       status: 200,

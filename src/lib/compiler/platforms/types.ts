@@ -108,6 +108,31 @@ export type PlatformName = BuiltinPlatformName | (string & {});
 const platformRegistry = new Map<string, () => PlatformAdapter>();
 
 /**
+ * Create an isolated platform registry instance.
+ * Useful for testing or concurrent compilation with different platform sets.
+ */
+export function createPlatformRegistry() {
+  const registry = new Map<string, () => PlatformAdapter>();
+  return {
+    register(name: PlatformName, factory: () => PlatformAdapter): void {
+      registry.set(name, factory);
+    },
+    get(name: PlatformName): PlatformAdapter {
+      const factory = registry.get(name);
+      if (!factory) {
+        throw new Error(
+          `Unknown platform "${name}". Available: ${[...registry.keys()].join(", ")}`
+        );
+      }
+      return factory();
+    },
+    available(): string[] {
+      return [...registry.keys()];
+    },
+  };
+}
+
+/**
  * Register a custom platform adapter.
  *
  * Allows users to extend the compiler's supported target platforms (e.g. Fastify, Koa, etc.).

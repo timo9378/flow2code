@@ -109,7 +109,13 @@ export function useFileOps(
 
   const handleSelectOpenAPIFlow = useCallback(
     (flow: FlowIR): string => {
-      loadIR(flow);
+      // Validate before loading
+      const validation = validateFlowIR(flow);
+      if (!validation.valid) {
+        const warnLines = validation.errors.map((err) => `  [${err.code}] ${err.message}`).join("\n");
+        onOutput(`⚠️ OpenAPI IR has validation warnings:\n${warnLines}`);
+      }
+      loadIR(validation.migratedIR ?? flow);
       setShowOpenAPIDialog(false);
       const msg = `✅ Endpoint loaded: "${flow.meta?.name ?? "Untitled"}"\nTotal ${flow.nodes?.length ?? 0} nodes`;
       onOutput(msg);
@@ -146,7 +152,13 @@ export function useFileOps(
         const data = await res.json();
 
         if (data.success && data.ir) {
-          loadIR(data.ir as FlowIR);
+          // Validate IR from server before loading
+          const validation = validateFlowIR(data.ir as FlowIR);
+          if (!validation.valid) {
+            const warnLines = validation.errors.map((err) => `  [${err.code}] ${err.message}`).join("\n");
+            onOutput(`⚠️ Decompiled IR has validation warnings:\n${warnLines}`);
+          }
+          loadIR(validation.migratedIR ?? (data.ir as FlowIR));
           const confidencePercent = Math.round((data.confidence ?? 0) * 100);
           let msg = `✅ TypeScript → IR decompilation successful\n`;
           msg += `📊 Confidence score: ${confidencePercent}%\n`;

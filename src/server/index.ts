@@ -290,10 +290,16 @@ export function startServer(options: ServerOptions = {}) {
   const server = createServer((req, res) => {
     handleRequest(req, res, staticDir, projectRoot).catch((err) => {
       logger.error("Internal error:", err);
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end("Internal Server Error");
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Internal Server Error");
+      }
     });
   });
+
+  // Prevent Slowloris-style DoS: reject requests that take too long to send headers/body
+  server.headersTimeout = 30_000;
+  server.requestTimeout = 60_000;
 
   const hasUI = existsSync(join(staticDir, "index.html"));
 

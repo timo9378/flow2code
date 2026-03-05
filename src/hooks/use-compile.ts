@@ -24,7 +24,9 @@ export function useCompile(): CompileHookResult {
   const handleExportIR = useCallback((): string => {
     const ir = exportIR();
     const json = JSON.stringify(ir, null, 2);
-    navigator.clipboard?.writeText(json);
+    navigator.clipboard?.writeText(json).catch(() => {
+      // Clipboard API unavailable (non-secure context) — silent fallback
+    });
     return json;
   }, [exportIR]);
 

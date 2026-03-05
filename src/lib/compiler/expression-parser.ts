@@ -293,11 +293,18 @@ function resolveInputRef(
   );
 
   // Prefer non-trigger upstream node
-  const dataSource =
-    incoming.find((e) => {
-      const src = context.nodeMap.get(e.sourceNodeId);
-      return src && src.category !== NodeCategory.TRIGGER;
-    }) || incoming[0];
+  const nonTriggerIncoming = incoming.filter((e) => {
+    const src = context.nodeMap.get(e.sourceNodeId);
+    return src && src.category !== NodeCategory.TRIGGER;
+  });
+
+  if (nonTriggerIncoming.length > 1 && typeof console !== "undefined") {
+    console.warn(
+      `[flow2code] $input is ambiguous: node "${context.currentNodeId}" has ${nonTriggerIncoming.length} non-trigger upstream edges. Using first match "${nonTriggerIncoming[0].sourceNodeId}".`
+    );
+  }
+
+  const dataSource = nonTriggerIncoming[0] || incoming[0];
 
   if (dataSource) {
     const srcId = dataSource.sourceNodeId;
@@ -316,18 +323,28 @@ function resolveInputRef(
   );
 }
 
+// Cached trigger node ID per IR (avoids linear scan on every call)
+let _cachedTriggerIR: FlowIR | null = null;
+let _cachedTriggerId: NodeId | null = null;
+
 function resolveTriggerRef(
   path: string,
   context: ExpressionContext
 ): string {
-  const trigger = context.ir.nodes.find(
-    (n) => n.category === NodeCategory.TRIGGER
-  );
-  if (trigger) {
-    if (context.symbolTable?.hasVar(trigger.id)) {
-      return `${context.symbolTable.getVarName(trigger.id)}${path}`;
+  // Invalidate cache if IR reference changed
+  if (_cachedTriggerIR !== context.ir) {
+    _cachedTriggerIR = context.ir;
+    const trigger = context.ir.nodes.find(
+      (n) => n.category === NodeCategory.TRIGGER
+    );
+    _cachedTriggerId = trigger?.id ?? null;
+  }
+
+  if (_cachedTriggerId) {
+    if (context.symbolTable?.hasVar(_cachedTriggerId)) {
+      return `${context.symbolTable.getVarName(_cachedTriggerId)}${path}`;
     }
-    return `flowState['${trigger.id}']${path}`;
+    return `flowState['${_cachedTriggerId}']${path}`;
   }
   return "undefined";
 }

@@ -997,13 +997,22 @@ function computeAuditHints(ctx: DecompileContext): AuditHint[] {
 // ============================================================
 
 function isFetchCall(node: TSNode): boolean {
-  const text = node.getText();
-  return text.includes("fetch(") && (text.includes("await") || node.getKind() === SyntaxKind.AwaitExpression);
+  // AST-based: check if this node or any descendant is a CallExpression calling "fetch"
+  if (node.getKind() === SyntaxKind.CallExpression) {
+    const expr = (node as CallExpression).getExpression();
+    if (expr.getKind() === SyntaxKind.Identifier && expr.getText() === "fetch") return true;
+  }
+  if (node.getKind() === SyntaxKind.AwaitExpression) {
+    return isFetchCall(node.getChildAtIndex(1) ?? node);
+  }
+  // Check children for nested fetch calls
+  return node.forEachChild((child) => isFetchCall(child) || undefined) ?? false;
 }
 
 function hasAwaitExpression(node: TSNode): boolean {
   if (node.getKind() === SyntaxKind.AwaitExpression) return true;
-  return node.getText().startsWith("await ");
+  // AST walk: check all descendants for AwaitExpression
+  return node.forEachChild((child) => hasAwaitExpression(child) || undefined) ?? false;
 }
 
 function extractAwaitedExpression(node: TSNode): string {
@@ -1106,8 +1115,10 @@ function inferLabel(code: string, varName: string | undefined): string {
 }
 
 function trackVariableUses(nodeId: string, expression: string, ctx: DecompileContext): void {
+  // Strip string literals (single/double/backtick) to avoid false-positive identifier matches
+  const stripped = expression.replace(/(["'`])(?:(?!\1|\\).|\\.)*\1/g, "");
   // Find identifiers that might reference previously defined variables
-  const identifiers = expression.match(/\b([a-zA-Z_]\w*)\b/g);
+  const identifiers = stripped.match(/\b([a-zA-Z_]\w*)\b/g);
   if (!identifiers) return;
 
   const uses: VariableUse[] = [];

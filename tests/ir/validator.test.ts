@@ -80,4 +80,39 @@ describe("IR Validator", () => {
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.code === "INVALID_VERSION")).toBe(true);
   });
+
+  it("should handle deep linear graphs without stack overflow (iterative DFS)", () => {
+    // Create a long chain of 5000+ nodes — would overflow with recursive DFS
+    const depth = 5000;
+    const ir = createSimpleGetFlow();
+    const trigger = ir.nodes[0];
+    ir.nodes = [trigger];
+    ir.edges = [];
+
+    let prevId = trigger.id;
+    for (let i = 1; i <= depth; i++) {
+      const nodeId = `deep_${i}`;
+      ir.nodes.push({
+        id: nodeId,
+        nodeType: "code",
+        category: "action",
+        label: `Node ${i}`,
+        params: {},
+        inputs: [{ id: "input", label: "Input" }],
+        outputs: [{ id: "output", label: "Output" }],
+      });
+      ir.edges.push({
+        id: `e_${i}`,
+        sourceNodeId: prevId,
+        sourcePortId: "output",
+        targetNodeId: nodeId,
+        targetPortId: "input",
+      });
+      prevId = nodeId;
+    }
+
+    // Should complete without throwing RangeError (stack overflow)
+    const result = validateFlowIR(ir);
+    expect(result.errors.filter((e) => e.code === "CYCLE_DETECTED")).toHaveLength(0);
+  });
 });
