@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-03-05
+
+### Added — VSCode Extension (`vscode-extension/`)
+- **Right-click Decompile** — Right-click any `.ts`/`.js` file (or selection) → "Flow2Code: Decompile to Flow IR" generates `.flow.json` side-by-side with confidence score
+- **Right-click Compile** — Right-click any `.flow.json` → "Flow2Code: Compile to TypeScript" with configurable platform (Next.js / Express / Cloudflare)
+- **Flow Preview** — SVG-based DAG visualization with pan, zoom, fit-to-view, category-colored nodes, and hover tooltips
+- **Auto-Validation Diagnostics** — Inline errors/warnings on open and save for `.flow.json` files, positioned at the offending node/edge in JSON
+- **Custom Editor** — "Open With… > Flow2Code Visual Editor" provides read-only graphical view of `.flow.json` files
+- **Status Bar** — Shows flow name and node/edge count (`$(graph) MyFlow (5N·4E)`) when a `.flow.json` is active; click to preview
+- **Configurable Settings** — `flow2code.platform`, `flow2code.autoValidate`, `flow2code.compileOnSave`
+- **esbuild Bundling** — Self-contained 6.3MB bundle with `@/` alias plugin resolving to main project source
+
 ## [0.1.9] — 2026-03-05
 
 ### Fixed

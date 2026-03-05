@@ -1,0 +1,180 @@
+{
+  "name": "flow2code",
+  "displayName": "Flow2Code",
+  "description": "Visual AST Compiler — right-click to convert between TypeScript ↔ Flow IR",
+  "version": "0.2.0",
+  "publisher": "timo9378",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timo9378/flow2code"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "flow",
+    "visual",
+    "compiler",
+    "decompiler",
+    "typescript",
+    "ast",
+    "low-code"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:javascript",
+    "workspaceContains:**/*.flow.json"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "flow2code.decompileToFlow",
+        "title": "Decompile to Flow IR",
+        "category": "Flow2Code",
+        "icon": "$(symbol-structure)"
+      },
+      {
+        "command": "flow2code.decompileSelectionToFlow",
+        "title": "Decompile Selection to Flow IR",
+        "category": "Flow2Code",
+        "icon": "$(symbol-structure)"
+      },
+      {
+        "command": "flow2code.compileToTS",
+        "title": "Compile to TypeScript",
+        "category": "Flow2Code",
+        "icon": "$(play)"
+      },
+      {
+        "command": "flow2code.validateIR",
+        "title": "Validate Flow IR",
+        "category": "Flow2Code",
+        "icon": "$(check)"
+      },
+      {
+        "command": "flow2code.previewFlow",
+        "title": "Preview Flow Graph",
+        "category": "Flow2Code",
+        "icon": "$(graph)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "flow2code.decompileToFlow",
+          "when": "!editorHasSelection && editorLangId =~ /^(typescript|javascript|typescriptreact|javascriptreact)$/",
+          "group": "flow2code@1"
+        },
+        {
+          "command": "flow2code.decompileSelectionToFlow",
+          "when": "editorHasSelection && editorLangId =~ /^(typescript|javascript|typescriptreact|javascriptreact)$/",
+          "group": "flow2code@1"
+        },
+        {
+          "command": "flow2code.compileToTS",
+          "when": "resourceFilename =~ /\\.flow\\.json$/",
+          "group": "flow2code@1"
+        },
+        {
+          "command": "flow2code.previewFlow",
+          "when": "resourceFilename =~ /\\.flow\\.json$/",
+          "group": "flow2code@2"
+        },
+        {
+          "command": "flow2code.validateIR",
+          "when": "resourceFilename =~ /\\.flow\\.json$/",
+          "group": "flow2code@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "flow2code.decompileToFlow",
+          "when": "resourceLangId =~ /^(typescript|javascript)$/",
+          "group": "flow2code@1"
+        },
+        {
+          "command": "flow2code.compileToTS",
+          "when": "resourceFilename =~ /\\.flow\\.json$/",
+          "group": "flow2code@1"
+        },
+        {
+          "command": "flow2code.previewFlow",
+          "when": "resourceFilename =~ /\\.flow\\.json$/",
+          "group": "flow2code@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "flow2code.previewFlow",
+          "when": "resourceFilename =~ /\\.flow\\.json$/",
+          "group": "navigation"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "flow2code.flowEditor",
+        "displayName": "Flow2Code Visual Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.flow.json"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "configuration": {
+      "title": "Flow2Code",
+      "properties": {
+        "flow2code.platform": {
+          "type": "string",
+          "default": "nextjs",
+          "enum": [
+            "nextjs",
+            "express",
+            "cloudflare"
+          ],
+          "enumDescriptions": [
+            "Next.js App Router (route.ts)",
+            "Express.js (app.get/post/...)",
+            "Cloudflare Workers"
+          ],
+          "description": "Default target platform for compilation"
+        },
+        "flow2code.autoValidate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically validate .flow.json files on save"
+        },
+        "flow2code.compileOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-compile .flow.json files to TypeScript on save"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "vsce package --no-dependencies",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "ts-morph": "^27.0.0",
+    "yaml": "^2.7.1"
+  }
+}
