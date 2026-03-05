@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   loadFlowProject,
+  loadFlowProjectAsync,
   saveFlowProject,
   detectFormat,
   migrateToSplit,
@@ -149,6 +150,38 @@ describe("loadFlowProject", () => {
       expect(loadedNode!.nodeType).toBe(node.nodeType);
       expect(loadedNode!.label).toBe(node.label);
     }
+  });
+});
+
+describe("loadFlowProjectAsync", () => {
+  it("should return identical result to sync version (split)", async () => {
+    const ir = createPostWithFetchFlow();
+    const dir = join(TMP, "async-split");
+    saveFlowProject(ir, dir);
+
+    const sync = loadFlowProject(dir);
+    const asyncResult = await loadFlowProjectAsync(dir);
+
+    expect(asyncResult.format).toBe(sync.format);
+    expect(asyncResult.ir.meta.name).toBe(sync.ir.meta.name);
+    expect(asyncResult.ir.nodes.length).toBe(sync.ir.nodes.length);
+    expect(asyncResult.ir.edges.length).toBe(sync.ir.edges.length);
+  });
+
+  it("should return identical result to sync version (json)", async () => {
+    const ir = createSimpleGetFlow();
+    const path = join(TMP, "async-json.flow.json");
+    writeFileSync(path, JSON.stringify(ir));
+
+    const sync = loadFlowProject(path);
+    const asyncResult = await loadFlowProjectAsync(path);
+
+    expect(asyncResult.format).toBe(sync.format);
+    expect(asyncResult.ir.meta.name).toBe(sync.ir.meta.name);
+  });
+
+  it("should throw for nonexistent path", async () => {
+    await expect(loadFlowProjectAsync(join(TMP, "nonexistent"))).rejects.toThrow();
   });
 });
 

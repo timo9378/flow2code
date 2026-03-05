@@ -121,6 +121,8 @@ interface CompilerContext {
   generatedBlockNodeIds: Set<NodeId>;
   /** Plugin Registry for this compile session (per-instance, avoids global pollution) */
   pluginRegistry: PluginRegistry;
+  /** Pre-computed edge successor map (nodeId → targetNodeIds) */
+  edgeSuccessors: Map<NodeId, NodeId[]>;
 }
 
 // ============================================================
@@ -205,13 +207,21 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     symbolTableExclusions: new Set(),
     generatedBlockNodeIds: new Set(),
     pluginRegistry,
+    edgeSuccessors: (() => {
+      const map = new Map<NodeId, NodeId[]>();
+      for (const edge of workingIR.edges) {
+        if (!map.has(edge.sourceNodeId)) map.set(edge.sourceNodeId, []);
+        map.get(edge.sourceNodeId)!.push(edge.targetNodeId);
+      }
+      return map;
+    })(),
   };
 
   // Detect concurrency: if execution plan has any concurrent steps, enable DAG scheduling
   const trigger = workingIR.nodes.find((n) => n.category === NodeCategory.TRIGGER)!;
 
   // ── Pre-compute control flow child block nodes (fixes DAG duplicate generation + control flow leaks) ──
-  const preComputedBlockNodes = computeControlFlowDescendants(workingIR, trigger.id);
+  const preComputedBlockNodes = computeControlFlowDescendants(workingIR, trigger.id, nodeMap);
   for (const nodeId of preComputedBlockNodes) {
     context.childBlockNodeIds.add(nodeId);
     context.symbolTableExclusions.add(nodeId);
@@ -383,9 +393,9 @@ function isControlFlowEdge(
  */
 function computeControlFlowDescendants(
   ir: FlowIR,
-  triggerId: NodeId
+  triggerId: NodeId,
+  nodeMap: Map<NodeId, FlowNode>
 ): Set<NodeId> {
-  const nodeMap = new Map(ir.nodes.map((n) => [n.id, n]));
 
   // Build adjacency list with control flow edges removed
   const strippedSuccessors = new Map<NodeId, Set<NodeId>>();
@@ -441,14 +451,8 @@ function generateBlockContinuation(
   // Compute all nodes reachable from fromNodeId (including indirect descendants)
   const reachable = new Set<NodeId>();
   const bfsQueue: NodeId[] = [fromNodeId];
-  const edgeSuccessors = new Map<NodeId, NodeId[]>();
-
-  for (const edge of context.ir.edges) {
-    if (!edgeSuccessors.has(edge.sourceNodeId)) {
-      edgeSuccessors.set(edge.sourceNodeId, []);
-    }
-    edgeSuccessors.get(edge.sourceNodeId)!.push(edge.targetNodeId);
-  }
+  // Use pre-computed edge successor map from context (avoids O(E) rebuild per call)
+  const edgeSuccessors = context.edgeSuccessors;
 
   while (bfsQueue.length > 0) {
     const id = bfsQueue.shift()!;

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.7] — 2026-03-05
+
+### Performance
+- **Precompute `edgeSuccessors` map** — Eliminated O(N×E) per-call rebuild in `generateBlockContinuation`; successor lookup is now O(1) via pre-built map in `CompilerContext`
+- **Reuse `nodeMap` in control-flow analysis** — `computeControlFlowDescendants` now receives the existing `nodeMap` instead of rebuilding a redundant `new Map()` each call
+
+### Fixed
+- **Decompiler `processForStatement` AST correctness** — Replaced fragile `.split("{")` string hack with proper AST methods (`getInitializer()`, `getCondition()`, `getIncrementor()`); fixes incorrect parsing when loop body contains object literals
+- **OpenAPI YAML import** — `handleImportOpenAPI` now supports `.yaml`/`.yml` files via dynamic `import("yaml")` instead of silently failing with `JSON.parse`
+- **`revokeObjectURL` download race** — Deferred `URL.revokeObjectURL` by 10 seconds after `click()` to prevent Safari/slow-browser download failures
+- **CLI watch mode async I/O** — New `loadFlowProjectAsync` reads flow projects with `fs/promises` (`readFile`/`readdir`); `compileFlowDirAsync` no longer blocks the event loop with sync file I/O
+
+### Tests
+- Added `loadFlowProjectAsync` parity tests (split + JSON + error case)
+- Test count: 410 tests / 33 test files
+
 ## [0.1.6] — 2026-03-05
 
 ### Fixed (Critical)

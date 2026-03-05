@@ -25,6 +25,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { readFile, readdir } from "node:fs/promises";
 import { join, extname, basename, dirname } from "node:path";
 import { splitIR, mergeIR, type SplitFiles } from "./split-storage";
 import type { FlowIR } from "../ir/types";
@@ -124,6 +125,48 @@ export function loadFlowProject(inputPath: string): FlowProjectInfo {
     const nodeFiles = readdirSync(nodesDir).filter((f) => f.endsWith(".yaml"));
     for (const file of nodeFiles) {
       nodes.set(file, readFileSync(join(nodesDir, file), "utf-8"));
+    }
+  }
+
+  const ir = mergeIR({ meta, edges, nodes });
+  return { path: resolvedPath, format, ir };
+}
+
+/**
+ * Async version of loadFlowProject — uses fs/promises for non-blocking I/O.
+ * Preferred for watch mode to avoid blocking the event loop.
+ */
+export async function loadFlowProjectAsync(inputPath: string): Promise<FlowProjectInfo> {
+  const { resolvedPath, format } = detectFormat(inputPath);
+
+  if (format === "json") {
+    if (!existsSync(resolvedPath)) {
+      throw new Error(`Flow file not found: ${resolvedPath}`);
+    }
+    const raw = await readFile(resolvedPath, "utf-8");
+    const ir = JSON.parse(raw) as FlowIR;
+    return { path: resolvedPath, format, ir };
+  }
+
+  // split
+  if (!existsSync(resolvedPath)) {
+    throw new Error(`Flow directory not found: ${resolvedPath}`);
+  }
+  const metaPath = join(resolvedPath, "meta.yaml");
+  if (!existsSync(metaPath)) {
+    throw new Error(`meta.yaml not found in ${resolvedPath} — not a valid Flow directory`);
+  }
+
+  const meta = await readFile(metaPath, "utf-8");
+  const edgesPath = join(resolvedPath, "edges.yaml");
+  const edges = existsSync(edgesPath) ? await readFile(edgesPath, "utf-8") : "";
+
+  const nodesDir = join(resolvedPath, "nodes");
+  const nodes = new Map<string, string>();
+  if (existsSync(nodesDir)) {
+    const nodeFiles = (await readdir(nodesDir)).filter((f) => f.endsWith(".yaml"));
+    for (const file of nodeFiles) {
+      nodes.set(file, await readFile(join(nodesDir, file), "utf-8"));
     }
   }
 

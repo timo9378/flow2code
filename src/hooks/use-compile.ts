@@ -100,7 +100,8 @@ export function useCompile(): CompileHookResult {
     a.href = url;
     a.download = `${ir.meta.name.replace(/\s+/g, "-").toLowerCase() || "flow"}.flow.json`;
     a.click();
-    URL.revokeObjectURL(url);
+    // Defer revocation — some browsers schedule download asynchronously after click()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }, [exportIR]);
 
   return {

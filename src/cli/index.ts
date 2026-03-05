@@ -22,7 +22,7 @@ import type { SourceMap } from "../lib/compiler/compiler";
 import type { PlatformName } from "../lib/compiler/platforms/types";
 import { validateFlowIR } from "../lib/ir/validator";
 import { splitToFileSystem, mergeFromFileSystem } from "../lib/storage/split-storage";
-import { loadFlowProject, saveFlowProject, migrateToSplit, detectFormat } from "../lib/storage/flow-project";
+import { loadFlowProject, loadFlowProjectAsync, saveFlowProject, migrateToSplit, detectFormat } from "../lib/storage/flow-project";
 import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib/compiler/env-validator";
 import { semanticDiff, formatDiff } from "../lib/diff/semantic-diff";
 import type { FlowIR, InputPort, OutputPort } from "../lib/ir/types";
@@ -860,11 +860,11 @@ async function compileFileAsync(filePath: string, projectRoot: string): Promise<
   }
 }
 
-/** Async compile from YAML directory — used by watch */
+/** Async compile from YAML directory — used by watch (non-blocking I/O) */
 async function compileFlowDirAsync(dirPath: string, projectRoot: string): Promise<void> {
   const startTime = Date.now();
   try {
-    const project = loadFlowProject(dirPath);
+    const project = await loadFlowProjectAsync(dirPath);
     const ir = project.ir;
 
     const validation = validateFlowIR(ir);

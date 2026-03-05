@@ -691,7 +691,11 @@ function processForStatement(
   line: number
 ): string {
   const nodeId = ctx.nextId("loop");
-  const fullText = stmt.getText().split("{")[0].trim();
+  // Use AST methods to extract for-header components (avoids split on '{' which breaks on object literals)
+  const initText = stmt.getInitializer()?.getText() ?? "";
+  const condText = stmt.getCondition()?.getText() ?? "";
+  const incrText = stmt.getIncrementor()?.getText() ?? "";
+  const fullText = `for (${initText}; ${condText}; ${incrText})`;
 
   ctx.addNode({
     id: nodeId,

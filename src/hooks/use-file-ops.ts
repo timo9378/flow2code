@@ -78,7 +78,14 @@ export function useFileOps(
       if (!file) return;
       const text = await file.text();
       try {
-        const spec = JSON.parse(text);
+        // Support both JSON and YAML OpenAPI specs
+        let spec: unknown;
+        if (file.name.match(/\.ya?ml$/i)) {
+          const { parse: parseYaml } = await import("yaml");
+          spec = parseYaml(text);
+        } else {
+          spec = JSON.parse(text);
+        }
         const res = await fetch(`${getApiBase()}/api/import-openapi`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -94,7 +101,7 @@ export function useFileOps(
           );
         }
       } catch {
-        onOutput("❌ JSON parse failed. Please verify the file is in OpenAPI 3.x JSON format.");
+        onOutput("❌ Parse failed. Please verify the file is a valid OpenAPI 3.x JSON or YAML file.");
       }
     };
     input.click();
