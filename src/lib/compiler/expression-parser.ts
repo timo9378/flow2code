@@ -200,8 +200,8 @@ function tokenize(input: string): ParsedToken[] {
  *   "$trigger.body.name"   → { base: "$trigger", path: ".body.name" }
  */
 function parseReference(ref: string): ParsedReference {
-  // Allow leading $ prefix (special variables)
-  const match = ref.match(/^(\$?\w+)((?:\.[\w]+|\[.+?\])*)$/);
+  // Allow leading $ prefix (special variables), hyphens in node IDs
+  const match = ref.match(/^(\$?[\w-]+)((?:\.[\w]+|\[.+?\])*)$/);
   if (!match) {
     // More lenient matching: support complex paths
     const dotIndex = ref.indexOf(".");

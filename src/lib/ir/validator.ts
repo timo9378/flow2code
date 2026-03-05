@@ -135,7 +135,20 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
     idSet.add(node.id);
   }
 
-  // 4. Validate all edge endpoints
+  // 4. Check edge ID uniqueness
+  const edgeIdSet = new Set<string>();
+  for (const edge of workingIR.edges) {
+    if (edgeIdSet.has(edge.id)) {
+      errors.push({
+        code: "DUPLICATE_EDGE_ID",
+        message: `Duplicate edge ID: ${edge.id}`,
+        edgeId: edge.id,
+      });
+    }
+    edgeIdSet.add(edge.id);
+  }
+
+  // 5. Validate all edge endpoints
   for (const edge of workingIR.edges) {
     if (!workingNodeMap.has(edge.sourceNodeId)) {
       errors.push({

@@ -314,6 +314,16 @@ program
     watcher.on("error", (error: unknown) => {
       console.error("❌ Watch error:", error instanceof Error ? error.message : String(error));
     });
+
+    // Graceful shutdown: close watcher and clear timers on SIGINT/SIGTERM
+    const cleanup = () => {
+      console.log("\n🛑 Stopping watcher...");
+      for (const timer of pendingTimers.values()) clearTimeout(timer);
+      pendingTimers.clear();
+      watcher.close().then(() => process.exit(0));
+    };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
   });
 
 // ============================================================

@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import { validateFlowIR } from "@/lib/ir/validator";
 import {
   createSimpleGetFlow,
+  createPostWithFetchFlow,
   createCyclicFlow,
 } from "../fixtures";
 
@@ -114,5 +115,14 @@ describe("IR Validator", () => {
     // Should complete without throwing RangeError (stack overflow)
     const result = validateFlowIR(ir);
     expect(result.errors.filter((e) => e.code === "CYCLE_DETECTED")).toHaveLength(0);
+  });
+
+  it("should detect duplicate edge IDs", () => {
+    const ir = createPostWithFetchFlow();
+    // Duplicate the first edge ID onto the second edge
+    expect(ir.edges.length).toBeGreaterThanOrEqual(2);
+    ir.edges[1].id = ir.edges[0].id;
+    const result = validateFlowIR(ir);
+    expect(result.errors.some((e) => e.code === "DUPLICATE_EDGE_ID")).toBe(true);
   });
 });

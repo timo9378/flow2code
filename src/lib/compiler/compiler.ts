@@ -838,9 +838,11 @@ function sanitizeId(id: string): string {
 function resolveEnvVars(url: string, context: CompilerContext): string {
   const hasEnvVar = /\$\{(\w+)\}/.test(url);
   if (hasEnvVar) {
+    // Escape backticks and backslashes in URL to prevent template literal injection
+    const escaped = url.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
     return (
       "`" +
-      url.replace(/\$\{(\w+)\}/g, (_match, varName) => {
+      escaped.replace(/\$\{(\w+)\}/g, (_match, varName) => {
         context.envVars.add(varName);
         return "${process.env." + varName + "}";
       }) +
@@ -849,7 +851,8 @@ function resolveEnvVars(url: string, context: CompilerContext): string {
   }
   // If URL contains any ${...} expressions (e.g. flowState refs), use backticks for interpolation
   if (url.includes("${")) {
-    return "`" + url + "`";
+    const escaped = url.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
+    return "`" + escaped + "`";
   }
   return `"${url}"`;
 }
@@ -962,9 +965,22 @@ export function traceLineToNode(
   sourceMap: SourceMap,
   line: number
 ): { nodeId: string; startLine: number; endLine: number } | null {
-  for (const [nodeId, range] of Object.entries(sourceMap.mappings)) {
-    if (line >= range.startLine && line <= range.endLine) {
-      return { nodeId, ...range };
+  // Build sorted ranges for binary search
+  const entries = Object.entries(sourceMap.mappings)
+    .map(([nodeId, range]) => ({ nodeId, ...range }))
+    .sort((a, b) => a.startLine - b.startLine);
+
+  let lo = 0;
+  let hi = entries.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const e = entries[mid];
+    if (line < e.startLine) {
+      hi = mid - 1;
+    } else if (line > e.endLine) {
+      lo = mid + 1;
+    } else {
+      return e;
     }
   }
   return null;

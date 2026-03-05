@@ -54,14 +54,6 @@ export function inferFlowStateTypes(ir: FlowIR, registry?: PluginRegistry): Flow
   return { interfaceCode, nodeTypes };
 }
 
-/**
- * Generate the flowState declaration statement.
- * Replaces the old `const flowState: Record<string, any> = {}`.
- */
-export function generateFlowStateDeclaration(ir: FlowIR): string {
-  const typeInfo = inferFlowStateTypes(ir);
-  return `${typeInfo.interfaceCode}\nconst flowState: Partial<FlowState> = {};`;
-}
 
 // ============================================================
 // Single Node Type Inference

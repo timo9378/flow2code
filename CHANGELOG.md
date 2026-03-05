@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.9] — 2026-03-05
+
+### Fixed
+- **`resolveEnvVars` backtick escaping** — Backtick and backslash characters in URLs are now escaped before wrapping in template literals, preventing template literal injection (#24)
+- **`traceLineToNode` binary search** — Replaced linear scan with sorted ranges + binary search for O(log N) source map lookups (#25)
+- **`parseReference` hyphen support** — Regex now matches node IDs containing hyphens (e.g. `node-1`) via `[\w-]+` character class (#27)
+- **Validator duplicate edge ID check** — Added step 4 to detect duplicate `edge.id` values, analogous to the existing duplicate node ID check (#28)
+- **Watch mode SIGINT cleanup** — Added `process.on('SIGINT'/'SIGTERM')` handler to close chokidar watcher and clear pending timers on shutdown (#29)
+- **Split storage colon-in-port-ID** — Edge deserialization now splits on first colon only via `indexOf`, preserving port IDs that contain colons (#30)
+
+### Removed
+- **Dead `generateFlowStateDeclaration`** — Removed unused exported function from `type-inference.ts` (zero callers) (#26)
+
+### Tests
+- Added duplicate edge ID detection test
+- Added colon-in-port-ID round-trip test
+- Test count: 413 tests / 33 test files
+
 ## [0.1.8] — 2026-03-05
 
 ### Security

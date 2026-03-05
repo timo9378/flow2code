@@ -123,4 +123,16 @@ describe("YAML format quality", () => {
     expect(files.edges).toContain("source:");
     expect(files.edges).toContain("target:");
   });
+
+  it("should handle colon in port ID during round-trip", () => {
+    const ir = createSimpleGetFlow();
+    // Inject a port ID with a colon (e.g. "output:alt")
+    ir.edges[0].sourcePortId = "output:alt";
+    const files = splitIR(ir);
+    const restored = mergeIR(files);
+
+    // The first colon separates nodeId from portId; "output:alt" should remain intact
+    expect(restored.edges[0].sourceNodeId).toBe(ir.edges[0].sourceNodeId);
+    expect(restored.edges[0].sourcePortId).toBe("output:alt");
+  });
 });

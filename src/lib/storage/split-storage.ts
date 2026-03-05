@@ -141,8 +141,13 @@ export function mergeIR(files: SplitFiles): FlowIR {
   }>;
 
   const edges: FlowEdge[] = (edgesRaw ?? []).map((e) => {
-    const [sourceNodeId, sourcePortId] = e.source.split(":");
-    const [targetNodeId, targetPortId] = e.target.split(":");
+    // Use indexOf to split only on first colon (port IDs may contain colons)
+    const srcIdx = e.source.indexOf(":");
+    const tgtIdx = e.target.indexOf(":");
+    const sourceNodeId = srcIdx > 0 ? e.source.slice(0, srcIdx) : e.source;
+    const sourcePortId = srcIdx > 0 ? e.source.slice(srcIdx + 1) : "output";
+    const targetNodeId = tgtIdx > 0 ? e.target.slice(0, tgtIdx) : e.target;
+    const targetPortId = tgtIdx > 0 ? e.target.slice(tgtIdx + 1) : "input";
     return {
       id: e.id,
       sourceNodeId,
