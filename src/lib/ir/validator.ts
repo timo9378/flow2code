@@ -13,6 +13,7 @@ import {
   type FlowNode,
   type FlowEdge,
   type NodeId,
+  type FlowDataType,
   NodeCategory,
   CURRENT_IR_VERSION,
 } from "./types";
@@ -23,6 +24,8 @@ export interface ValidationError {
   message: string;
   nodeId?: NodeId;
   edgeId?: string;
+  /** Severity level (default: "error") */
+  severity?: "error" | "warning" | "info";
 }
 
 export interface ValidationResult {
@@ -189,13 +192,48 @@ export function validateFlowIR(ir: FlowIR): ValidationResult {
     }
   }
 
+  // 7. Type compatibility checking on edges
+  for (const edge of workingIR.edges) {
+    const sourceNode = workingNodeMap.get(edge.sourceNodeId);
+    const targetNode = workingNodeMap.get(edge.targetNodeId);
+    if (!sourceNode || !targetNode) continue;
+
+    const sourcePort = sourceNode.outputs?.find((p) => p.id === edge.sourcePortId);
+    const targetPort = targetNode.inputs?.find((p) => p.id === edge.targetPortId);
+    if (!sourcePort || !targetPort) continue;
+
+    if (!isTypeCompatible(sourcePort.dataType, targetPort.dataType)) {
+      errors.push({
+        code: "TYPE_MISMATCH",
+        message: `Type mismatch on edge "${edge.id}": output "${sourcePort.label}" (${sourcePort.dataType}) → input "${targetPort.label}" (${targetPort.dataType})`,
+        edgeId: edge.id,
+        severity: "warning",
+      });
+    }
+  }
+
   return {
-    valid: errors.length === 0,
+    valid: errors.filter((e) => e.severity !== "warning" && e.severity !== "info").length === 0,
     errors,
     migrated,
     migratedIR: migrated ? workingIR : undefined,
     migrationLog,
   };
+}
+
+/**
+ * Check if a source data type is compatible with a target data type.
+ * "any" is compatible with everything, "object" accepts "array", etc.
+ */
+function isTypeCompatible(source: FlowDataType, target: FlowDataType): boolean {
+  if (source === target) return true;
+  if (source === "any" || target === "any") return true;
+  // object accepts array (arrays are objects in JS)
+  if (target === "object" && source === "array") return true;
+  // number/string are loosely compatible in JS expressions
+  if (target === "string" && source === "number") return true;
+  if (target === "number" && source === "string") return true;
+  return false;
 }
 
 /**

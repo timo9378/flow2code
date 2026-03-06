@@ -25,6 +25,8 @@ export interface AIGenerateState {
 
 export interface AIGenerateActions {
   handleAIGenerate: () => Promise<string>;
+  handleAIRefactor: (selectedNodeIds: string[], instruction: string) => Promise<string>;
+  handleCodeToFlow: (code: string) => Promise<string>;
   handleCancelAI: () => void;
   updateTokenEstimate: (prompt: string) => void;
 }
@@ -82,6 +84,198 @@ export function useAIGenerate(): AIGenerateState & AIGenerateActions {
     }
   }, [aiPrompt, aiSettings, loadIR]);
 
+  // ── AI Refactor: refactor selected nodes with a natural language instruction ──
+  const handleAIRefactor = useCallback(
+    async (selectedNodeIds: string[], instruction: string): Promise<string> => {
+      if (selectedNodeIds.length === 0) return "❌ No nodes selected for refactoring";
+      if (!instruction.trim()) return "❌ No refactoring instruction provided";
+
+      setAiLoading(true);
+      setAiStreamContent("");
+      abortControllerRef.current = new AbortController();
+
+      try {
+        const activeConfig = aiSettings.getActiveConfig();
+        if (!activeConfig) return "❌ AI refactoring requires a configured AI endpoint (Settings > AI)";
+
+        const { FLOW_IR_REFACTOR_PROMPT } = await import("@/lib/ai/prompt");
+        const exportIR = useFlowStore.getState().exportIR;
+        const ir = exportIR();
+
+        // Extract selected subgraph
+        const selectedNodes = ir.nodes.filter((n) => selectedNodeIds.includes(n.id));
+        const selectedEdges = ir.edges.filter(
+          (e) => selectedNodeIds.includes(e.sourceNodeId) && selectedNodeIds.includes(e.targetNodeId)
+        );
+
+        const userMessage = `## Selected Nodes (${selectedNodes.length})\n\`\`\`json\n${JSON.stringify({ nodes: selectedNodes, edges: selectedEdges }, null, 2)}\n\`\`\`\n\n## Instruction\n${instruction}`;
+
+        const url = activeConfig.baseUrl.replace(/\/+$/, "");
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (activeConfig.apiKey) headers["Authorization"] = `Bearer ${activeConfig.apiKey}`;
+
+        const res = await fetch(`${url}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model: activeConfig.model,
+            messages: [
+              { role: "system", content: FLOW_IR_REFACTOR_PROMPT },
+              { role: "user", content: userMessage },
+            ],
+            temperature: 0.2,
+          }),
+          signal: abortControllerRef.current?.signal,
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          return `❌ AI API error (${res.status}): ${errText}`;
+        }
+
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content ?? "";
+        if (!content) return "❌ AI returned empty content";
+
+        let jsonStr = content;
+        const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+        if (codeBlockMatch) jsonStr = codeBlockMatch[1];
+
+        const refactored = JSON.parse(jsonStr) as { nodes: FlowIR["nodes"]; edges: FlowIR["edges"] };
+
+        // Merge refactored nodes back: remove old selected nodes/edges, add new ones
+        const remainingNodes = ir.nodes.filter((n) => !selectedNodeIds.includes(n.id));
+        const remainingEdges = ir.edges.filter(
+          (e) => !selectedNodeIds.includes(e.sourceNodeId) || !selectedNodeIds.includes(e.targetNodeId)
+        );
+
+        const mergedIR: FlowIR = {
+          ...ir,
+          nodes: [...remainingNodes, ...refactored.nodes],
+          edges: [...remainingEdges, ...refactored.edges],
+        };
+
+        loadIR(mergedIR);
+        return `✅ Refactored ${selectedNodeIds.length} nodes → ${refactored.nodes.length} nodes`;
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return "⏹️ AI refactor cancelled";
+        return `❌ AI refactor failed: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        setAiLoading(false);
+        setAiStreamContent("");
+        abortControllerRef.current = null;
+      }
+    },
+    [aiSettings, loadIR]
+  );
+
+  // ── Code-to-Flow: convert pasted code into FlowIR ──
+  const handleCodeToFlow = useCallback(
+    async (code: string): Promise<string> => {
+      if (!code.trim()) return "❌ No code provided";
+
+      setAiLoading(true);
+      setAiStreamContent("");
+      abortControllerRef.current = new AbortController();
+
+      try {
+        const activeConfig = aiSettings.getActiveConfig();
+        if (!activeConfig) return "❌ Code-to-Flow requires a configured AI endpoint (Settings > AI)";
+
+        const { CODE_TO_FLOW_PROMPT } = await import("@/lib/ai/prompt");
+
+        const url = activeConfig.baseUrl.replace(/\/+$/, "");
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (activeConfig.apiKey) headers["Authorization"] = `Bearer ${activeConfig.apiKey}`;
+
+        let content: string;
+        try {
+          content = await withRetry(
+            async () => {
+              return new Promise<string>((resolve, reject) => {
+                let accumulated = "";
+                streamChatCompletion(
+                  {
+                    url: `${url}/chat/completions`,
+                    headers,
+                    body: {
+                      model: activeConfig.model,
+                      messages: [
+                        { role: "system", content: CODE_TO_FLOW_PROMPT },
+                        { role: "user", content: `Convert the following code to FlowIR:\n\n\`\`\`\n${code}\n\`\`\`` },
+                      ],
+                      temperature: 0.2,
+                    },
+                    signal: abortControllerRef.current?.signal,
+                  },
+                  {
+                    onToken: (token) => {
+                      accumulated += token;
+                      setAiStreamContent(accumulated);
+                    },
+                    onComplete: (full) => resolve(full),
+                    onError: (err) => reject(err),
+                  }
+                );
+              });
+            },
+            {
+              maxRetries: 1,
+              initialDelay: 1000,
+              signal: abortControllerRef.current?.signal,
+            }
+          );
+        } catch {
+          const res = await fetch(`${url}/chat/completions`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              model: activeConfig.model,
+              messages: [
+                { role: "system", content: CODE_TO_FLOW_PROMPT },
+                { role: "user", content: `Convert the following code to FlowIR:\n\n\`\`\`\n${code}\n\`\`\`` },
+              ],
+              temperature: 0.2,
+            }),
+            signal: abortControllerRef.current?.signal,
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            return `❌ AI API error (${res.status}): ${errText}`;
+          }
+          const data = await res.json();
+          content = data.choices?.[0]?.message?.content ?? "";
+        }
+
+        if (!content) return "❌ AI returned empty content";
+
+        let jsonStr = content;
+        const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+        if (codeBlockMatch) jsonStr = codeBlockMatch[1];
+
+        const ir = JSON.parse(jsonStr) as FlowIR;
+
+        const { validateFlowIR: validate } = await import("@/lib/ir/validator");
+        const validation = validate(ir);
+        if (!validation.valid) {
+          return `❌ Code-to-Flow IR validation failed:\n${validation.errors.map((e: { code: string; message: string }) => `  [${e.code}] ${e.message}`).join("\n")}`;
+        }
+
+        loadIR(ir);
+        const meta = ir.meta as { name?: string } | undefined;
+        return `✅ Code converted to flow: "${meta?.name ?? "Untitled"}"\n📊 ${ir.nodes.length} nodes, ${ir.edges.length} edges`;
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return "⏹️ Code-to-Flow cancelled";
+        return `❌ Code-to-Flow failed: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        setAiLoading(false);
+        setAiStreamContent("");
+        abortControllerRef.current = null;
+      }
+    },
+    [aiSettings, loadIR]
+  );
+
   return {
     aiPrompt,
     setAiPrompt,
@@ -89,6 +283,8 @@ export function useAIGenerate(): AIGenerateState & AIGenerateActions {
     aiStreamContent,
     tokenEstimate,
     handleAIGenerate,
+    handleAIRefactor,
+    handleCodeToFlow,
     handleCancelAI,
     updateTokenEstimate,
   };

@@ -58,6 +58,8 @@ export interface TracerOptions {
   ir?: FlowIR;
   /** Whether to print a readable error message to console (default: true) */
   log?: boolean;
+  /** Callback invoked when trace results are available (push to UI store for live badges) */
+  onTrace?: (results: TraceResult[], error: Error) => void;
 }
 
 // ============================================================
@@ -183,6 +185,7 @@ export function withFlowTrace<T extends AsyncHandler>(
             formatTraceResults(err, traces, sourceMap.generatedFile)
           );
         }
+        options.onTrace?.(traces, err);
       }
       throw err; // re-throw — do not swallow the original error
     }
@@ -219,6 +222,8 @@ export function installFlowTracer(
 ): () => void {
   const { sourceMap, ir, editorUrl = "http://localhost:3001", log = true } = options;
 
+  const { onTrace } = options as TracerOptions;
+
   const handleError = (err: unknown) => {
     if (!(err instanceof Error)) return;
     const traces = traceError(err, sourceMap, ir, editorUrl);
@@ -227,6 +232,7 @@ export function installFlowTracer(
         formatTraceResults(err, traces, sourceMap.generatedFile)
       );
     }
+    onTrace?.(traces, err);
   };
 
   process.on("uncaughtException", handleError);

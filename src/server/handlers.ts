@@ -32,7 +32,7 @@ export interface CompileRequest {
  * @param body - { ir: FlowIR, write?: boolean }
  * @param projectRoot - User's project root directory (process.cwd())
  */
-export function handleCompile(body: CompileRequest, projectRoot: string): ApiResponse {
+export async function handleCompile(body: CompileRequest, projectRoot: string): Promise<ApiResponse> {
   try {
     const ir = body.ir;
     const shouldWrite = body.write !== false; // default: write
@@ -49,10 +49,21 @@ export function handleCompile(body: CompileRequest, projectRoot: string): ApiRes
       };
     }
 
+    // Prettier post-processing
+    let finalCode = result.code;
+    if (finalCode) {
+      try {
+        const { formatWithPrettier } = await import("../lib/compiler/compiler.js");
+        finalCode = await formatWithPrettier(finalCode);
+      } catch {
+        // Prettier unavailable — use ts-morph formatted output
+      }
+    }
+
     let writtenPath: string | null = null;
 
     // Write file to user's project
-    if (shouldWrite && result.filePath && result.code) {
+    if (shouldWrite && result.filePath && finalCode) {
       const fullPath = resolve(join(projectRoot, result.filePath));
 
       // Security: prevent path traversal outside project root (append separator to prevent prefix attacks)
@@ -71,7 +82,7 @@ export function handleCompile(body: CompileRequest, projectRoot: string): ApiRes
         mkdirSync(dir, { recursive: true });
       }
 
-      writeFileSync(fullPath, result.code, "utf-8");
+      writeFileSync(fullPath, finalCode, "utf-8");
       writtenPath = fullPath;
 
       // Write Source Map
@@ -104,7 +115,7 @@ export function handleCompile(body: CompileRequest, projectRoot: string): ApiRes
       status: 200,
       body: {
         success: true,
-        code: result.code,
+        code: finalCode,
         filePath: result.filePath,
         writtenTo: writtenPath,
         dependencies: result.dependencies,

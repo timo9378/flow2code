@@ -42,6 +42,19 @@ import {
 } from "./undo-redo-slice";
 
 // ============================================================
+// Node Badge Types (Visual Source Map & Linting)
+// ============================================================
+
+export interface NodeBadge {
+  type: "error" | "warning" | "info";
+  message: string;
+  source: "trace" | "lint";
+}
+
+/** Per-node badge map: nodeId → badges */
+export type NodeBadgeMap = Record<string, NodeBadge[]>;
+
+// ============================================================
 // React Flow Node Data Type
 // ============================================================
 
@@ -92,6 +105,12 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
 
   /** Flow creation time */
   flowCreatedAt: string | null;
+
+  // ── Node Badges (Visual Source Map & Linting) ──
+  nodeBadges: NodeBadgeMap;
+  setNodeBadges: (badges: NodeBadgeMap) => void;
+  addNodeBadge: (nodeId: string, badge: NodeBadge) => void;
+  clearBadges: (source?: \"trace\" | \"lint\") => void;
 
   // ── History (labeled snapshots) ──
   flowHistory: HistoryEntry[];
@@ -166,6 +185,28 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
     selectedNodeId: null,
     flowCreatedAt: null,
     flowHistory: [],
+    nodeBadges: {},
+
+    // ── Node Badges ──
+    setNodeBadges: (badges: NodeBadgeMap) => set({ nodeBadges: badges }),
+    addNodeBadge: (nodeId: string, badge: NodeBadge) => {
+      const current = get().nodeBadges;
+      const existing = current[nodeId] ?? [];
+      set({ nodeBadges: { ...current, [nodeId]: [...existing, badge] } });
+    },
+    clearBadges: (source?: "trace" | "lint") => {
+      if (!source) {
+        set({ nodeBadges: {} });
+        return;
+      }
+      const current = get().nodeBadges;
+      const filtered: NodeBadgeMap = {};
+      for (const [nodeId, badges] of Object.entries(current)) {
+        const kept = badges.filter((b) => b.source !== source);
+        if (kept.length > 0) filtered[nodeId] = kept;
+      }
+      set({ nodeBadges: filtered });
+    },
 
     // ── History (labeled snapshots for timeline) ──
     pushHistory: (label: string) => {

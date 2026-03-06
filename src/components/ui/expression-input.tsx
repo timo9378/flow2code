@@ -1,19 +1,25 @@
 /**
- * ExpressionInput — Expression input with autocomplete
+ * ExpressionInput — Expression input with Monaco Editor + autocomplete
  *
- * Replaces plain Textarea in ConfigPanel,
- * providing real-time autocomplete for flowState fields, methods, and built-in variables.
+ * Provides real-time autocomplete for flowState fields, methods, and built-in variables.
+ * Uses Monaco Editor for syntax highlighting and inline diagnostics when available,
+ * falls back to plain Textarea when Monaco cannot load.
  */
 
 "use client";
 
-import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type ChangeEvent } from "react";
+import { useState, useRef, useCallback, useEffect, lazy, Suspense, type KeyboardEvent, type ChangeEvent } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   useExpressionSuggestions,
   type ExpressionSuggestion,
 } from "@/hooks/use-expression-suggestions";
+
+// Lazy-load Monaco — falls back to textarea if it can't load
+const MonacoEditor = lazy(() =>
+  import("@monaco-editor/react").then((mod) => ({ default: mod.default }))
+);
 
 interface ExpressionInputProps {
   /** Node ID (for inferring upstream types) */
@@ -28,6 +34,8 @@ interface ExpressionInputProps {
   placeholder?: string;
   /** Error message */
   error?: string;
+  /** Use Monaco Editor (default: true). Falls back to textarea on SSR or load failure. */
+  useMonaco?: boolean;
 }
 
 interface PopupPosition {
@@ -42,8 +50,13 @@ export default function ExpressionInput({
   onChange,
   placeholder,
   error,
+  useMonaco: enableMonaco = true,
 }: ExpressionInputProps) {
   const { getFiltered } = useExpressionSuggestions(nodeId);
+  const [monacoFailed, setMonacoFailed] = useState(false);
+
+  // Determine if we should render Monaco
+  const showMonaco = enableMonaco && !monacoFailed && typeof window !== "undefined";
 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -169,6 +182,41 @@ export default function ExpressionInput({
     snippet: "⟨⟩",
   };
 
+  // ── Monaco Editor Mode ──
+  if (showMonaco) {
+    return (
+      <div className="flex flex-col gap-1.5 relative">
+        <Label className="text-[10px] uppercase tracking-wider">{label}</Label>
+        <div
+          className={`rounded-md border ${error ? "border-red-500" : "border-border"} overflow-hidden`}
+          style={{ minHeight: 60 }}
+        >
+          <Suspense
+            fallback={
+              <Textarea
+                value={String(value)}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                className="font-mono text-xs resize-y min-h-[60px]"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            }
+          >
+            <MonacoEditorWrapper
+              value={value}
+              onChange={onChange}
+              suggestions={getFiltered}
+              onError={() => setMonacoFailed(true)}
+            />
+          </Suspense>
+        </div>
+        {error && <p className="text-[10px] text-red-400">{error}</p>}
+      </div>
+    );
+  }
+
+  // ── Fallback: Textarea Mode ──
   return (
     <div className="flex flex-col gap-1.5 relative">
       <Label className="text-[10px] uppercase tracking-wider">{label}</Label>
@@ -226,4 +274,120 @@ export default function ExpressionInput({
       {error && <p className="text-[10px] text-red-400">{error}</p>}
     </div>
   );
+}
+
+// ============================================================
+// Monaco Editor Wrapper (lazy-loaded)
+// ============================================================
+
+interface MonacoEditorWrapperProps {
+  value: string;
+  onChange: (value: string) => void;
+  suggestions: (input: string, cursor?: number) => ExpressionSuggestion[];
+  onError: () => void;
+}
+
+function MonacoEditorWrapper({ value, onChange, suggestions, onError }: MonacoEditorWrapperProps) {
+  const editorRef = useRef<unknown>(null);
+
+  const handleMount = useCallback(
+    (editor: unknown, monaco: unknown) => {
+      editorRef.current = editor;
+      try {
+        const m = monaco as {
+          languages: {
+            typescript: {
+              typescriptDefaults: {
+                setDiagnosticsOptions: (opts: Record<string, boolean>) => void;
+              };
+            };
+            registerCompletionItemProvider: (
+              lang: string,
+              provider: Record<string, unknown>
+            ) => void;
+          };
+          Range: new (
+            sl: number, sc: number, el: number, ec: number
+          ) => unknown;
+        };
+        // Suppress type-checker noise for short expressions
+        m.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: true,
+          noSyntaxValidation: false,
+        });
+        // Register custom completion provider
+        m.languages.registerCompletionItemProvider("typescript", {
+          provideCompletionItems: (model: { getValueInRange: (r: unknown) => string }, position: { lineNumber: number; column: number }) => {
+            const textUntilPosition = model.getValueInRange(
+              new m.Range(1, 1, position.lineNumber, position.column)
+            );
+            const items = suggestions(textUntilPosition, textUntilPosition.length);
+            return {
+              suggestions: items.map((s) => ({
+                label: s.label,
+                kind: 5, // Field
+                insertText: s.insertText,
+                detail: s.description,
+              })),
+            };
+          },
+        });
+      } catch {
+        // Ignore — basic editing still works
+      }
+    },
+    [suggestions]
+  );
+
+  return (
+    <ErrorBoundaryMonaco onError={onError}>
+      <MonacoEditor
+        height="60px"
+        language="typescript"
+        theme="vs-dark"
+        value={String(value)}
+        onChange={(v) => onChange(v ?? "")}
+        onMount={handleMount}
+        options={{
+          minimap: { enabled: false },
+          lineNumbers: "off",
+          scrollBeyondLastLine: false,
+          fontSize: 12,
+          fontFamily: "monospace",
+          wordWrap: "on",
+          glyphMargin: false,
+          folding: false,
+          renderLineHighlight: "none",
+          overviewRulerLanes: 0,
+          hideCursorInOverviewRuler: true,
+          scrollbar: { vertical: "hidden", horizontal: "auto" },
+          padding: { top: 4, bottom: 4 },
+          tabSize: 2,
+        }}
+      />
+    </ErrorBoundaryMonaco>
+  );
+}
+
+// Simple error boundary for Monaco load failures
+import { Component, type ReactNode, type ErrorInfo } from "react";
+
+class ErrorBoundaryMonaco extends Component<
+  { children: ReactNode; onError: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; onError: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(_error: Error, _info: ErrorInfo) {
+    this.props.onError();
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
 }

@@ -17,6 +17,7 @@ import { useFileOps } from "@/hooks/use-file-ops";
 import ApiSandbox from "./ApiSandbox";
 import AISettingsDialog from "./AISettingsDialog";
 import HistoryPanel from "./HistoryPanel";
+import DiffPanel from "./DiffPanel";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,7 @@ export default function Toolbar() {
   const exportIR = useFlowStore((s) => s.exportIR);
   const reset = useFlowStore((s) => s.reset);
   const nodes = useFlowStore((s) => s.nodes);
+  const getSelectedNodeIds = useFlowStore((s) => s.getSelectedNodeIds);
 
   // ── UI state ──
   const [output, setOutput] = useState("");
@@ -59,6 +61,11 @@ export default function Toolbar() {
   const [sandboxPath, setSandboxPath] = useState("/api/hello");
   const [showAISettings, setShowAISettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const [showCodeToFlow, setShowCodeToFlow] = useState(false);
+  const [codeToFlowInput, setCodeToFlowInput] = useState("");
+  const [showRefactorDialog, setShowRefactorDialog] = useState(false);
+  const [refactorInstruction, setRefactorInstruction] = useState("");
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const aiSettings = useAISettingsStore();
 
@@ -118,6 +125,27 @@ export default function Toolbar() {
     }
   };
 
+  const onCodeToFlow = async () => {
+    const result = await ai.handleCodeToFlow(codeToFlowInput);
+    setOutput(result);
+    setShowOutput(true);
+    if (result.startsWith("✅")) {
+      setShowCodeToFlow(false);
+      setCodeToFlowInput("");
+    }
+  };
+
+  const onAIRefactor = async () => {
+    const selectedIds = getSelectedNodeIds();
+    const result = await ai.handleAIRefactor(selectedIds, refactorInstruction);
+    setOutput(result);
+    setShowOutput(true);
+    if (result.startsWith("✅")) {
+      setShowRefactorDialog(false);
+      setRefactorInstruction("");
+    }
+  };
+
   return (
     <>
       {/* ── Top Toolbar ── */}
@@ -168,6 +196,24 @@ export default function Toolbar() {
             </Button>
           </TooltipTrigger>
           <TooltipContent>Describe in natural language, AI auto-generates the flow diagram</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={() => setShowCodeToFlow(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
+              📝 Code→Flow
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Paste code and convert it to a visual flow diagram</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={() => setShowRefactorDialog(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
+              🔄 Refactor
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Select nodes on canvas, then AI refactors the selected logic</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -226,6 +272,16 @@ export default function Toolbar() {
             </Button>
           </TooltipTrigger>
           <TooltipContent>View flow history and restore previous states</TooltipContent>
+        </Tooltip>
+
+        {/* Diff */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={() => setShowDiff(true)} className="text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10">
+              🔀 Diff
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Compare two flow snapshots (visual diff)</TooltipContent>
         </Tooltip>
 
         {/* Spacer */}
@@ -413,6 +469,97 @@ export default function Toolbar() {
             </DialogDescription>
           </DialogHeader>
           <HistoryPanel />
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Diff Dialog ── */}
+      <Dialog open={showDiff} onOpenChange={setShowDiff}>
+        <DialogContent className="sm:max-w-[640px] max-h-[80vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>🔀 Visual Diff</DialogTitle>
+            <DialogDescription>
+              Compare two flow snapshots to see added, removed, and modified nodes. Apply highlights to the canvas.
+            </DialogDescription>
+          </DialogHeader>
+          <DiffPanel />
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Code-to-Flow Dialog ── */}
+      <Dialog open={showCodeToFlow} onOpenChange={setShowCodeToFlow}>
+        <DialogContent className="sm:max-w-[600px] max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>📝 Code → Flow</DialogTitle>
+            <DialogDescription>
+              Paste source code (TypeScript, JavaScript, Python, etc.) and AI will convert it to a visual flow diagram.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-2 overflow-y-auto min-h-0">
+            <Textarea
+              value={codeToFlowInput}
+              onChange={(e) => setCodeToFlowInput(e.target.value)}
+              placeholder={"// Paste your code here...\nexport async function handler(req, res) {\n  const users = await db.query('SELECT * FROM users');\n  return res.json(users);\n}"}
+              className="min-h-[200px] font-mono text-sm resize-y"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onCodeToFlow();
+              }}
+            />
+            {ai.aiLoading && ai.aiStreamContent && (
+              <div className="bg-secondary/50 rounded-md p-3 overflow-hidden">
+                <div className="text-[10px] text-muted-foreground mb-1 font-semibold">📡 Live Stream</div>
+                <ScrollArea className="max-h-[150px] w-full">
+                  <pre className="text-[10px] text-emerald-400 font-mono whitespace-pre-wrap break-words">
+                    {ai.aiStreamContent.length > 500 ? `...${ai.aiStreamContent.slice(-500)}` : ai.aiStreamContent}
+                  </pre>
+                  <ScrollBar orientation="vertical" />
+                </ScrollArea>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <span className="text-muted-foreground text-[10px]">⌘+Enter to submit</span>
+            <Button
+              onClick={onCodeToFlow}
+              disabled={ai.aiLoading || !codeToFlowInput.trim()}
+              className="bg-purple-600 hover:bg-purple-500 text-white"
+            >
+              {ai.aiLoading ? "⏳ Converting..." : "📝 Convert"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── AI Refactor Dialog ── */}
+      <Dialog open={showRefactorDialog} onOpenChange={setShowRefactorDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>🔄 AI Refactor</DialogTitle>
+            <DialogDescription>
+              Select nodes on the canvas first, then describe how you want to refactor them.
+              {getSelectedNodeIds().length > 0
+                ? ` (${getSelectedNodeIds().length} nodes selected)`
+                : " (No nodes selected — select nodes first)"}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={refactorInstruction}
+            onChange={(e) => setRefactorInstruction(e.target.value)}
+            placeholder="e.g.: Combine these fetch actions into a Promise.all for parallel execution..."
+            className="min-h-[100px] font-mono text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onAIRefactor();
+            }}
+          />
+          <DialogFooter>
+            <span className="text-muted-foreground text-[10px]">⌘+Enter to submit</span>
+            <Button
+              onClick={onAIRefactor}
+              disabled={ai.aiLoading || !refactorInstruction.trim() || getSelectedNodeIds().length === 0}
+              className="bg-purple-600 hover:bg-purple-500 text-white"
+            >
+              {ai.aiLoading ? "⏳ Refactoring..." : "🔄 Refactor"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

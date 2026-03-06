@@ -82,8 +82,10 @@
   },
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",
+    "monaco-editor": "^0.55.1",
     "picocolors": "^1.1.1",
     "ts-morph": "^27.0.2",
     "yaml": "^2.8.2"

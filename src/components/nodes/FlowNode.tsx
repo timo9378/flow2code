@@ -10,6 +10,7 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import type { FlowNodeData } from "@/store/flow-store";
+import { useFlowStore } from "@/store/flow-store";
 import { NodeCategory } from "@/lib/ir/types";
 
 // ── Category Theme ──
@@ -32,17 +33,30 @@ const categoryTag: Record<NodeCategory, string> = {
 
 type FlowNodeType = Node<FlowNodeData>;
 
-function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
+function FlowNodeComponent({ id, data, selected }: NodeProps<FlowNodeType>) {
   const t = theme[data.category] ?? theme[NodeCategory.ACTION];
   const tag = categoryTag[data.category] ?? "NODE";
   const inputs = data.inputs ?? [];
   const outputs = data.outputs ?? [];
   const portRows = Math.max(inputs.length, outputs.length, 0);
 
+  // Visual Source Map: read badges for this node
+  const badges = useFlowStore((s) => s.nodeBadges[id] ?? []);
+  const hasError = badges.some((b) => b.type === "error");
+  const hasWarning = badges.some((b) => b.type === "warning");
+
   return (
     <div
       className="flex group"
-      style={{ minWidth: 220, maxWidth: 300 }}
+      style={{
+        minWidth: 220,
+        maxWidth: 300,
+        ...(hasError
+          ? { filter: "drop-shadow(0 0 6px rgba(239,68,68,0.7))" }
+          : hasWarning
+            ? { filter: "drop-shadow(0 0 6px rgba(234,179,8,0.5))" }
+            : {}),
+      }}
     >
       {/* Left color bar */}
       <div
@@ -146,6 +160,60 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
           />
         );
       })}
+
+      {/* Visual Source Map: error/warning badges */}
+      {badges.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            display: "flex",
+            gap: 2,
+          }}
+        >
+          {hasError && (
+            <span
+              title={badges.filter((b) => b.type === "error").map((b) => b.message).join("\n")}
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "#ef4444",
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "default",
+              }}
+            >
+              !
+            </span>
+          )}
+          {hasWarning && !hasError && (
+            <span
+              title={badges.filter((b) => b.type === "warning").map((b) => b.message).join("\n")}
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "#eab308",
+                color: "#000",
+                fontSize: 10,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "default",
+              }}
+            >
+              ⚠
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -27,6 +27,7 @@ import WelcomeOverlay from "@/components/panels/WelcomeOverlay";
 import { FlowErrorBoundary } from "@/components/FlowErrorBoundary";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useHighlightFromURL } from "@/hooks/use-highlight-from-url";
+import { useFlowLint } from "@/hooks/use-flow-lint";
 
 const nodeTypes = {
   flowNode: FlowNodeComponent,
@@ -51,6 +52,9 @@ export default function FlowCanvas() {
 
   // ── Deep link highlight (works with Runtime Tracer) ──
   useHighlightFromURL();
+
+  // ── Live linting (debounced validation for type-mismatch warnings) ──
+  useFlowLint();
 
   // ── Keyboard Shortcuts (capture phase to run before React Flow) ──
   useEffect(() => {

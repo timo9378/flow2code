@@ -226,7 +226,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
     }
 
     if (pathname === "/api/compile") {
-      const result = handleCompile(body as import("./handlers.js").CompileRequest, projectRoot);
+      const result = await handleCompile(body as import("./handlers.js").CompileRequest, projectRoot);
       sendJson(res, result.status, result.body);
       return;
     }

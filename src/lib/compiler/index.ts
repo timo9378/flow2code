@@ -1,5 +1,7 @@
 export {
   compile,
+  compileWithPrettier,
+  formatWithPrettier,
   traceLineToNode,
   type CompileResult,
   type CompileOptions,

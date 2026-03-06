@@ -92,6 +92,8 @@ export interface CompileOptions {
   platform?: PlatformName;
   /** Additional Node Plugins */
   plugins?: NodePlugin[];
+  /** Format output with Prettier (default: true) */
+  prettier?: boolean;
 }
 
 // ============================================================
@@ -252,7 +254,8 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     convertTabsToSpaces: true,
   });
 
-  const code = sourceFile.getFullText();
+  let code = sourceFile.getFullText();
+
   const filePath = platform.getOutputFilePath(trigger);
 
   // Collect dependencies
@@ -277,6 +280,50 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     dependencies,
     sourceMap,
   };
+}
+
+/**
+ * Format TypeScript code with Prettier.
+ * Falls back to the original code if Prettier is unavailable.
+ */
+export async function formatWithPrettier(
+  code: string,
+  options?: { printWidth?: number; singleQuote?: boolean }
+): Promise<string> {
+  try {
+    const prettier = await import("prettier");
+    return await prettier.format(code, {
+      parser: "typescript",
+      printWidth: options?.printWidth ?? 100,
+      tabWidth: 2,
+      singleQuote: options?.singleQuote ?? true,
+      trailingComma: "all",
+      semi: true,
+    });
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * Compile and format with Prettier in one step.
+ * Convenience wrapper around `compile()` + `formatWithPrettier()`.
+ */
+export async function compileWithPrettier(
+  ir: FlowIR,
+  options?: CompileOptions
+): Promise<CompileResult> {
+  const result = compile(ir, options);
+  if (!result.success || !result.code) return result;
+
+  const formatted = await formatWithPrettier(result.code);
+
+  // Rebuild source map for formatted code (comment markers survive Prettier)
+  const sourceMap = result.sourceMap
+    ? buildSourceMap(formatted, ir, result.filePath ?? "formatted.ts")
+    : undefined;
+
+  return { ...result, code: formatted, sourceMap };
 }
 
 // ============================================================

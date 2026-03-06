@@ -21,9 +21,9 @@ import { join } from "node:path";
 describe("Server Handler: /api/compile", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "flow2code-test-"));
 
-  it("compiles valid IR and returns success", () => {
+  it("compiles valid IR and returns success", async () => {
     const ir = createSimpleGetFlow();
-    const result = handleCompile({ ir, write: false }, tempDir);
+    const result = await handleCompile({ ir, write: false }, tempDir);
 
     expect(result.status).toBe(200);
     expect(result.body.success).toBe(true);
@@ -32,35 +32,35 @@ describe("Server Handler: /api/compile", () => {
     expect((result.body.code as string).length).toBeGreaterThan(0);
   });
 
-  it("returns 400 when IR is missing", () => {
-    const result = handleCompile({}, tempDir);
+  it("returns 400 when IR is missing", async () => {
+    const result = await handleCompile({}, tempDir);
     expect(result.status).toBe(400);
     expect(result.body.success).toBe(false);
   });
 
-  it("writes output file when write=true", () => {
+  it("writes output file when write=true", async () => {
     const ir = createSimpleGetFlow();
-    const result = handleCompile({ ir, write: true }, tempDir);
+    const result = await handleCompile({ ir, write: true }, tempDir);
 
     expect(result.status).toBe(200);
     expect(result.body.writtenTo).toBeDefined();
   });
 
-  it("compiles multi-node flows", () => {
+  it("compiles multi-node flows", async () => {
     const ir = createPostWithFetchFlow();
-    const result = handleCompile({ ir, write: false }, tempDir);
+    const result = await handleCompile({ ir, write: false }, tempDir);
 
     expect(result.status).toBe(200);
     expect(result.body.success).toBe(true);
     expect((result.body.code as string)).toContain("POST");
   });
 
-  it("rejects path traversal via directory prefix attack", () => {
+  it("rejects path traversal via directory prefix attack", async () => {
     // Craft an IR whose compiled filePath might prefix-escape the project root
     // e.g. projectRoot = "/tmp/abc" → filePath = "../abc-evil/route.ts" → "/tmp/abc-evil/route.ts"
     // The old check `startsWith(resolve(projectRoot))` would pass this — the new check with separator must reject it
     const ir = createSimpleGetFlow();
-    const result = handleCompile({ ir, write: true }, tempDir);
+    const result = await handleCompile({ ir, write: true }, tempDir);
     // Normal compilation should succeed
     expect(result.status).toBe(200);
     expect(result.body.success).toBe(true);
@@ -104,7 +104,7 @@ export default function hello() {
     expect([200, 422]).toContain(result.status);
   });
 
-  it("roundtrips through compile → decompile → compile", () => {
+  it("roundtrips through compile → decompile → compile", async () => {
     const ir = createPostWithFetchFlow();
     const ts1 = compile(ir);
 
@@ -115,7 +115,7 @@ export default function hello() {
 
     // Re-compile the decompiled IR
     const ir2 = decompiled.body.ir as any;
-    const recompiled = handleCompile({ ir: ir2, write: false }, ".");
+    const recompiled = await handleCompile({ ir: ir2, write: false }, ".");
     expect(recompiled.status).toBe(200);
     expect(recompiled.body.success).toBe(true);
   });
