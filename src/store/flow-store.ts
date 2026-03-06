@@ -110,7 +110,7 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
   nodeBadges: NodeBadgeMap;
   setNodeBadges: (badges: NodeBadgeMap) => void;
   addNodeBadge: (nodeId: string, badge: NodeBadge) => void;
-  clearBadges: (source?: \"trace\" | \"lint\") => void;
+  clearBadges: (source?: "trace" | "lint") => void;
 
   // ── History (labeled snapshots) ──
   flowHistory: HistoryEntry[];
