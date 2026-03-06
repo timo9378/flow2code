@@ -33,6 +33,8 @@ const categoryTag: Record<NodeCategory, string> = {
 
 type FlowNodeType = Node<FlowNodeData>;
 
+const EMPTY_BADGES: import("@/store/flow-store").NodeBadge[] = [];
+
 function FlowNodeComponent({ id, data, selected }: NodeProps<FlowNodeType>) {
   const t = theme[data.category] ?? theme[NodeCategory.ACTION];
   const tag = categoryTag[data.category] ?? "NODE";
@@ -40,8 +42,8 @@ function FlowNodeComponent({ id, data, selected }: NodeProps<FlowNodeType>) {
   const outputs = data.outputs ?? [];
   const portRows = Math.max(inputs.length, outputs.length, 0);
 
-  // Visual Source Map: read badges for this node
-  const badges = useFlowStore((s) => s.nodeBadges[id] ?? []);
+  // Visual Source Map: read badges for this node (stable ref to avoid infinite re-renders)
+  const badges = useFlowStore((s) => s.nodeBadges[id] ?? EMPTY_BADGES);
   const hasError = badges.some((b) => b.type === "error");
   const hasWarning = badges.some((b) => b.type === "warning");
 

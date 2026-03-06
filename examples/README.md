@@ -31,7 +31,7 @@ for f in examples/*.flow.json; do npx flow2code compile "$f" --dry-run; done
 You can also compile flows programmatically without the CLI:
 
 ```ts
-import { compile } from "flow2code/compiler";
+import { compile } from "@timo9378/flow2code/compiler";
 import fs from "fs";
 
 const ir = JSON.parse(fs.readFileSync("examples/hello-world.flow.json", "utf-8"));

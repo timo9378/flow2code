@@ -17,7 +17,6 @@ const DEBOUNCE_MS = 500;
 export function useFlowLint() {
   const nodes = useFlowStore((s) => s.nodes);
   const edges = useFlowStore((s) => s.edges);
-  const clearBadges = useFlowStore((s) => s.clearBadges);
   const setNodeBadges = useFlowStore((s) => s.setNodeBadges);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -74,11 +73,29 @@ export function useFlowLint() {
         merged[nid] = [...(merged[nid] ?? []), ...lintBadges];
       }
 
+      // Skip update if badges haven't changed (avoid infinite re-render loop)
+      const mergedKeys = Object.keys(merged).sort();
+      const currentKeys = Object.keys(currentBadges).sort();
+      if (
+        mergedKeys.length === currentKeys.length &&
+        mergedKeys.every((k, i) => k === currentKeys[i]) &&
+        mergedKeys.every((k) => {
+          const m = merged[k];
+          const c = currentBadges[k];
+          return (
+            m.length === c.length &&
+            m.every((b, i) => b.type === c[i].type && b.message === c[i].message && b.source === c[i].source)
+          );
+        })
+      ) {
+        return;
+      }
+
       setNodeBadges(merged);
     }, DEBOUNCE_MS);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [nodes, edges, clearBadges, setNodeBadges]);
+  }, [nodes, edges, setNodeBadges]);
 }

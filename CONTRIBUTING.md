@@ -77,6 +77,20 @@ then register it in `platforms/index.ts` with `registerPlatform("myplatform", ()
 - Test files go in the `tests/` directory, using Vitest
 - Naming convention: `*.test.ts`
 - Compiler tests should use snapshots or `toContain()` to verify generated code
+- E2E tests: `tests/playwright/` directory, using Playwright + Chromium
+- Run unit tests: `pnpm test:run` (413 tests)
+- Run E2E tests: `pnpm test:e2e` (20 Playwright tests)
+
+## VS Code Extension Development
+
+```bash
+cd vscode-extension
+pnpm install
+pnpm build
+# Press F5 in VS Code to launch Extension Development Host
+```
+
+See [vscode-extension/README.md](vscode-extension/README.md) for architecture details.
 
 ## Commit Convention
 

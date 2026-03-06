@@ -41,4 +41,6 @@ docs/api/
 flow2code-*.tgz
 test.md
 .playwright-mcp/
+playwright-report/
+test-results/
 nul

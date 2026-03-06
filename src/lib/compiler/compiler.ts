@@ -38,6 +38,10 @@ import {
   type PlatformAdapter,
   type PlatformName,
   getPlatform,
+  registerPlatform,
+  NextjsPlatform,
+  ExpressPlatform,
+  CloudflarePlatform,
 } from "./platforms/index";
 import {
   type NodePlugin,
@@ -48,6 +52,11 @@ import {
 import { builtinPlugins } from "./plugins/builtin";
 import { inferFlowStateTypes } from "./type-inference";
 import { buildSymbolTable, type SymbolTable } from "./symbol-table";
+
+// Ensure built-in platforms are registered (guards against bundler tree-shaking barrel side effects)
+registerPlatform("nextjs", () => new NextjsPlatform());
+registerPlatform("express", () => new ExpressPlatform());
+registerPlatform("cloudflare", () => new CloudflarePlatform());
 
 // ============================================================
 // Compile Result

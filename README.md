@@ -53,7 +53,7 @@
 | Platform Adapters | NextjsPlatform / ExpressPlatform / CloudflarePlatform |
 | Plugin System | `createPluginRegistry()` factory (per-instance) |
 | CLI | Commander.js + Chokidar |
-| Testing | Vitest 4 — 354 tests across 31 test files |
+| Testing | Vitest 4 — 413 tests across 33 test files + 20 Playwright E2E tests |
 | CI | GitHub Actions (Node 20/22 matrix) |
 
 ## Quick Start
@@ -185,7 +185,7 @@ flow2code/
 │   │   └── storage/                 # .flow.json split/merge
 │   ├── cli/                         # CLI (compile/watch/init)
 │   └── server/                      # Standalone HTTP Server
-├── tests/                           # 354 tests (Vitest)
+├── tests/                           # 413 unit tests + 20 E2E tests
 ├── .github/workflows/ci.yml         # GitHub Actions CI
 ├── CONTRIBUTING.md
 └── vitest.config.ts
@@ -224,6 +224,19 @@ flow2code/
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For detailed usage examples and workflows, see [USAGE.md](USAGE.md).
+
+## VS Code Extension
+
+Flow2Code ships a companion VS Code extension under `vscode-extension/`:
+
+- **Right-click Decompile** — Decompile any `.ts`/`.js` to a `.flow.json` visual IR
+- **Right-click Compile** — Compile `.flow.json` to TypeScript with platform selection
+- **Flow Preview** — SVG-based DAG visualization with pan, zoom, category coloring
+- **Auto-Validation** — Inline diagnostics for `.flow.json` on open/save
+- **Custom Editor** — "Open With… > Flow2Code Visual Editor" for graphical view
+- **Status Bar** — Shows node/edge count; click to preview
+
+See [vscode-extension/README.md](vscode-extension/README.md) for details.
 
 ## License
 

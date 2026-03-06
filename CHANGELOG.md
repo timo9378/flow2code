@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] — 2026-03-05
+
+### Fixed
+- **Unified API handlers** — All 4 Next.js API routes (`/api/compile`, `/api/decompile`, `/api/generate`, `/api/import-openapi`) are now thin wrappers delegating to `src/server/handlers.ts`, eliminating duplicated logic and drift risk.
+- **Bundle size 97% reduction** — `server.js` 5.5MB → 145KB, `cli.js` 5.5MB → 191KB. Root cause was Prettier (not ts-morph) being inlined; externalized in `tsup.config.ts`.
+- **OpenAPI tag-based filtering** — `/api/import-openapi` tag filter now works correctly (previously was a `return true` TODO stub). Fixed by delegating to `handlers.ts` which has a proper implementation checking `flow.meta.tags`.
+
 ## [0.2.0] — 2026-03-05
 
 ### Added — VSCode Extension (`vscode-extension/`)
@@ -16,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Status Bar** — Shows flow name and node/edge count (`$(graph) MyFlow (5N·4E)`) when a `.flow.json` is active; click to preview
 - **Configurable Settings** — `flow2code.platform`, `flow2code.autoValidate`, `flow2code.compileOnSave`
 - **esbuild Bundling** — Self-contained 6.3MB bundle with `@/` alias plugin resolving to main project source
+
+### Added — Playwright E2E Testing
+- **20 Playwright E2E tests** — Smoke tests, Node Operations, Toolbar Actions, API Compile Endpoint
+- **Playwright config** — Chromium browser with auto-start dev server on port 3000
+
+### Fixed
+- **Infinite re-render loop** — `FlowNode` badge selector `?? []` created a new array on every store update, causing infinite React setState loop with React Flow dimension measurements. Fixed by using a stable empty array constant.
+- **`useFlowLint` unconditional updates** — Lint hook always called `setNodeBadges()` even when results hadn't changed, feeding the re-render loop. Added shallow comparison before updating.
+- **Platform registration tree-shaking** — Turbopack tree-shook barrel file side effects, causing "Unknown platform" errors in API routes. Fixed by registering platforms directly in `compiler.ts`.
 
 ## [0.1.9] — 2026-03-05
 

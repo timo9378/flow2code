@@ -1,6 +1,6 @@
 {
   "name": "@timo9378/flow2code",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
   "type": "module",
   "sideEffects": false,
@@ -17,6 +17,8 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "precheck": "pnpm lint && pnpm test:run && pnpm build:cli",
     "docs:api": "typedoc",
     "compile": "node --loader ts-node/esm src/cli/index.ts compile",
@@ -92,6 +94,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^25.3.1",
     "@types/react": "^19.2.14",
@@ -105,6 +108,7 @@
     "globals": "^17.3.0",
     "lucide-react": "^0.575.0",
     "next": "^16.1.6",
+    "next-devtools-mcp": "^0.3.10",
     "postcss": "^8.5.6",
     "prettier": "^3.8.1",
     "radix-ui": "^1.4.3",

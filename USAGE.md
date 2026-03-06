@@ -254,3 +254,18 @@ flow2code dev --no-open       # Don't auto-open browser
 3. flow2code compile flow.json →  Generate TypeScript
 4. flow2code watch             →  Auto-compile on changes
 ```
+
+---
+
+## VS Code Extension
+
+Flow2Code includes a VS Code extension for in-editor workflow:
+
+```
+1. Open a .ts file → Right-click → "Flow2Code: Decompile to Flow IR"
+2. Open the generated .flow.json → Right-click → "Flow2Code: Compile to TypeScript"
+3. Use "Open With… > Flow2Code Visual Editor" for graphical view
+4. Auto-validation shows inline errors/warnings on save
+```
+
+See [vscode-extension/README.md](vscode-extension/README.md) for installation and configuration.

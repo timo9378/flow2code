@@ -16,6 +16,7 @@ export default defineConfig([
       "chokidar",
       "commander",
       "ts-morph",
+      "prettier",
       "yaml",
       // React / Next.js are UI-only, not needed by CLI
       "react",
@@ -38,6 +39,7 @@ export default defineConfig([
       "chokidar",
       "commander",
       "ts-morph",
+      "prettier",
       "yaml",
       "react",
       "react-dom",

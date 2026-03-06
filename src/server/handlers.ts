@@ -53,7 +53,7 @@ export async function handleCompile(body: CompileRequest, projectRoot: string): 
     let finalCode = result.code;
     if (finalCode) {
       try {
-        const { formatWithPrettier } = await import("../lib/compiler/compiler.js");
+        const { formatWithPrettier } = await import("../lib/compiler/compiler");
         finalCode = await formatWithPrettier(finalCode);
       } catch {
         // Prettier unavailable — use ts-morph formatted output
