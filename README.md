@@ -1,23 +1,50 @@
-# Flow2Code
+<p align="center">
+  <h1 align="center">Flow2Code</h1>
+  <p align="center">
+    <strong>X-ray vision for your backend code.</strong><br/>
+    See your API routes as visual flows. Fix them on the canvas. Export clean TypeScript.
+  </p>
+</p>
 
-**The Visual AST Compiler & Code Audit Tool for Backend APIs.**
+<p align="center">
+  <a href="https://flow2code.koimsurai.com">Live Playground</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="USAGE.md">Docs</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-> AI generates the code, Flow2Code decompiles it into a visual flow for you to audit, or compiles your visual flow into production-ready TypeScript.
+<p align="center">
+  <a href="https://github.com/timo9378/flow2code/actions/workflows/ci.yml"><img src="https://github.com/timo9378/flow2code/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
+  <a href="https://www.npmjs.com/package/@timo9378/flow2code"><img src="https://img.shields.io/npm/v/@timo9378/flow2code.svg" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@timo9378/flow2code"><img src="https://img.shields.io/npm/dm/@timo9378/flow2code.svg" alt="npm downloads"></a>
+</p>
 
-[![CI](https://github.com/timo9378/flow2code/actions/workflows/ci.yml/badge.svg)](https://github.com/timo9378/flow2code/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/@timo9378/flow2code.svg)](https://www.npmjs.com/package/@timo9378/flow2code)
-[![npm downloads](https://img.shields.io/npm/dm/@timo9378/flow2code.svg)](https://www.npmjs.com/package/@timo9378/flow2code)
+---
+
+<!-- TODO: Replace with a 30-second GIF/video showing: paste TS code → decompile to visual flow → edit on canvas → recompile to TS -->
+<!-- ![flow2code demo](docs/assets/demo.gif) -->
+
+## The Problem
+
+AI generates backend code fast — but **can you trust it?**
+
+Reading 200 lines of nested `if/else`, `try/catch`, and `await fetch()` chains to verify correctness is slow and error-prone. Code reviews on AI-generated routes are painful because the control flow is hidden in linear text.
+
+## The Solution
+
+Flow2Code **decompiles any TypeScript API route into an editable visual flow**, so you can:
+
+1. **See** every branch, error path, and data dependency as a DAG
+2. **Fix** issues by dragging nodes on the canvas — add a missing `try/catch`, reorder logic, remove dead branches
+3. **Export** clean, zero-dependency TypeScript that deploys anywhere
 
 ```
-            ┌──────────────────────────────────┐
-            │         flow2code                │
-            │                                  │
-  TS Code ──┤►  decompile() → FlowIR → Canvas  │  ← AI Code Audit
-            │                                  │
-  Canvas  ──┤►  FlowIR → compile() → TS Code   │  ← Visual Compiler
-            └──────────────────────────────────┘
+  Your TypeScript ──► decompile() ──► Visual Flow (audit & edit)
+  Visual Flow    ──► compile()   ──► Clean TypeScript (deploy)
 ```
+
+> **Not a low-code platform.** Flow2Code is a compiler. The output is native TypeScript with zero runtime dependencies — no vendor lock-in, no black boxes.
 
 ## Why Flow2Code?
 
@@ -27,216 +54,174 @@
 | Black-box nodes | **AST Compilation** — ts-morph generates syntactically correct code |
 | Single platform | **Multi-platform** — Next.js, Express, Cloudflare Workers |
 | Can't version control | **Git-friendly** — IR is JSON/YAML, diffable in PRs |
-| Developers don't trust it | **Visual Audit** — bidirectional canvas ↔ code mapping |
+| Developers don't trust it | **Bidirectional** — code ↔ visual flow, always in sync |
 
-## Core Features
+## Key Features
 
-- **AST Compilation, not interpretation** — Uses ts-morph to generate syntactically correct TypeScript. No string concatenation.
-- **Zero-dependency output** — Generated code has no runtime dependency. Deploy directly to Vercel / AWS Lambda / Cloudflare.
-- **Multi-platform output** — Same flow compiles to Next.js, Express, or Cloudflare Workers.
-- **Per-instance Plugin System** — Node logic is extensible via plugins. Compile sessions are isolated.
-- **flowState + Type Inference** — Cross-node data passing with TypeScript type safety.
-- **Auto concurrency detection** — Topological sort identifies independent nodes, auto-generates `Promise.allSettled`.
-- **Environment variable protection** — Secrets auto-converted to `process.env.XXX`.
-- **Expression Parser** — Recursive Descent Parser for `$input` / `$trigger` / `$node.xxx` template syntax.
-- **Decompiler** — TypeScript → FlowIR reverse parser for code auditing.
-- **Semantic Diff** — Structural comparison of two IR versions.
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Visual Canvas | Next.js 16 + React 19 + React Flow (@xyflow/react v12) |
-| State Management | Zustand 5 |
-| IR Specification | Custom JSON Schema + TypeScript Types |
-| AST Engine | ts-morph 27 (TypeScript Compiler API Wrapper) |
-| Platform Adapters | NextjsPlatform / ExpressPlatform / CloudflarePlatform |
-| Plugin System | `createPluginRegistry()` factory (per-instance) |
-| CLI | Commander.js + Chokidar |
-| Testing | Vitest 4 — 413 tests across 33 test files + 20 Playwright E2E tests |
-| CI | GitHub Actions (Node 20/22 matrix) |
+- **Decompiler** — Paste any TypeScript → get an editable visual flow with confidence scoring
+- **AST Compiler** — Visual flow → syntactically correct TypeScript via ts-morph (not string concatenation)
+- **Zero-dependency output** — Generated code deploys directly to Vercel / AWS Lambda / Cloudflare
+- **Multi-platform** — Same flow compiles to Next.js, Express, or Cloudflare Workers
+- **Type Inference** — Auto-generates typed `FlowState` interface for cross-node data passing
+- **Auto Concurrency** — Topological sort detects independent nodes, generates `Promise.allSettled`
+- **Plugin System** — Extensible node types via per-instance plugin registry
+- **Expression Parser** — Recursive Descent Parser for `{{$input}}` / `{{$trigger}}` / `{{$node.path}}` syntax
+- **Source Map Tracing** — Runtime errors trace back to the exact canvas node
+- **Semantic Diff** — Structural comparison of two flow versions for PR reviews
+- **VS Code Extension** — Right-click decompile, compile, preview, and inline diagnostics
 
 ## Quick Start
 
 ### Install
 
 ```bash
-# npm
 npm install @timo9378/flow2code
-
-# pnpm
-pnpm add @timo9378/flow2code
-
-# yarn
-yarn add @timo9378/flow2code
 ```
 
-### CLI Usage
+### Decompile: See any TypeScript as a visual flow
+
+```bash
+# Audit any TypeScript API route → visual FlowIR
+npx @timo9378/flow2code audit src/app/api/users/route.ts
+
+# Open the visual editor to see and edit the flow
+npx @timo9378/flow2code dev
+```
+
+### Compile: Visual flow → production TypeScript
 
 ```bash
 # Initialize flow2code in your project
 npx @timo9378/flow2code init
 
-# Compile a .flow.json to TypeScript
-npx @timo9378/flow2code compile .flow2code/flows/hello.flow.json --dry-run
-
-# Compile with output
+# Compile a flow to TypeScript
 npx @timo9378/flow2code compile .flow2code/flows/hello.flow.json -o src/app/api/hello/route.ts
 
-# Audit (decompile) any TypeScript file into a visual FlowIR
-npx @timo9378/flow2code audit src/app/api/users/route.ts
-
-# Start the visual editor
-npx @timo9378/flow2code dev
-
-# Watch mode (auto-compile on file change)
+# Watch mode — auto-compile on file change
 npx @timo9378/flow2code watch .flow2code/flows/
-
-# Source Map trace — find which canvas node generated a line
-npx @timo9378/flow2code trace src/app/api/hello/route.ts 15
 ```
 
 ### Library Usage
 
 ```ts
-import { compile, validate, decompile } from "@timo9378/flow2code";
+import { compile, decompile, validate } from "@timo9378/flow2code";
+
+// Decompile: TypeScript → FlowIR (code audit)
+const audit = decompile(tsCode);
+console.log(`Confidence: ${audit.confidence}`);
 
 // Compile: FlowIR → TypeScript
-const result = compile(ir, { platform: "nextjs" });
+const result = compile(audit.ir, { platform: "nextjs" });
 
 // Validate: Check IR structure
 const check = validate(ir);
-
-// Decompile: TypeScript → FlowIR (code audit)
-const audit = decompile(code);
 ```
 
-## Development
+### More CLI Commands
 
 ```bash
-# Clone and install
-git clone https://github.com/timo9378/flow2code.git
-cd flow2code && pnpm install
+# Source Map trace — find which canvas node generated a specific line
+npx @timo9378/flow2code trace src/app/api/hello/route.ts 15
 
-# Start dev server (visual canvas)
-pnpm dev
+# Semantic diff between two flow versions
+npx @timo9378/flow2code diff v1.flow.json v2.flow.json
 
-# Run tests
-pnpm test:run
-```
+# Convert flow to Git-friendly YAML directory format
+npx @timo9378/flow2code split my-flow.flow.json
 
-## Headless Usage (No UI Required)
-
-```ts
-import { compile } from "@timo9378/flow2code/compiler";
-
-const ir = JSON.parse(fs.readFileSync("my-api.flow.json", "utf-8"));
-const result = compile(ir, { platform: "express" });
-
-if (result.success) {
-  fs.writeFileSync(result.filePath!, result.code!);
-}
-```
-
-## Decompiler (TypeScript → Visual Flow)
-
-```ts
-import { decompile } from "@timo9378/flow2code/compiler";
-
-const code = fs.readFileSync("route.ts", "utf-8");
-const result = decompile(code);
-
-if (result.success) {
-  console.log(JSON.stringify(result.ir, null, 2));
-  console.log(`Confidence: ${result.confidence}`);
-}
-```
-
-## Project Structure
-
-```
-flow2code/
-├── src/
-│   ├── app/                         # Next.js App Router (UI)
-│   ├── components/                  # Visual canvas components
-│   ├── store/                       # Zustand canvas state management
-│   ├── lib/
-│   │   ├── index.ts                 # Headless Compiler public API
-│   │   ├── ir/
-│   │   │   ├── types.ts             # IR Schema + TypeScript types
-│   │   │   ├── validator.ts         # IR validator
-│   │   │   └── topological-sort.ts  # Topological sort + concurrency detection
-│   │   ├── compiler/
-│   │   │   ├── compiler.ts          # AST compiler core
-│   │   │   ├── decompiler.ts        # TS → FlowIR reverse parser
-│   │   │   ├── expression-parser.ts # Recursive Descent Parser
-│   │   │   ├── type-inference.ts    # Type inference engine
-│   │   │   ├── symbol-table.ts      # Human-readable variable naming
-│   │   │   ├── plugins/             # Plugin system (extensible)
-│   │   │   │   ├── index.ts          # Plugin registry factory + exports
-│   │   │   │   ├── types.ts          # PluginRegistry interface
-│   │   │   │   └── builtin.ts        # 15 built-in plugins
-│   │   │   └── platforms/           # Platform adapters
-│   │   │       ├── types.ts         # PlatformAdapter interface
-│   │   │       ├── nextjs.ts        # Next.js App Router
-│   │   │       ├── express.ts       # Express.js
-│   │   │       └── cloudflare.ts    # Cloudflare Workers
-│   │   ├── diff/                    # Semantic Diff
-│   │   └── storage/                 # .flow.json split/merge
-│   ├── cli/                         # CLI (compile/watch/init)
-│   └── server/                      # Standalone HTTP Server
-├── tests/                           # 413 unit tests + 20 E2E tests
-├── .github/workflows/ci.yml         # GitHub Actions CI
-├── CONTRIBUTING.md
-└── vitest.config.ts
+# Check all environment variables are defined
+npx @timo9378/flow2code env-check .flow2code/flows/
 ```
 
 ## Node Types
 
 | Category | Node | Compiled Output |
 |----------|------|-----------------|
-| ⚡ Trigger | HTTP Webhook | `export async function POST(req)` |
-| ⚡ Trigger | Cron Job | Scheduled function |
-| ⚡ Trigger | Manual | Exported async function |
-| 🔧 Action | Fetch API | `await fetch(...)` + try/catch |
-| 🔧 Action | SQL Query | Drizzle / Prisma / Raw SQL |
-| 🔧 Action | Redis Cache | Redis get/set/del |
-| 🔧 Action | Custom Code | Inline TypeScript |
-| 🔧 Action | Call Subflow | `await importedFunction(...)` |
-| 🔀 Logic | If/Else | `if (...) { } else { }` |
-| 🔀 Logic | For Loop | `for (const item of ...)` |
-| 🔀 Logic | Try/Catch | `try { } catch (e) { }` |
-| 🔀 Logic | Promise.all | `await Promise.allSettled([...])` |
-| 📦 Variable | Declare | `const x = ...` |
-| 📦 Variable | Transform | Expression transform |
-| 📤 Output | Return Response | Platform-specific Response |
+| Trigger | HTTP Webhook | `export async function POST(req)` |
+| Trigger | Cron Job | Scheduled function |
+| Trigger | Manual | Exported async function |
+| Action | Fetch API | `await fetch(...)` with error handling |
+| Action | SQL Query | Drizzle / Prisma / Raw SQL |
+| Action | Redis Cache | Redis get/set/del with TTL |
+| Action | Custom Code | Inline TypeScript |
+| Action | Call Subflow | `await importedFunction(...)` |
+| Logic | If/Else | `if (...) { } else { }` |
+| Logic | For Loop | `for (const item of ...)` |
+| Logic | Try/Catch | `try { } catch (e) { }` |
+| Logic | Promise.all | `await Promise.allSettled([...])` |
+| Variable | Declare | `const x = ...` |
+| Variable | Transform | Expression transform |
+| Output | Return Response | Platform-specific Response |
 
 ## Platform Support
 
-| Platform | Trigger Init | Response | CLI Flag |
-|----------|-------------|----------|----------|
-| **Next.js** (default) | `req.nextUrl.searchParams` / `req.json()` | `NextResponse.json()` | `--platform nextjs` |
-| **Express** | `req.query` / `req.body` | `res.status().json()` | `--platform express` |
-| **Cloudflare Workers** | `new URL(request.url)` / `request.json()` | `new Response()` | `--platform cloudflare` |
+| Platform | Response Style | CLI Flag |
+|----------|---------------|----------|
+| **Next.js** (default) | `NextResponse.json()` | `--platform nextjs` |
+| **Express** | `res.status().json()` | `--platform express` |
+| **Cloudflare Workers** | `new Response()` | `--platform cloudflare` |
 
-## Contributing
+## Tech Stack
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+| Layer | Technology |
+|-------|-----------|
+| Visual Canvas | Next.js 15 + React 19 + React Flow v12 |
+| State Management | Zustand 5 |
+| IR Specification | Custom JSON Schema + TypeScript Types |
+| AST Engine | ts-morph 27 (TypeScript Compiler API) |
+| Plugin System | Per-instance factory (`createPluginRegistry()`) |
+| CLI | Commander.js + Chokidar |
+| Testing | Vitest — 413 unit tests + 20 Playwright E2E tests |
 
-For detailed usage examples and workflows, see [USAGE.md](USAGE.md).
+## Project Structure
+
+```
+flow2code/
+├── src/lib/
+│   ├── ir/                    # Intermediate Representation
+│   │   ├── types.ts           # IR schema + TypeScript types
+│   │   ├── validator.ts       # Validation + auto-migration
+│   │   └── topological-sort.ts
+│   ├── compiler/
+│   │   ├── compiler.ts        # AST compiler core
+│   │   ├── decompiler.ts      # TS → FlowIR reverse parser
+│   │   ├── expression-parser.ts
+│   │   ├── type-inference.ts
+│   │   ├── symbol-table.ts
+│   │   ├── plugins/           # Extensible plugin system
+│   │   └── platforms/         # Next.js, Express, Cloudflare
+│   └── index.ts               # Public API
+├── src/cli/                   # CLI (10 commands)
+├── src/components/            # Visual canvas (React Flow)
+├── tests/                     # 413 unit + 20 E2E tests
+└── vscode-extension/          # VS Code companion
+```
 
 ## VS Code Extension
 
-Flow2Code ships a companion VS Code extension under `vscode-extension/`:
-
-- **Right-click Decompile** — Decompile any `.ts`/`.js` to a `.flow.json` visual IR
-- **Right-click Compile** — Compile `.flow.json` to TypeScript with platform selection
-- **Flow Preview** — SVG-based DAG visualization with pan, zoom, category coloring
-- **Auto-Validation** — Inline diagnostics for `.flow.json` on open/save
-- **Custom Editor** — "Open With… > Flow2Code Visual Editor" for graphical view
-- **Status Bar** — Shows node/edge count; click to preview
+- **Right-click Decompile** — `.ts`/`.js` → visual FlowIR with confidence score
+- **Right-click Compile** — `.flow.json` → TypeScript with platform selection
+- **Flow Preview** — SVG DAG with pan, zoom, category coloring
+- **Auto-Validation** — Inline diagnostics on open/save
+- **Custom Editor** — Graphical view for `.flow.json` files
 
 See [vscode-extension/README.md](vscode-extension/README.md) for details.
+
+## Development
+
+```bash
+git clone https://github.com/timo9378/flow2code.git
+cd flow2code && pnpm install
+
+pnpm dev          # Start visual canvas (dev server)
+pnpm test:run     # Run 413 unit tests
+pnpm test:e2e     # Run 20 Playwright E2E tests
+pnpm build        # Build CLI + UI
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, project structure, and commit conventions.
 
 ## License
 

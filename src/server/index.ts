@@ -72,6 +72,7 @@ const MIME_TYPES: Record<string, string> = {
 // ── Helpers ──
 
 const isDev = process.env.NODE_ENV !== "production";
+const isReadOnly = process.env.READONLY === "true";
 
 function setCors(res: ServerResponse) {
   const origin = isDev ? "*" : (process.env.CORS_ORIGIN || "");
@@ -226,12 +227,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, staticDi
     }
 
     if (pathname === "/api/compile") {
-      const result = await handleCompile(body as import("./handlers.js").CompileRequest, projectRoot);
+      // In read-only mode, force write=false to prevent file writes on public deployments
+      const compileBody = body as import("./handlers.js").CompileRequest;
+      if (isReadOnly) compileBody.write = false;
+      const result = await handleCompile(compileBody, projectRoot);
       sendJson(res, result.status, result.body);
       return;
     }
 
     if (pathname === "/api/generate") {
+      if (isReadOnly) {
+        sendJson(res, 403, { error: "AI generation is disabled on this public instance" });
+        return;
+      }
       const result = await handleGenerate(body as { prompt?: string });
       sendJson(res, result.status, result.body);
       return;

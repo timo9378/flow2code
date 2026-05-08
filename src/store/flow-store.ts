@@ -48,7 +48,7 @@ import {
 export interface NodeBadge {
   type: "error" | "warning" | "info";
   message: string;
-  source: "trace" | "lint";
+  source: "trace" | "lint" | "audit";
 }
 
 /** Per-node badge map: nodeId → badges */
@@ -110,7 +110,7 @@ interface FlowStoreState extends UndoRedoSlice<FlowSnapshot> {
   nodeBadges: NodeBadgeMap;
   setNodeBadges: (badges: NodeBadgeMap) => void;
   addNodeBadge: (nodeId: string, badge: NodeBadge) => void;
-  clearBadges: (source?: "trace" | "lint") => void;
+  clearBadges: (source?: "trace" | "lint" | "audit") => void;
 
   // ── History (labeled snapshots) ──
   flowHistory: HistoryEntry[];
@@ -194,7 +194,7 @@ export const useFlowStore = create<FlowStoreState>((...args) => {
       const existing = current[nodeId] ?? [];
       set({ nodeBadges: { ...current, [nodeId]: [...existing, badge] } });
     },
-    clearBadges: (source?: "trace" | "lint") => {
+    clearBadges: (source?: "trace" | "lint" | "audit") => {
       if (!source) {
         set({ nodeBadges: {} });
         return;

@@ -1,11 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Static export — generates out/ directory, served by standalone server
-  output: "export",
+  // Standalone output — self-contained Node.js server with RSC support
+  output: "standalone",
 
-  // Static export doesn't support Image Optimization, but we don't use next/image
+  // We don't use next/image optimization
   images: { unoptimized: true },
+
+  // Skip ESLint during build — we run lint separately in CI
+  eslint: { ignoreDuringBuilds: true },
 };
 
 export default nextConfig;

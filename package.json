@@ -1,7 +1,7 @@
 {
   "name": "@timo9378/flow2code",
-  "version": "0.2.1",
-  "description": "Visual AST Compiler: Flow-based visual editor that compiles to native TypeScript code",
+  "version": "0.3.0",
+  "description": "X-ray vision for your backend code — decompile TypeScript into visual flows, edit on canvas, export clean code",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/compiler.js",
@@ -58,16 +58,19 @@
     "access": "public"
   },
   "keywords": [
-    "flow",
-    "visual-programming",
-    "ast",
-    "compiler",
     "decompiler",
+    "compiler",
+    "ast",
     "typescript",
+    "code-audit",
+    "visual-programming",
     "code-generator",
-    "workflow",
-    "api-builder",
-    "next.js"
+    "flow",
+    "nextjs",
+    "express",
+    "cloudflare-workers",
+    "ts-morph",
+    "devtools"
   ],
   "author": "timo9378",
   "license": "MIT",
@@ -75,7 +78,7 @@
     "type": "git",
     "url": "git+https://github.com/timo9378/flow2code.git"
   },
-  "homepage": "https://github.com/timo9378/flow2code#readme",
+  "homepage": "https://flow2code.koimsurai.com",
   "engines": {
     "node": ">=20.0.0"
   },
@@ -107,7 +110,7 @@
     "eslint": "^10.0.2",
     "globals": "^17.3.0",
     "lucide-react": "^0.575.0",
-    "next": "^16.1.6",
+    "next": "^15.5.14",
     "next-devtools-mcp": "^0.3.10",
     "postcss": "^8.5.6",
     "prettier": "^3.8.1",
@@ -126,5 +129,11 @@
     "typescript-eslint": "^8.56.1",
     "vitest": "^4.0.18",
     "zustand": "^5.0.11"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp"
+    ]
   }
 }

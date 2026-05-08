@@ -1,0 +1,17 @@
+[Unit]
+Description=Flow2Code Standalone Server
+After=network.target
+
+[Service]
+Type=simple
+User=timo9378
+WorkingDirectory=/home/timo9378/Server/flow2code
+ExecStart=/home/timo9378/.nvm/versions/node/v20.20.0/bin/node /home/timo9378/Server/flow2code/.next/standalone/server.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=READONLY=true
+
+[Install]
+WantedBy=multi-user.target

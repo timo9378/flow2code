@@ -67,9 +67,11 @@ export function useCompile(): CompileHookResult {
       });
       const data = await res.json();
       if (data.success) {
-        let msg = `✅ Compilation successful!\n📁 ${data.filePath ?? "generated.ts"}\n`;
+        let msg = `✅ Compilation successful!\n`;
         if (data.writtenTo) {
           msg += `💾 Written to: ${data.writtenTo}\n`;
+        } else {
+          msg += `📁 Output path: ${data.filePath ?? "generated.ts"} (preview only — not written to disk)\n`;
         }
         if (data.dependencies?.missing?.length > 0) {
           msg += `\n⚠️ Missing packages:\n`;

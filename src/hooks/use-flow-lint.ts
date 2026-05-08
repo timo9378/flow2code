@@ -62,10 +62,10 @@ export function useFlowLint() {
       const currentBadges = useFlowStore.getState().nodeBadges;
       const merged: NodeBadgeMap = {};
 
-      // Keep trace badges
+      // Keep trace and audit badges (only replace lint badges)
       for (const [nid, existing] of Object.entries(currentBadges)) {
-        const traceBadges = existing.filter((b) => b.source === "trace");
-        if (traceBadges.length > 0) merged[nid] = traceBadges;
+        const kept = existing.filter((b) => b.source === "trace" || b.source === "audit");
+        if (kept.length > 0) merged[nid] = kept;
       }
 
       // Add lint badges

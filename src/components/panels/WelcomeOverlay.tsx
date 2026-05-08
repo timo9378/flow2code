@@ -113,7 +113,7 @@ export default function WelcomeOverlay({ onDismiss }: WelcomeOverlayProps) {
                 Flow2Code
               </span>
               <span className="text-[10px] font-mono bg-[oklch(0.22_0_0)] text-[oklch(0.6_0_0)] px-2 py-0.5 rounded">
-                v0.1.4
+                v0.3.0
               </span>
             </div>
             <p className="text-sm text-[oklch(0.55_0_0)] leading-relaxed mt-2">

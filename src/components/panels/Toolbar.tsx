@@ -45,6 +45,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// AI features require an API key — hide them on public deployments
+const ENABLE_AI = process.env.NEXT_PUBLIC_ENABLE_AI !== "false";
+
 export default function Toolbar() {
   // ── Store selectors ──
   const exportIR = useFlowStore((s) => s.exportIR);
@@ -66,6 +69,9 @@ export default function Toolbar() {
   const [codeToFlowInput, setCodeToFlowInput] = useState("");
   const [showRefactorDialog, setShowRefactorDialog] = useState(false);
   const [refactorInstruction, setRefactorInstruction] = useState("");
+  const [showDecompileDialog, setShowDecompileDialog] = useState(false);
+  const [decompileInput, setDecompileInput] = useState("");
+  const [decompileLoading, setDecompileLoading] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const aiSettings = useAISettingsStore();
 
@@ -146,6 +152,58 @@ export default function Toolbar() {
     }
   };
 
+  const onDecompile = async () => {
+    if (!decompileInput.trim()) return;
+    setDecompileLoading(true);
+    try {
+      const { getApiBase } = await import("@/lib/api-base");
+      const res = await fetch(`${getApiBase()}/api/decompile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: decompileInput, fileName: "input.ts" }),
+      });
+      const data = await res.json();
+      if (data.success && data.ir) {
+        const { validateFlowIR } = await import("@/lib/ir/validator");
+        const validation = validateFlowIR(data.ir);
+        const store = useFlowStore.getState();
+        store.loadIR(validation.migratedIR ?? data.ir);
+        const confidence = Math.round((data.confidence ?? 0) * 100);
+        let msg = `✅ Decompile successful — ${data.ir.nodes?.length ?? 0} nodes, confidence ${confidence}%`;
+
+        // Apply audit hints as visual badges on canvas nodes
+        // Use requestAnimationFrame to ensure React Flow has rendered the new nodes first
+        if (data.audit?.length) {
+          const auditHints = data.audit as { nodeId: string; severity: string; message: string }[];
+          requestAnimationFrame(() => {
+            const s = useFlowStore.getState();
+            s.clearBadges("audit");
+            const badges: Record<string, import("@/store/flow-store").NodeBadge[]> = {};
+            for (const hint of auditHints) {
+              const type = hint.severity === "error" ? "error" : hint.severity === "warning" ? "warning" : "info";
+              if (!badges[hint.nodeId]) badges[hint.nodeId] = [];
+              badges[hint.nodeId].push({ type, message: hint.message, source: "audit" });
+            }
+            s.setNodeBadges(badges);
+          });
+          msg += `\n\n📋 Audit hints (highlighted on canvas):\n${data.audit.map((h: { severity: string; message: string }) => `  [${h.severity}] ${h.message}`).join("\n")}`;
+        }
+        setOutput(msg);
+        setShowOutput(true);
+        setShowDecompileDialog(false);
+        setDecompileInput("");
+      } else {
+        setOutput(`❌ Decompile failed:\n${data.errors?.join("\n") ?? data.error ?? "Unknown error"}`);
+        setShowOutput(true);
+      }
+    } catch (err) {
+      setOutput(`❌ Decompile error: ${err instanceof Error ? err.message : String(err)}`);
+      setShowOutput(true);
+    } finally {
+      setDecompileLoading(false);
+    }
+  };
+
   return (
     <>
       {/* ── Top Toolbar ── */}
@@ -186,44 +244,57 @@ export default function Toolbar() {
           <TooltipContent>Analyze execution plan (topological sort + concurrency detection)</TooltipContent>
         </Tooltip>
 
-        <Separator orientation="vertical" className="h-5 mx-1" />
-
-        {/* AI */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={() => setShowAIDialog(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
-              ✨ AI Generate
+            <Button variant="ghost" size="sm" onClick={() => setShowDecompileDialog(true)} className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10">
+              🔍 Decompile
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Describe in natural language, AI auto-generates the flow diagram</TooltipContent>
+          <TooltipContent>Paste TypeScript code and decompile it into a visual flow</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={() => setShowCodeToFlow(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
-              📝 Code→Flow
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Paste code and convert it to a visual flow diagram</TooltipContent>
-        </Tooltip>
+        {ENABLE_AI && (
+          <>
+            <Separator orientation="vertical" className="h-5 mx-1" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={() => setShowRefactorDialog(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
-              🔄 Refactor
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Select nodes on canvas, then AI refactors the selected logic</TooltipContent>
-        </Tooltip>
+            {/* AI */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={() => setShowAIDialog(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
+                  ✨ AI Generate
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Describe in natural language, AI auto-generates the flow diagram</TooltipContent>
+            </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={() => setShowAISettings(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-1.5">
-              ⚙️
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>AI API endpoint settings</TooltipContent>
-        </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={() => setShowCodeToFlow(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
+                  📝 Code→Flow
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Paste code and convert it to a visual flow diagram</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={() => setShowRefactorDialog(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10">
+                  🔄 Refactor
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Select nodes on canvas, then AI refactors the selected logic</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={() => setShowAISettings(true)} className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-1.5">
+                  ⚙️
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>AI API endpoint settings</TooltipContent>
+            </Tooltip>
+          </>
+        )}
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
@@ -404,13 +475,11 @@ export default function Toolbar() {
             <DialogTitle>Output</DialogTitle>
             <DialogDescription>Output from compilation, validation, or AI generation</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 max-h-[60vh] w-full">
+          <div className="flex-1 overflow-auto max-h-[60vh] rounded-md bg-[oklch(0.13_0_0)] border border-[oklch(0.22_0_0)]">
             <pre className="p-4 text-xs text-emerald-400 font-mono whitespace-pre-wrap break-words leading-relaxed">
               {output}
             </pre>
-            <ScrollBar orientation="vertical" />
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -558,6 +627,41 @@ export default function Toolbar() {
               className="bg-purple-600 hover:bg-purple-500 text-white"
             >
               {ai.aiLoading ? "⏳ Refactoring..." : "🔄 Refactor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Decompile Dialog (no AI required) ── */}
+      <Dialog open={showDecompileDialog} onOpenChange={setShowDecompileDialog}>
+        <DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>🔍 Decompile TypeScript → Visual Flow</DialogTitle>
+            <DialogDescription>
+              Paste any TypeScript API route below. Flow2Code will analyze the AST and convert it into an editable visual flow diagram.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-2 overflow-y-auto min-h-0">
+            <Textarea
+              value={decompileInput}
+              onChange={(e) => setDecompileInput(e.target.value)}
+              placeholder={`// Paste your TypeScript code here...\nexport async function POST(req: Request) {\n  const { userId } = await req.json();\n  const user = await fetch(\`https://api.example.com/users/\${userId}\`);\n  const data = await user.json();\n\n  if (data.role === "admin") {\n    return Response.json({ user: data, admin: true });\n  }\n  return Response.json({ error: "Forbidden" }, { status: 403 });\n}`}
+              className="min-h-[280px] font-mono text-sm resize-y"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onDecompile();
+              }}
+            />
+          </div>
+          <DialogFooter className="flex items-center justify-between">
+            <span className="text-muted-foreground text-[10px]">
+              ⌘+Enter to submit · AST-based analysis (no AI)
+            </span>
+            <Button
+              onClick={onDecompile}
+              disabled={decompileLoading || !decompileInput.trim()}
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+            >
+              {decompileLoading ? "⏳ Analyzing..." : "🔍 Decompile"}
             </Button>
           </DialogFooter>
         </DialogContent>

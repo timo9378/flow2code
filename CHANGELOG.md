@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-04-03
+
+### Changed — Project Repositioning
+- **New positioning: "X-ray vision for your backend code"** — Repositioned from "Visual AST Compiler" to focus on the decompiler-first workflow: paste TypeScript → see visual flow → edit → export clean code
+- **README rewrite** — Pain-point-driven structure: Problem → Solution → Quick Start. Decompiler featured before compiler. Added placeholder for demo GIF
+- **package.json metadata** — Updated description, keywords (added `code-audit`, `devtools`, `cloudflare-workers`), homepage points to playground
+
+### Added
+- **Playground deployment config** — `deploy/nginx-flow2code.conf` nginx reverse proxy config for self-hosted playground at `flow2code.koimsurai.com`, proxying to the standalone server on port 3100
+
 ## [0.2.1] — 2026-03-05
 
 ### Fixed
