@@ -111,6 +111,75 @@ export const GET = a(b(c(d(e(f(async (req: Request) => Response.json({ ok: true 
   });
 });
 
+describe("Source-aware audit rules", () => {
+  it("warns when the request body reaches the DB without validation", () => {
+    const result = decompile(`
+export async function POST(req: Request) {
+  const body = await req.json();
+  const user = await db.user.create({ data: body });
+  return Response.json(user, { status: 201 });
+}
+`, { fileName: "route.ts", audit: true });
+    expect(result.success).toBe(true);
+    expect(result.audit?.some((h) => h.message.includes("schema validation"))).toBe(true);
+  });
+
+  it("stays quiet when the body is validated first", () => {
+    const result = decompile(`
+import { z } from "zod";
+const Schema = z.object({ name: z.string() });
+
+export async function POST(req: Request) {
+  const parsed = Schema.safeParse(await req.json());
+  if (!parsed.success) return Response.json({ error: "bad" }, { status: 422 });
+  const user = await db.user.create({ data: parsed.data });
+  return Response.json(user, { status: 201 });
+}
+`, { fileName: "route.ts", audit: true });
+    expect(result.audit?.some((h) => h.message.includes("schema validation"))).toBeFalsy();
+  });
+
+  it("warns when err.message is returned to the client", () => {
+    const result = decompile(`
+export async function GET(req: Request) {
+  try {
+    const data = await fetch("https://api.example.com");
+    return Response.json(await data.json());
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 500 });
+  }
+}
+`, { fileName: "route.ts", audit: true });
+    expect(result.audit?.some((h) => h.message.includes("internal error details"))).toBe(true);
+  });
+
+  it("flags an unauthenticated DELETE handler at info level", () => {
+    const result = decompile(`
+export async function DELETE(req: Request) {
+  const { id } = await req.json();
+  await db.item.delete({ where: { id } });
+  return new Response(null, { status: 204 });
+}
+`, { fileName: "route.ts", audit: true });
+    const hint = result.audit?.find((h) => h.message.includes("auth/session check"));
+    expect(hint).toBeDefined();
+    expect(hint!.severity).toBe("info");
+  });
+
+  it("does not flag middleware-protected Express mutations", () => {
+    const result = decompile(`
+import { Router } from "express";
+const router = Router();
+router.delete("/items/:id", requireAdmin, async (req, res) => {
+  await db.item.delete({ where: { id: req.params.id } });
+  res.status(204).end();
+});
+export default router;
+`, { fileName: "items.ts", audit: true });
+    expect(result.audit?.some((h) => h.message.includes("auth/session check"))).toBeFalsy();
+  });
+});
+
 describe("Handler discovery: named export declarations", () => {
   it("resolves `const GET = ...; export { GET };` to the local declaration", () => {
     const { result, trigger } = getTrigger(`

@@ -125,40 +125,107 @@ export function decompile(
   code: string,
   options: DecompileOptions = {}
 ): DecompileResult {
-  const errors: string[] = [];
   const { fileName = "input.ts", audit: enableAudit = true } = options;
 
   try {
     const project = new Project({ useInMemoryFileSystem: true });
     const sourceFile = project.createSourceFile(fileName, code);
 
-    // Step 1: Find the target function to decompile
     const targetFn = findTargetFunction(sourceFile, options.functionName);
     if (!targetFn) {
-      errors.push("No exported function found to decompile");
-      return { success: false, errors, confidence: 0 };
+      return { success: false, errors: ["No exported function found to decompile"], confidence: 0 };
     }
 
-    // Step 2: Create decompile context
+    return decompileTarget(targetFn, sourceFile, fileName, enableAudit);
+  } catch (err) {
+    return {
+      success: false,
+      errors: [err instanceof Error ? err.message : String(err)],
+      confidence: 0,
+    };
+  }
+}
+
+/** One analyzable entry point of a route file. */
+export interface RouteEntry {
+  /** Export/function name, e.g. "GET" or "handler" */
+  name: string;
+  /** HTTP method when this entry is an HTTP handler */
+  method?: string;
+  /** Route path when the source declares it (Express) or it can be inferred */
+  routePath?: string;
+  result: DecompileResult;
+}
+
+export interface DecompileAllResult {
+  success: boolean;
+  /** All analyzable entry points found in the file, in source order. */
+  entries: RouteEntry[];
+  errors?: string[];
+}
+
+/**
+ * Decompiles EVERY entry point in a file — all exported HTTP-method handlers
+ * (Next.js `export async function GET/POST/...`) and all router registrations
+ * (`router.get(...)`, `router.post(...)`, …). Falls back to the single best
+ * handler for non-HTTP files.
+ */
+export function decompileAll(
+  code: string,
+  options: DecompileOptions = {}
+): DecompileAllResult {
+  const { fileName = "input.ts", audit: enableAudit = true } = options;
+
+  try {
+    const project = new Project({ useInMemoryFileSystem: true });
+    const sourceFile = project.createSourceFile(fileName, code);
+
+    const targets = findAllTargetFunctions(sourceFile);
+    if (targets.length === 0) {
+      return { success: false, entries: [], errors: ["No exported function found to decompile"] };
+    }
+
+    const entries: RouteEntry[] = targets.map((t) => ({
+      name: t.name ?? t.httpMethod ?? "handler",
+      method: t.httpMethod,
+      routePath: t.routePath,
+      result: decompileTarget(t, sourceFile, fileName, enableAudit),
+    }));
+
+    return { success: entries.some((e) => e.result.success), entries };
+  } catch (err) {
+    return {
+      success: false,
+      entries: [],
+      errors: [err instanceof Error ? err.message : String(err)],
+    };
+  }
+}
+
+/** Runs the decompile pipeline (context → trigger → walk → edges → audit → IR) for one target. */
+function decompileTarget(
+  targetFn: TargetFunction,
+  sourceFile: SourceFile,
+  fileName: string,
+  enableAudit: boolean
+): DecompileResult {
+  try {
     const ctx = createDecompileContext();
 
-    // Step 3: Create trigger node from the function signature
     const trigger = createTriggerFromFunction(targetFn, sourceFile, ctx);
     ctx.addNode(trigger);
 
-    // Step 4: Walk the function body and extract nodes
     const body = targetFn.fn.getBody();
     if (body && body.getKind() === SyntaxKind.Block) {
       walkBlock(body as Block, trigger.id, ctx);
     }
 
-    // Step 5: Build edges from data flow tracking
     buildEdges(ctx);
 
-    // Step 6: Compute audit hints
-    const auditHints = enableAudit ? computeAuditHints(ctx) : [];
+    const auditHints = enableAudit
+      ? [...computeAuditHints(ctx), ...computeSourceAuditHints(targetFn, ctx)]
+      : [];
 
-    // Step 7: Assemble IR
     const now = new Date().toISOString();
     const ir: FlowIR = {
       version: CURRENT_IR_VERSION,
@@ -183,7 +250,6 @@ export function decompile(
     return {
       success: true,
       ir,
-      errors: errors.length > 0 ? errors : undefined,
       confidence,
       audit: auditHints.length > 0 ? auditHints : undefined,
     };
@@ -282,6 +348,9 @@ interface TargetFunction {
   /** Route path when the source declares it (e.g. Express `router.post("/orders", …)`) */
   routePath?: string;
   isExported: boolean;
+  /** True when the handler sat inside a HOF wrapper or behind middleware —
+   * concerns like auth are likely handled outside the handler body. */
+  wrapped?: boolean;
 }
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -399,7 +468,8 @@ const ROUTER_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
  * middleware by convention. Only the FIRST registration in the file is
  * returned (the IR models a single trigger per flow).
  */
-function findRouterRegistration(sourceFile: SourceFile): TargetFunction | null {
+function findAllRouterRegistrations(sourceFile: SourceFile): TargetFunction[] {
+  const found: TargetFunction[] = [];
   for (const stmt of sourceFile.getStatements()) {
     if (stmt.getKind() !== SyntaxKind.ExpressionStatement) continue;
     for (const call of stmt.getDescendantsOfKind(SyntaxKind.CallExpression)) {
@@ -420,18 +490,92 @@ function findRouterRegistration(sourceFile: SourceFile): TargetFunction | null {
         const candidates: HandlerCandidate[] = [];
         collectHandlerCandidates(args[i], 0, undefined, candidates);
         if (candidates.length > 0) {
-          return {
+          found.push({
             name: methodName.toUpperCase(),
             fn: candidates[0].fn,
             httpMethod: methodName.toUpperCase(),
             routePath: (pathArg as StringLiteral).getLiteralValue(),
             isExported: true,
-          };
+            wrapped: args.length > 2, // middleware sits between path and handler
+          });
+          break;
         }
       }
     }
   }
-  return null;
+  return found;
+}
+
+function findRouterRegistration(sourceFile: SourceFile): TargetFunction | null {
+  return findAllRouterRegistrations(sourceFile)[0] ?? null;
+}
+
+/**
+ * Enumerates EVERY analyzable entry point in a file, in source order:
+ * exported HTTP-method functions/consts (`export async function GET`,
+ * `export const POST = withAuth(...)`, `export { GET }`), all router
+ * registrations, and — when none of those exist — the single best handler
+ * the legacy discovery finds (default exports, pages/api, plain functions).
+ */
+function findAllTargetFunctions(sourceFile: SourceFile): TargetFunction[] {
+  const httpMethods: readonly string[] = HTTP_METHODS;
+  const found: TargetFunction[] = [];
+  const seen = new Set<number>(); // dedupe by handler position
+
+  const push = (t: TargetFunction | null) => {
+    if (!t) return;
+    const pos = t.fn.getPos();
+    if (seen.has(pos)) return;
+    seen.add(pos);
+    found.push(t);
+  };
+
+  // exported HTTP-method function declarations
+  for (const fn of sourceFile.getFunctions()) {
+    if (!fn.isExported()) continue;
+    const name = fn.getName();
+    if (name && httpMethods.includes(name.toUpperCase())) {
+      push({ name, fn, httpMethod: name.toUpperCase(), isExported: true });
+    }
+  }
+
+  // exported HTTP-method consts (direct or HOF-wrapped)
+  for (const stmt of sourceFile.getVariableStatements()) {
+    if (!stmt.isExported()) continue;
+    for (const decl of stmt.getDeclarations()) {
+      const name = decl.getName();
+      if (!httpMethods.includes(name.toUpperCase())) continue;
+      const init = decl.getInitializer();
+      const fn = init ? unwrapHandlerExpression(init) : null;
+      if (fn) {
+        const direct =
+          init!.getKind() === SyntaxKind.ArrowFunction ||
+          init!.getKind() === SyntaxKind.FunctionExpression;
+        push({ name, fn, httpMethod: name.toUpperCase(), isExported: true, wrapped: !direct });
+      }
+    }
+  }
+
+  // `export { GET, POST }` named exports of local declarations
+  for (const ed of sourceFile.getExportDeclarations()) {
+    if (ed.getModuleSpecifier()) continue;
+    for (const named of ed.getNamedExports()) {
+      const name = named.getName();
+      if (!httpMethods.includes(name.toUpperCase())) continue;
+      const fn = resolveLocalHandler(sourceFile, name);
+      if (fn) push({ name, fn, httpMethod: name.toUpperCase(), isExported: true });
+    }
+  }
+
+  // every router registration
+  for (const reg of findAllRouterRegistrations(sourceFile)) push(reg);
+
+  // nothing HTTP-shaped → fall back to the single best handler
+  if (found.length === 0) push(findTargetFunction(sourceFile));
+
+  // keep source order so reports read top-to-bottom
+  found.sort((a, b) => a.fn.getPos() - b.fn.getPos());
+  return found;
 }
 
 /** Resolves a local declaration (function or const, possibly HOF-wrapped) to its handler. */
@@ -1246,6 +1390,83 @@ function computeAuditHints(ctx: DecompileContext): AuditHint[] {
         line,
       });
     }
+  }
+
+  return hints;
+}
+
+// ============================================================
+// Source-aware Audit Rules (route-specific, beyond graph shape)
+// ============================================================
+
+const BODY_SOURCE_RE = /\breq(?:uest)?\s*\.\s*body\b|\bawait\s+req(?:uest)?\s*\.\s*json\s*\(/;
+const DB_SINK_RE = /\b(?:db|prisma|knex|drizzle)\s*\.|\.\s*(?:create|update|upsert|insert|delete(?:Many)?)\s*\(|\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b/i;
+const VALIDATION_RE = /\bsafeParse\s*\(|\.\s*parse\s*\(|\bvalidate(?:Sync|Async)?\s*\(|\bjoi\b|\byup\b|\bvalibot\b|\bzod\b|\bassertValid/i;
+const ERROR_LEAK_RE = /\b(?:err|error|e)\s*\.\s*(?:message|stack)\b|String\s*\(\s*(?:err|error|e)\s*\)|`[^`]*\$\{\s*(?:err|error|e)\s*\}/;
+const AUTH_MARKER_RE = /\bauth|session|jwt|token|verify|currentUser|getUser|Authorization|api[_-]?key|permission|isAdmin|role\b/i;
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Route-specific findings that need the handler source, not just the graph:
+ * unvalidated request bodies reaching data sinks, internal error details
+ * leaking into responses, and mutating routes with no visible auth check.
+ */
+function computeSourceAuditHints(targetFn: TargetFunction, ctx: DecompileContext): AuditHint[] {
+  const hints: AuditHint[] = [];
+  const body = targetFn.fn.getBody();
+  if (!body) return hints;
+  const text = body.getText();
+  const startLine = targetFn.fn.getStartLineNumber();
+
+  /** Prefer the line of the first graph node whose code matches `re`. */
+  const lineOfFirstMatch = (re: RegExp): number => {
+    for (const [nodeId, node] of ctx.nodes) {
+      const p = node.params as Record<string, unknown>;
+      const code = String(p.code ?? p.expression ?? p.bodyExpression ?? "");
+      if (re.test(code)) return ctx.nodeLines.get(nodeId) ?? startLine;
+    }
+    return startLine;
+  };
+
+  // 1. Request body flows into a data sink with no validation in sight
+  if (BODY_SOURCE_RE.test(text) && DB_SINK_RE.test(text) && !VALIDATION_RE.test(text)) {
+    hints.push({
+      nodeId: "trigger_1",
+      severity: "warning",
+      message:
+        "Request body reaches a data operation without schema validation (no zod/joi/yup parse detected)",
+      line: lineOfFirstMatch(BODY_SOURCE_RE),
+    });
+  }
+
+  // 2. Internal error details returned to the client
+  for (const [nodeId, node] of ctx.nodes) {
+    if (node.nodeType !== OutputType.RETURN_RESPONSE) continue;
+    const expr = String((node.params as Record<string, unknown>).bodyExpression ?? "");
+    if (ERROR_LEAK_RE.test(expr)) {
+      hints.push({
+        nodeId,
+        severity: "warning",
+        message:
+          "Response exposes internal error details (err.message/stack) to the client — return a generic message and log the original",
+        line: ctx.nodeLines.get(nodeId),
+      });
+    }
+  }
+
+  // 3. Mutating route with no visible auth check (heuristic — middleware-aware)
+  if (
+    targetFn.httpMethod &&
+    MUTATING_METHODS.has(targetFn.httpMethod) &&
+    !targetFn.wrapped &&
+    !AUTH_MARKER_RE.test(text)
+  ) {
+    hints.push({
+      nodeId: "trigger_1",
+      severity: "info",
+      message: `No auth/session check detected in this ${targetFn.httpMethod} handler (heuristic — ignore if handled by middleware)`,
+      line: startLine,
+    });
   }
 
   return hints;
