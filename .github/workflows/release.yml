@@ -1,0 +1,56 @@
+# Publishes to npm via trusted publishing (OIDC) — no tokens, no OTP.
+# Trigger: push a version tag, e.g. `git tag v0.4.1 && git push origin v0.4.1`
+#
+# One-time setup on npmjs.com (package settings → Trusted Publisher):
+#   GitHub repository: timo9378/flow2code
+#   Workflow filename: release.yml
+#   Allowed actions: publish
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for npm trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Update npm (trusted publishing needs >= 11.5.1)
+        run: npm install -g npm@latest
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Lint and test
+        run: |
+          pnpm lint
+          pnpm test:run
+
+      # prepublishOnly runs the full build (UI + CLI); provenance is
+      # generated automatically under trusted publishing
+      - name: Publish to npm
+        run: npm publish --access public
