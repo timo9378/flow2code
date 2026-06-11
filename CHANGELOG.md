@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — 2026-06-11
+
+### Added — Every route, the whole branch
+- **Multi-route files** — `decompileAll()` analyzes every entry point in a file: all Express/Hono registrations and all exported HTTP methods (`GET`+`POST` in one Next.js route file). Diff matches routes by method+path and reports each individually; **removed routes are warning-level changes**. On the 389-route benchmark corpus this surfaces 399 entries across 348 files — 51 routes that single-entry analysis missed (34 multi-route files), still 0 crashes.
+- **Branch-level diff** — `flow2code diff` scans every changed route file in the working tree vs HEAD; `flow2code diff main...` scans vs the merge-base with a ref. `--paths <regex>` customizes route detection; exit code 2 gates CI on warning-level findings.
+- **Route-specific audit rules** — request bodies reaching DB operations without schema validation (warning), responses leaking `err.message`/`err.stack` to clients (warning), and mutating handlers with no visible auth check (info-level heuristic that skips middleware-protected and HOF-wrapped handlers).
+
+### Changed
+- CLI `diff`, the GitHub Action, and the MCP `diff_routes` tool all use per-route file diffs.
+- Docs repositioned: USAGE.md rewritten around diff/audit/Action/MCP recipes with a known-limitations section; stale pre-pivot ROADMAP/KNOWN-ISSUES/LAUNCH-CHECKLIST files replaced by a single focused ROADMAP.md.
+
 ## [0.4.1] — 2026-06-11
 
 ### Added

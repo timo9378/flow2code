@@ -60,26 +60,30 @@ robust to formatting, renames of generated IDs, and statement reordering —
 npx @timo9378/flow2code audit src/app/api/users/route.ts
 
 # Semantic flow diff — git-aware, like you'd expect
-npx @timo9378/flow2code diff src/app/api/users/route.ts   # working tree vs HEAD
-npx @timo9378/flow2code diff main route.ts                # working tree vs a ref
-npx @timo9378/flow2code diff old.ts new.ts                # two files
-npx @timo9378/flow2code diff route.ts --md                # PR-comment Markdown (Mermaid graph)
-npx @timo9378/flow2code diff route.ts --json              # machine-readable
+npx @timo9378/flow2code diff main...                       # every changed route on the branch
+npx @timo9378/flow2code diff                               # uncommitted route changes vs HEAD
+npx @timo9378/flow2code diff src/app/api/users/route.ts    # one file vs HEAD
+npx @timo9378/flow2code diff old.ts new.ts                 # two files
+npx @timo9378/flow2code diff route.ts --md                 # PR-comment Markdown (Mermaid graph)
 ```
 
 `audit` finds — with exact line numbers:
 - `await` calls with **no error handling**
 - `fetch` without `response.ok` checks
-- branches with no else / unhandled negative cases
+- request bodies reaching DB operations with **no schema validation**
+- responses **leaking `err.message`/`err.stack`** to clients
+- mutating handlers with no visible auth check (middleware-aware heuristic)
 - every response path and its status code
 
-Works on real-world code: Next.js App Router routes, `pages/api` handlers,
-Express/Hono router registrations (`router.post("/orders", auth, handler)` —
-middleware skipped, route path extracted), and HOF-wrapped handlers
-(`withAuth(...)`, `wrapper({ handler })`) are all unwrapped automatically.
-Benchmarked on 389 production routes from open-source SaaS (papermark,
-formbricks, documenso): **0 crashes, 89% analyzable, 82% of extracted nodes
-carry real structure** (not opaque code blocks).
+Works on real-world code, **every route in the file**: all Express/Hono
+registrations (`router.post("/orders", auth, handler)` — middleware skipped,
+path extracted), all exported HTTP methods in Next.js route files, `pages/api`
+handlers, and HOF-wrapped handlers (`withAuth(...)`, `wrapper({ handler })`)
+are unwrapped automatically. Removed routes are flagged as warning-level
+changes. Benchmarked on 389 production routes from open-source SaaS
+(papermark, formbricks, documenso): **0 crashes, 89% analyzable, 82% of
+extracted nodes carry real structure** (not opaque code blocks). Known
+limitations are documented in [USAGE.md](USAGE.md#known-limitations).
 
 ## Why not difftastic / ast-grep?
 

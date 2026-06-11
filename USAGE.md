@@ -1,271 +1,152 @@
 # Flow2Code Usage Guide
 
-A hands-on guide showing every user workflow — from visual-flow compilation to AI-code auditing.
+Practical recipes for every workflow. Quick reference:
 
----
-
-## Quick Start
+| I want to… | Command |
+|---|---|
+| Review what a branch did to my routes | `flow2code diff main...` |
+| Check my uncommitted route changes | `flow2code diff` |
+| Diff one route file against HEAD | `flow2code diff src/app/api/users/route.ts` |
+| Audit any route for structural issues | `flow2code audit route.ts` |
+| Get flow diffs on every PR | GitHub Action (below) |
+| Let my AI agent do all of the above | `flow2code mcp` |
 
 ```bash
-# Install globally (from npm)
-npm install -g @timo9378/flow2code
-
-# pnpm
-pnpm add -g @timo9378/flow2code
-
-# yarn
-yarn global add @timo9378/flow2code
-
-# Or use directly with npx
-npx @timo9378/flow2code --help
+npm install -g @timo9378/flow2code   # or: npx @timo9378/flow2code <cmd>
 ```
 
 ---
 
-## 1. Initialize a Project
+## Semantic flow diff
+
+Compares route versions at the **control/data-flow level**, not the text
+level. Formatting changes, comment edits, and reordering that don't change
+the flow report **zero changes**.
 
 ```bash
-cd your-nextjs-project
-flow2code init
+# Everything the branch changed, route by route
+flow2code diff main...
+
+# Uncommitted work vs HEAD
+flow2code diff
+
+# One file: vs HEAD, vs a ref, or vs another file
+flow2code diff src/app/api/orders/route.ts
+flow2code diff v1.2.0 src/app/api/orders/route.ts
+flow2code diff old.ts new.ts
+
+# Output formats
+flow2code diff --md      # Markdown with Mermaid graphs (PR-comment format)
+flow2code diff --json    # machine-readable
 ```
 
-**Output:**
+What it reports, ordered by reviewer severity:
 
-```
-⚙️  Created .flow2code/config.json
-📄 Created example: .flow2code/flows/hello.flow.json
-🎉 Zero Pollution init complete!
-```
+- ⚠️ **Removed error handling** — a `try/catch` is gone
+- ⚠️ **Removed error response paths** — e.g. the 502 branch disappeared
+- ⚠️ **Removed routes** — an endpoint no longer exists
+- 🟡 Changed branch conditions, status codes, external calls
+- 🟢 New routes and new operations (with their audit findings)
+- 🆕 Audit warnings introduced by the change; ✅ warnings it resolved
 
-This creates a `.flow2code/` directory with config and an example flow. All flow2code files stay in this directory — zero pollution to your project structure.
+Multi-route files are handled per route: every Express/Hono registration
+(`router.get/post/…`) and every exported HTTP method (`export async function
+GET/POST`) is matched by method+path and diffed individually.
 
----
+Exit code `2` signals warning-level findings — usable as a CI gate.
 
-## 2. Compile a Flow to TypeScript
-
-### Dry Run (preview without writing)
-
-```bash
-flow2code compile .flow2code/flows/hello.flow.json --dry-run
-```
-
-### Write to file
-
-```bash
-flow2code compile .flow2code/flows/hello.flow.json
-# ✅ Compiled successfully: src/app/api/hello/route.ts
-```
-
-### Options
-
-| Flag | Description |
-|------|-------------|
-| `--dry-run` | Display generated code, don't write |
-| `--platform <name>` | Target: `nextjs` (default), `express`, `cloudflare` |
-| `--source-map` | Generate `.flow.map.json` for debugging |
-| `-o, --output <path>` | Override output path |
-
----
-
-## 3. Audit Any TypeScript File (Code Review)
-
-The killer feature — decompile **any** TypeScript file into a visual flow and get audit hints.
-
-### Summary (default)
+## Structural audit
 
 ```bash
 flow2code audit src/app/api/users/route.ts
+flow2code audit route.ts --format mermaid   # flowchart markup
+flow2code audit route.ts --format json -o flow.json
 ```
 
+Findings include, with exact line numbers:
+
+- `await` calls with no error handling
+- `fetch` without `response.ok` checks
+- request bodies reaching DB operations with **no schema validation**
+- responses leaking `err.message` / `err.stack` to clients
+- mutating handlers (POST/PUT/PATCH/DELETE) with no visible auth check
+  (middleware-aware — wrapped handlers aren't flagged)
+- every response path and its status code
+
+## GitHub Action
+
+```yaml
+# .github/workflows/flow-diff.yml
+name: Route Flow Diff
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  flow-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: timo9378/flow2code@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # fail-on-warning: "true"        # block PRs that remove error handling
+          # paths-regex: "src/api/.*\\.ts$" # customize which files count as routes
+          # max-files: "20"
 ```
-🔍 Flow2Code Audit: src/app/api/users/route.ts
-   Confidence: 95%
-   Nodes: 10
-   Edges: 10
 
-   ⚡ [trigger_1] POST /api/users (http_webhook)
-   🔧 [async_op_1] req.json (custom_code)
-   🔀 [if_1] if (!body.email || !body.name) (if_else)
-   📤 [response_1] Response 400 (return_response)
-   🔧 [fetch_1] Fetch ... (fetch_api)
-   ...
+One auto-updated comment per PR ([live example](https://github.com/timo9378/flow2code/pull/1)).
+Fork PRs get read-only tokens; the action logs the report instead of failing.
 
-📋 Audit Hints:
-   🟠 [fetch_1] (line 27): Async operation has no error handling (missing try/catch)
-   🔵 [fetch_1] (line 27): Consider checking response.ok after fetch
-```
-
-### JSON output (for CI / programmatic use)
+## MCP server (AI agents)
 
 ```bash
-flow2code audit route.ts --format json > flow.json
-flow2code audit route.ts --format json -o audit-result.json
+claude mcp add flow2code -- npx -y @timo9378/flow2code mcp
 ```
 
-### Mermaid diagram (paste into GitHub PR)
+| Tool | Returns |
+|---|---|
+| `audit_route` | Flow graph summary + findings with line numbers |
+| `diff_routes` | Per-route semantic diff between two versions (Markdown) |
+| `flow_graph` | Mermaid flowchart of the route |
+
+## Library
+
+```ts
+import {
+  decompile, decompileAll,          // TS → FlowIR (one / every entry point)
+  diffRouteFiles,                    // per-route semantic diff
+  formatRouteFileDiffMarkdown,       // PR-comment Markdown
+  toMermaid,                         // FlowIR → Mermaid
+  compile,                           // FlowIR → TS (the visual editor's engine)
+} from "@timo9378/flow2code";
+
+const diff = diffRouteFiles(beforeSource, afterSource, { fileName: "route.ts" });
+for (const route of diff.routes) {
+  console.log(route.key, route.status, route.diff?.changes.length ?? 0);
+}
+```
+
+## Visual playground
+
+[flow2code.koimsurai.com](https://flow2code.koimsurai.com) — paste a route,
+see the interactive flow graph, click nodes to inspect. The same engine
+compiles flows back to TypeScript (Next.js / Express / Cloudflare Workers)
+with zero runtime dependencies:
 
 ```bash
-flow2code audit route.ts --format mermaid
+flow2code compile my-flow.flow.json -o route.ts --platform nextjs
+flow2code dev          # local canvas
 ```
 
-```mermaid
-graph TD
-  trigger_1{{"POST /api/users"}}
-  fetch_1["Fetch API"]
-  response_1(["Response 201"])
-  trigger_1 --> fetch_1
-  fetch_1 --> response_1
-```
+## Known limitations
 
-### Target a specific function (multi-handler files)
-
-```bash
-# File has GET, POST, DELETE — select POST only
-flow2code audit route.ts --function POST
-
-# Disable audit hints
-flow2code audit route.ts --no-audit-hints
-```
-
----
-
-## 4. Watch Mode (Auto-Compile)
-
-```bash
-flow2code watch .flow2code/flows/
-# 👀 Watching: .flow2code/flows/**/*.flow.json + **/*.yaml
-# 📁 Output to: .
-# Press Ctrl+C to stop
-```
-
-Every time you save a `.flow.json` or YAML file, it auto-compiles.
-
----
-
-## 5. Split / Merge (Git-Friendly Format)
-
-### Split a flow into YAML files
-
-```bash
-flow2code split myflow.flow.json
-# ✅ Split into 5 files:
-#   📄 myflow/meta.yaml
-#   📄 myflow/nodes/trigger_1.yaml
-#   📄 myflow/nodes/fetch_1.yaml
-#   📄 myflow/edges.yaml
-```
-
-### Merge back to JSON
-
-```bash
-flow2code merge myflow/
-# ✅ Merged to: myflow.flow.json
-```
-
----
-
-## 6. Source Map Tracing
-
-```bash
-# First, compile with source maps
-flow2code compile flow.json --source-map
-
-# Then trace a line number back to its canvas node
-flow2code trace src/app/api/hello/route.ts 15
-# 🎯 Node mapped to line 15:
-#    Node ID:    fetch_1
-#    Line range: 12-18
-```
-
----
-
-## 7. Semantic Diff
-
-```bash
-flow2code diff old.flow.json new.flow.json
-```
-
-Shows which nodes/edges were added, removed, or modified between two versions.
-
----
-
-## 8. Environment Variable Check
-
-```bash
-flow2code env-check myflow.flow.json
-# Validates that all env vars referenced in the flow are declared in .env
-```
-
----
-
-## 9. Headless Compiler API (Programmatic Use)
-
-```typescript
-import { compile, decompile, validateFlowIR } from "@timo9378/flow2code/compiler";
-
-// Validate IR
-const validation = validateFlowIR(myIR);
-console.log(validation.valid, validation.errors);
-
-// Compile IR → TypeScript
-const result = compile(myIR, { platform: "nextjs" });
-console.log(result.code);
-
-// Decompile TypeScript → IR (any code!)
-const audit = decompile(tsCode, {
-  fileName: "src/app/api/users/route.ts",
-  functionName: "POST",
-  audit: true,
-});
-console.log(audit.ir, audit.audit, audit.confidence);
-```
-
----
-
-## 10. Dev Server (Visual Editor)
-
-```bash
-flow2code dev
-# 🚀 Flow2Code Dev Server
-# ├─ Editor:  http://localhost:3100
-# ├─ API:     http://localhost:3100/api/compile
-# └─ Project: /your/project
-
-flow2code dev --port 4000     # Custom port
-flow2code dev --no-open       # Don't auto-open browser
-```
-
----
-
-## Typical Workflow: AI Code Audit
-
-```
-1. AI generates code       →  route.ts
-2. flow2code audit route.ts  →  Visual flow + Audit hints
-3. Fix issues from hints     →  Add try/catch, check response.ok
-4. Re-audit to verify        →  flow2code audit route.ts
-```
-
-## Typical Workflow: Visual-First Development
-
-```
-1. flow2code init              →  Set up project
-2. flow2code dev               →  Design flow in visual editor
-3. flow2code compile flow.json →  Generate TypeScript
-4. flow2code watch             →  Auto-compile on changes
-```
-
----
-
-## VS Code Extension
-
-Flow2Code includes a VS Code extension for in-editor workflow:
-
-```
-1. Open a .ts file → Right-click → "Flow2Code: Decompile to Flow IR"
-2. Open the generated .flow.json → Right-click → "Flow2Code: Compile to TypeScript"
-3. Use "Open With… > Flow2Code Visual Editor" for graphical view
-4. Auto-validation shows inline errors/warnings on save
-```
-
-See [vscode-extension/README.md](vscode-extension/README.md) for installation and configuration.
+- **Single-file analysis** — handlers imported from other files
+  (`export { GET } from "./impl"`) can't be resolved; run the tool on the
+  implementation file instead.
+- **Heuristics are heuristics** — the auth-check rule is deliberately
+  info-level; auth handled by framework middleware outside the file can't
+  be seen.
+- **Dynamic registrations** — routes registered in loops or with computed
+  paths are not detected.
