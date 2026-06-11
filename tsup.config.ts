@@ -18,6 +18,8 @@ export default defineConfig([
       "ts-morph",
       "prettier",
       "yaml",
+      "@modelcontextprotocol/sdk",
+      "zod",
       // React / Next.js are UI-only, not needed by CLI
       "react",
       "react-dom",
