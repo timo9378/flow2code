@@ -1,0 +1,45 @@
+name: "flow2code Route Diff"
+description: >-
+  Semantic flow diff for TypeScript API routes. Posts a PR comment showing
+  what changed in each route's control flow — removed error handling,
+  changed branch conditions, new external calls — instead of a text diff.
+author: "timo9378"
+branding:
+  icon: "git-pull-request"
+  color: "orange"
+
+inputs:
+  github-token:
+    description: "Token used to post the PR comment (usually secrets.GITHUB_TOKEN)"
+    required: true
+  paths-regex:
+    description: "Regex selecting which changed files are analyzed as routes"
+    required: false
+    default: '(^|/)route\.[tj]sx?$|/pages/api/.+\.[tj]sx?$|/api/.+/route\.[tj]sx?$'
+  max-files:
+    description: "Maximum number of files reported in one comment"
+    required: false
+    default: "20"
+  fail-on-warning:
+    description: "Fail the check when a flow warning (e.g. removed error handling) is found"
+    required: false
+    default: "false"
+  flow2code-cli:
+    description: "Override the CLI invocation (advanced; used for dogfooding from source)"
+    required: false
+    default: "npx -y @timo9378/flow2code"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Post route flow diff
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PATHS_REGEX: ${{ inputs.paths-regex }}
+        MAX_FILES: ${{ inputs.max-files }}
+        FAIL_ON_WARNING: ${{ inputs.fail-on-warning }}
+        FLOW2CODE_CLI: ${{ inputs.flow2code-cli }}
+      run: node "${{ github.action_path }}/scripts/pr-flow-diff.mjs"

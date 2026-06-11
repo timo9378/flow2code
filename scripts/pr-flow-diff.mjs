@@ -1,0 +1,179 @@
+/**
+ * PR Flow Diff — posts a semantic flow diff of changed API routes as a PR comment.
+ *
+ * Runs inside GitHub Actions (see ../action.yml). For every changed route file
+ * it diffs the base vs. head version at the flow level and upserts a single
+ * PR comment with the combined report.
+ *
+ * Required env:
+ *   GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, BASE_REF
+ * Optional env:
+ *   PATHS_REGEX     — file filter (default: route.ts / pages/api / app api dirs)
+ *   MAX_FILES       — max files per comment (default 20)
+ *   FAIL_ON_WARNING — "true" to exit 1 when a ⚠️ change is found
+ *   FLOW2CODE_CLI   — CLI invocation (default: npx -y @timo9378/flow2code)
+ */
+
+import { execFileSync, execSync } from "node:child_process";
+import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+const MARKER = "<!-- flow2code-diff -->";
+
+const {
+  GITHUB_TOKEN,
+  GITHUB_REPOSITORY,
+  PR_NUMBER,
+  BASE_REF,
+  PATHS_REGEX = String.raw`(^|/)route\.[tj]sx?$|/pages/api/.+\.[tj]sx?$|/api/.+/route\.[tj]sx?$`,
+  MAX_FILES = "20",
+  FAIL_ON_WARNING = "false",
+  FLOW2CODE_CLI = "npx -y @timo9378/flow2code",
+} = process.env;
+
+if (!GITHUB_TOKEN || !GITHUB_REPOSITORY || !PR_NUMBER || !BASE_REF) {
+  console.error("Missing required env: GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER, BASE_REF");
+  process.exit(1);
+}
+
+const sh = (cmd) => execSync(cmd, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+
+// ── 1. changed route files ──────────────────────────────────
+sh(`git fetch --no-tags --depth=1 origin ${BASE_REF}`);
+const mergeBase = sh(`git merge-base origin/${BASE_REF} HEAD`).trim();
+const pathsRe = new RegExp(PATHS_REGEX);
+const changed = sh(`git diff --name-only --diff-filter=ACMR ${mergeBase} HEAD`)
+  .trim().split("\n").filter(Boolean)
+  .filter((f) => pathsRe.test(f))
+  .slice(0, Number(MAX_FILES));
+
+console.log(`Changed route files: ${changed.length}`);
+
+// ── 2. diff each file ───────────────────────────────────────
+const cliParts = FLOW2CODE_CLI.split(" ");
+function runCli(args) {
+  return execFileSync(cliParts[0], [...cliParts.slice(1), ...args], {
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  });
+}
+
+function gitShow(ref, file) {
+  try {
+    return sh(`git show ${ref}:"${file}"`);
+  } catch {
+    return null; // file does not exist at that ref (added file)
+  }
+}
+
+const sections = [];
+let warningCount = 0;
+const work = mkdtempSync(join(tmpdir(), "f2c-diff-"));
+
+try {
+  for (const file of changed) {
+    const before = gitShow(mergeBase, file);
+    const after = gitShow("HEAD", file);
+    if (after === null) continue;
+
+    const afterPath = join(work, "after.ts");
+    writeFileSync(afterPath, after);
+
+    if (before === null) {
+      // New route: no diff possible — attach the audit instead
+      try {
+        const audit = runCli(["audit", afterPath]);
+        sections.push(`#### \`${file}\` — **new route**\n\n\`\`\`\n${audit.trim()}\n\`\`\``);
+      } catch {
+        sections.push(`#### \`${file}\` — **new route**\n\n> Could not analyze this file.`);
+      }
+      continue;
+    }
+
+    const beforePath = join(work, "before.ts");
+    writeFileSync(beforePath, before);
+
+    let md;
+    try {
+      md = runCli(["diff", beforePath, afterPath, "--md", "--name", file]).trim();
+    } catch (err) {
+      // exit code 2 means "warnings found" — stdout still has the report
+      if (err.status === 2 && err.stdout) md = String(err.stdout).trim();
+      else {
+        sections.push(`#### \`${file}\`\n\n> Could not analyze this file.`);
+        continue;
+      }
+    }
+
+    if (md.includes("refactor only")) continue; // skip noise-free files
+    if (md.includes("⚠️")) warningCount++;
+    sections.push(md);
+  }
+} finally {
+  rmSync(work, { recursive: true, force: true });
+}
+
+// ── 3. upsert the PR comment ────────────────────────────────
+const apiBase = `https://api.github.com/repos/${GITHUB_REPOSITORY}`;
+const headers = {
+  Authorization: `Bearer ${GITHUB_TOKEN}`,
+  Accept: "application/vnd.github+json",
+  "Content-Type": "application/json",
+};
+
+async function findExistingComment() {
+  for (let page = 1; page <= 5; page++) {
+    const res = await fetch(
+      `${apiBase}/issues/${PR_NUMBER}/comments?per_page=100&page=${page}`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`GitHub API ${res.status}: ${await res.text()}`);
+    const comments = await res.json();
+    const mine = comments.find((c) => typeof c.body === "string" && c.body.startsWith(MARKER));
+    if (mine) return mine.id;
+    if (comments.length < 100) return null;
+  }
+  return null;
+}
+
+const body =
+  sections.length === 0
+    ? `${MARKER}\n### 🔬 Route flow diff\n\nNo flow-level changes in this PR's API routes — structure is identical.`
+    : `${MARKER}\n### 🔬 Route flow diff\n\n${sections.join("\n\n---\n\n")}\n\n` +
+      `<sub>Generated by <a href="https://github.com/timo9378/flow2code">flow2code</a> — ` +
+      `semantic flow diff for TypeScript API routes.</sub>`;
+
+if (process.env.DRY_RUN === "true") {
+  console.log("── DRY RUN: comment body ──────────────────────────");
+  console.log(body);
+  process.exit(FAIL_ON_WARNING === "true" && warningCount > 0 ? 1 : 0);
+}
+
+const existingId = await findExistingComment();
+const res = existingId
+  ? await fetch(`${apiBase}/issues/comments/${existingId}`, {
+      method: "PATCH", headers, body: JSON.stringify({ body }),
+    })
+  : await fetch(`${apiBase}/issues/${PR_NUMBER}/comments`, {
+      method: "POST", headers, body: JSON.stringify({ body }),
+    });
+
+if (!res.ok) {
+  const detail = `${res.status} ${await res.text()}`;
+  if (res.status === 403) {
+    // fork PRs get a read-only token — degrade to logging the report instead of failing
+    console.log("Token cannot comment (likely a fork PR with a read-only token). Report follows:\n");
+    console.log(body);
+  } else {
+    console.error(`Failed to post comment: ${detail}`);
+    process.exit(1);
+  }
+} else {
+  console.log(`${existingId ? "Updated" : "Created"} PR comment (${sections.length} file section(s)).`);
+}
+
+if (FAIL_ON_WARNING === "true" && warningCount > 0) {
+  console.error(`${warningCount} file(s) with ⚠️ flow warnings — failing as requested.`);
+  process.exit(1);
+}

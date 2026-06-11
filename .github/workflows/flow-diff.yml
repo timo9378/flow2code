@@ -1,0 +1,39 @@
+# Dogfood: run the flow2code Route Diff action on this repo's own PRs,
+# built from source instead of the published npm package.
+name: Route Flow Diff
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  flow-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Build CLI from source
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:cli
+
+      - name: Route flow diff
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          flow2code-cli: "node ${{ github.workspace }}/dist/cli.js"
