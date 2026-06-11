@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-06-11
+
+### Added — Semantic Route Diff (the new core workflow)
+- **`flow2code diff old.ts new.ts`** — flow-level diff between two versions of a TypeScript route. Aligns nodes by content fingerprint (robust to formatting, renames of generated IDs, and statement reordering — a pure refactor reports zero changes; verified noise-free on 348 production routes). Classifies changes by reviewer severity: removed `try/catch` or error response paths are warnings, changed branch conditions and status codes are notices. `--md` emits a PR-comment Markdown report with a Mermaid flow graph (added/modified nodes highlighted); `--json` emits machine-readable output.
+- **GitHub Action** (`timo9378/flow2code@main`) — posts one auto-updated PR comment with per-route flow diffs for every changed API route. Inputs: `paths-regex`, `max-files`, `fail-on-warning`. Degrades gracefully on fork PRs (read-only token).
+- **MCP server** — `flow2code mcp` (stdio) exposes `audit_route`, `diff_routes`, and `flow_graph` to AI agents via the Model Context Protocol.
+- **Mermaid renderer** — `toMermaid(ir)` renders any FlowIR as a GitHub-renderable flowchart.
+
+### Added — Decompiler coverage (real-world handler shapes)
+- **HOF unwrapping** — `export const GET = withAuth(async () => …)`, `wrapper({ handler })` object styles, `export default withX(handler)`, and `export { GET, POST }` named exports now resolve to the inner handler (scored candidate selection avoids grabbing zod refinement callbacks).
+- **`pages/api` detection** — `export default function handler(req, res)` is now an HTTP trigger (method inferred from `req.method` checks, body usage) instead of a manual trigger.
+- **Express/Hono router registrations** — `router.post("/orders", middleware, handler)` extracts the last function argument as the handler and the literal route path.
+- Benchmarked on 389 production routes (papermark, formbricks, documenso): 0 crashes, 89% analyzable (up from 82%), remaining failures are cross-file re-export shims.
+
+### Changed
+- **README repositioned** around semantic flow diff and structural audit; compile direction is now presented as the playground's engine rather than the headline.
+- New runtime dependencies: `@modelcontextprotocol/sdk`, `zod`, `picocolors`.
+
 ## [0.3.0] — 2026-04-03
 
 ### Changed — Project Repositioning

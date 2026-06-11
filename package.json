@@ -1,6 +1,6 @@
 {
   "name": "@timo9378/flow2code",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "X-ray vision for your backend code — decompile TypeScript into visual flows, edit on canvas, export clean code",
   "type": "module",
   "sideEffects": false,
