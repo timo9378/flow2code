@@ -13,7 +13,8 @@
 import { Command } from "commander";
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
-import { join, dirname, resolve, extname, basename } from "node:path";
+import { join, dirname, resolve, extname, basename, relative } from "node:path";
+import { execFileSync } from "node:child_process";
 import { watch } from "chokidar";
 import { fileURLToPath } from "node:url";
 import { compile, traceLineToNode } from "../lib/compiler/compiler";
@@ -26,6 +27,7 @@ import { loadFlowProject, loadFlowProjectAsync, saveFlowProject, migrateToSplit,
 import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib/compiler/env-validator";
 import { semanticDiff, formatDiff } from "../lib/diff/semantic-diff";
 import { diffRoutes, diffIRs, formatRouteDiffMarkdown } from "../lib/diff/route-diff";
+import type { RouteDiffResult } from "../lib/diff/route-diff";
 import type { FlowIR, InputPort, OutputPort } from "../lib/ir/types";
 
 const __cliFilename = fileURLToPath(import.meta.url);
@@ -583,26 +585,128 @@ program
 // diff command — Semantic diff comparison
 // ============================================================
 
+/** Prints a RouteDiffResult in the requested format and sets the exit code. */
+function emitRouteDiff(
+  result: RouteDiffResult,
+  reportName: string,
+  options: { md?: boolean; json?: boolean }
+): void {
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (options.md) {
+    console.log(formatRouteDiffMarkdown(result, { fileName: reportName }));
+  } else {
+    if (!result.success) {
+      console.error(`❌ Analysis failed: ${(result.errors ?? []).join("; ")}`);
+      process.exit(1);
+    }
+    const { stats } = result;
+    console.log(
+      `📊 Flow diff: +${stats.added} added, -${stats.removed} removed, ✏️ ${stats.modified} modified, ${stats.unchanged} unchanged`
+    );
+    console.log("");
+    for (const change of result.changes) {
+      const icon = change.type === "added" ? "🟢" : change.type === "removed" ? "🔴" : "🟡";
+      console.log(`  ${icon} ${change.description}`);
+    }
+    for (const w of result.newWarnings) {
+      console.log(`  🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
+    }
+    for (const w of result.resolvedWarnings) {
+      console.log(`  ✅ resolved: ${w.message}`);
+    }
+  }
+  process.exitCode = result.success && result.changes.some((c) => c.severity === "warning") ? 2 : 0;
+}
+
+/** Reads a file's content at a git ref, or null when it doesn't exist there. */
+function gitShowFile(ref: string, filePath: string): string | null {
+  const dir = dirname(filePath);
+  try {
+    const toplevel = execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
+      encoding: "utf-8",
+    }).trim();
+    const relPath = relative(toplevel, filePath).split("\\").join("/");
+    return execFileSync("git", ["-C", dir, "show", `${ref}:${relPath}`], {
+      encoding: "utf-8",
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** True when `ref` resolves to a commit in the repo containing `filePath`. */
+function isGitRef(ref: string, filePath: string): boolean {
+  try {
+    execFileSync("git", ["-C", dirname(filePath), "rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
+      encoding: "utf-8",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 program
-  .command("diff <before> <after>")
-  .description("Semantic flow diff: between two .flow.json files, or two TypeScript route versions")
+  .command("diff <before> [after]")
+  .description(
+    "Semantic flow diff. Compare two files, a git ref against the working tree, " +
+    "or a route file against HEAD:\n" +
+    "  flow2code diff route.ts              # working tree vs HEAD\n" +
+    "  flow2code diff main route.ts         # working tree vs ref\n" +
+    "  flow2code diff old.ts new.ts         # two files"
+  )
   .option("--md", "Output a Markdown report (PR comment format)")
   .option("--json", "Output machine-readable JSON")
   .option("--name <fileName>", "File name shown in the report header")
-  .action((beforeFile: string, afterFile: string, options: { md?: boolean; json?: boolean; name?: string }) => {
+  .action((beforeFile: string, afterFile: string | undefined, options: { md?: boolean; json?: boolean; name?: string }) => {
+    const isTs = (p: string) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(p);
+
+    // ── git modes ──
+    // `diff route.ts`      → HEAD vs working tree
+    // `diff <ref> route.ts` → ref vs working tree
+    let gitRef: string | null = null;
+    let gitFile: string | null = null;
+    if (afterFile === undefined && isTs(beforeFile) && existsSync(resolve(beforeFile))) {
+      gitRef = "HEAD";
+      gitFile = resolve(beforeFile);
+    } else if (
+      afterFile !== undefined && isTs(afterFile) && existsSync(resolve(afterFile)) &&
+      !existsSync(resolve(beforeFile)) && isGitRef(beforeFile, resolve(afterFile))
+    ) {
+      gitRef = beforeFile;
+      gitFile = resolve(afterFile);
+    }
+
+    if (gitRef && gitFile) {
+      const beforeContent = gitShowFile(gitRef, gitFile);
+      if (beforeContent === null) {
+        console.error(`❌ ${relative(process.cwd(), gitFile)} has no version at ${gitRef} (new file, or not in a git repository?)`);
+        process.exit(1);
+      }
+      const reportName = options.name ?? relative(process.cwd(), gitFile);
+      const result = diffRoutes(beforeContent, readFileSync(gitFile, "utf-8"), { fileName: reportName });
+      emitRouteDiff(result, reportName, options);
+      return;
+    }
+
+    if (afterFile === undefined) {
+      console.error(`❌ ${beforeFile} not found. Usage: flow2code diff <file.ts> | <ref> <file.ts> | <before> <after>`);
+      process.exit(1);
+    }
+
     const beforePath = resolve(beforeFile);
     const afterPath = resolve(afterFile);
 
     if (!existsSync(beforePath)) {
-      console.error(`❌ File not found: ${beforePath}`);
+      console.error(`❌ File not found: ${beforePath} (not an existing file, and not a git ref of ${afterFile})`);
       process.exit(1);
     }
     if (!existsSync(afterPath)) {
       console.error(`❌ File not found: ${afterPath}`);
       process.exit(1);
     }
-
-    const isTs = (p: string) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(p);
 
     // TypeScript route diff: decompile both sides, align flows, report semantics
     if (isTs(beforePath) || isTs(afterPath)) {
@@ -612,33 +716,7 @@ program
         readFileSync(afterPath, "utf-8"),
         { fileName: reportName }
       );
-
-      if (options.json) {
-        console.log(JSON.stringify(result, null, 2));
-      } else if (options.md) {
-        console.log(formatRouteDiffMarkdown(result, { fileName: reportName }));
-      } else {
-        if (!result.success) {
-          console.error(`❌ Analysis failed: ${(result.errors ?? []).join("; ")}`);
-          process.exit(1);
-        }
-        const { stats } = result;
-        console.log(
-          `📊 Flow diff: +${stats.added} added, -${stats.removed} removed, ✏️ ${stats.modified} modified, ${stats.unchanged} unchanged`
-        );
-        console.log("");
-        for (const change of result.changes) {
-          const icon = change.type === "added" ? "🟢" : change.type === "removed" ? "🔴" : "🟡";
-          console.log(`  ${icon} ${change.description}`);
-        }
-        for (const w of result.newWarnings) {
-          console.log(`  🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
-        }
-        for (const w of result.resolvedWarnings) {
-          console.log(`  ✅ resolved: ${w.message}`);
-        }
-      }
-      process.exitCode = result.success && result.changes.some((c) => c.severity === "warning") ? 2 : 0;
+      emitRouteDiff(result, reportName, options);
       return;
     }
 

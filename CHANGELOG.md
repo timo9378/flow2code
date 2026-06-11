@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] — 2026-06-11
+
+### Added
+- **Git-aware diff** — `flow2code diff route.ts` compares the working tree against HEAD; `flow2code diff <ref> route.ts` compares against any git ref. No more materializing two files by hand.
+
+### Fixed
+- **Route path inference** — file paths with an `/api/` segment outside Next.js conventions (e.g. `examples/api/orders/route.ts`) now resolve to the real route (`/api/orders`) instead of the `/api/handler` placeholder, fixing the route label shown in PR comments.
+
 ## [0.4.0] — 2026-06-11
 
 ### Added — Semantic Route Diff (the new core workflow)

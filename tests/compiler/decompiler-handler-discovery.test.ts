@@ -260,6 +260,15 @@ export default async function handler(req: any, res: any) {
     expect((trigger.params as any).method).toBe("GET");
   });
 
+  it("infers the route path from any /api/ segment in the file path", () => {
+    const { trigger } = getTrigger(`
+export async function POST(req: Request) {
+  return Response.json({ ok: true }, { status: 201 });
+}
+`, "examples/api/orders/route.ts");
+    expect((trigger.params as any).routePath).toBe("/api/orders");
+  });
+
   it("keeps non-HTTP exported functions as manual triggers", () => {
     const { trigger } = getTrigger(`
 export async function processQueue(jobs: string[]) {

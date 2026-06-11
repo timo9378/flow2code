@@ -1348,6 +1348,10 @@ function inferRoutePath(sourceFile: SourceFile): string {
   const pagesMatch = filePath.match(/\/pages\/api\/(.+?)\.(ts|js)/);
   if (pagesMatch) return `/api/${pagesMatch[1]}`;
 
+  // Generic: any path with an /api/ segment, e.g. examples/api/orders/route.ts
+  const genericMatch = filePath.match(/(?:^|\/)api\/(.+?)(?:\/route)?\.(ts|js)x?$/);
+  if (genericMatch) return `/api/${genericMatch[1].replace(/\/route$/, "")}`;
+
   // Try to find in comments
   const fullText = sourceFile.getFullText();
   const routeMatch = fullText.match(/\/api\/\S+/);

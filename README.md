@@ -59,10 +59,12 @@ robust to formatting, renames of generated IDs, and statement reordering —
 # Audit any route: flow graph + structural findings with line numbers
 npx @timo9378/flow2code audit src/app/api/users/route.ts
 
-# Semantic flow diff between two versions of a route
-npx @timo9378/flow2code diff old.ts new.ts            # terminal report
-npx @timo9378/flow2code diff old.ts new.ts --md       # PR-comment Markdown (with Mermaid graph)
-npx @timo9378/flow2code diff old.ts new.ts --json     # machine-readable
+# Semantic flow diff — git-aware, like you'd expect
+npx @timo9378/flow2code diff src/app/api/users/route.ts   # working tree vs HEAD
+npx @timo9378/flow2code diff main route.ts                # working tree vs a ref
+npx @timo9378/flow2code diff old.ts new.ts                # two files
+npx @timo9378/flow2code diff route.ts --md                # PR-comment Markdown (Mermaid graph)
+npx @timo9378/flow2code diff route.ts --json              # machine-readable
 ```
 
 `audit` finds — with exact line numbers:
