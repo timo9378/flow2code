@@ -263,7 +263,7 @@ export function compile(ir: FlowIR, options?: CompileOptions): CompileResult {
     convertTabsToSpaces: true,
   });
 
-  let code = sourceFile.getFullText();
+  const code = sourceFile.getFullText();
 
   const filePath = platform.getOutputFilePath(trigger);
 
