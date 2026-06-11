@@ -124,3 +124,16 @@ export type { FlowProjectFormat, SaveOptions, FlowProjectInfo } from "./storage/
 
 // ── Diff ──
 export { semanticDiff, formatDiff } from "./diff/semantic-diff";
+export type { DiffSummary, SemanticChange, FieldDiff } from "./diff/semantic-diff";
+
+// ── Route Diff (TS ↔ TS semantic flow diff) ──
+export { diffRoutes, diffIRs, formatRouteDiffMarkdown } from "./diff/route-diff";
+export type {
+  RouteDiffResult,
+  RouteDiffOptions,
+  RouteChange,
+  RouteChangeType,
+  RouteChangeSeverity,
+} from "./diff/route-diff";
+export { toMermaid } from "./diff/mermaid";
+export type { MermaidOptions } from "./diff/mermaid";
