@@ -44,3 +44,7 @@ test.md
 playwright-report/
 test-results/
 nul
+
+# demo video intermediates (only the GIF ships in git)
+docs/assets/*.webm
+docs/assets/*.mp4

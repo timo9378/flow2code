@@ -1,16 +1,17 @@
 <p align="center">
   <h1 align="center">Flow2Code</h1>
   <p align="center">
-    <strong>X-ray vision for your backend code.</strong><br/>
-    See your API routes as visual flows. Fix them on the canvas. Export clean TypeScript.
+    <strong>X-ray vision for your API routes.</strong><br/>
+    Semantic flow diff and structural audit for TypeScript backends — built for the age of AI-generated code.
   </p>
 </p>
 
 <p align="center">
   <a href="https://flow2code.koimsurai.com">Live Playground</a> ·
   <a href="#quick-start">Quick Start</a> ·
-  <a href="USAGE.md">Docs</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="#github-action-flow-diff-in-every-pr">GitHub Action</a> ·
+  <a href="#mcp-server-let-your-ai-agent-use-it">MCP Server</a> ·
+  <a href="USAGE.md">Docs</a>
 </p>
 
 <p align="center">
@@ -22,190 +23,183 @@
 
 ---
 
-<!-- TODO: Replace with a 30-second GIF/video showing: paste TS code → decompile to visual flow → edit on canvas → recompile to TS -->
-<!-- ![flow2code demo](docs/assets/demo.gif) -->
+![flow2code demo — paste TypeScript, decompile to a visual flow, audit it](docs/assets/demo.gif)
 
 ## The Problem
 
-AI generates backend code fast — but **can you trust it?**
+AI writes your backend routes now. Reviewing them is the bottleneck.
 
-Reading 200 lines of nested `if/else`, `try/catch`, and `await fetch()` chains to verify correctness is slow and error-prone. Code reviews on AI-generated routes are painful because the control flow is hidden in linear text.
+A text diff shows you *lines* that changed. It does not show you that the PR
+**weakened a stock check**, **dropped the 502 error path**, or **moved a query
+outside its try/catch**. Reading 200 lines of nested `if/else` and `await` chains
+to find that out is slow — and it's exactly where AI-generated bugs hide.
 
 ## The Solution
 
-Flow2Code **decompiles any TypeScript API route into an editable visual flow**, so you can:
+Flow2Code decompiles TypeScript API routes into a control/data-flow graph
+(via the TypeScript compiler API — no AI, no guessing) and answers the question
+reviewers actually have: **"what did this change do to the route's logic?"**
 
-1. **See** every branch, error path, and data dependency as a DAG
-2. **Fix** issues by dragging nodes on the canvas — add a missing `try/catch`, reorder logic, remove dead branches
-3. **Export** clean, zero-dependency TypeScript that deploys anywhere
+```diff
+$ flow2code diff route.old.ts route.new.ts
 
+📊 Flow diff: +0 added, -0 removed, ✏️ 2 modified, 20 unchanged
+
+  🟡 Response status changed: 429 → 503
+  🟡 Branch condition changed: `!product || product.stock < quantity` → `!product`
 ```
-  Your TypeScript ──► decompile() ──► Visual Flow (audit & edit)
-  Visual Flow    ──► compile()   ──► Clean TypeScript (deploy)
-```
 
-> **Not a low-code platform.** Flow2Code is a compiler. The output is native TypeScript with zero runtime dependencies — no vendor lock-in, no black boxes.
-
-## Why Flow2Code?
-
-| Traditional Low-Code | Flow2Code |
-|---|---|
-| Vendor-locked Runtime | **Zero-dependency** — outputs native TypeScript, deploy anywhere |
-| Black-box nodes | **AST Compilation** — ts-morph generates syntactically correct code |
-| Single platform | **Multi-platform** — Next.js, Express, Cloudflare Workers |
-| Can't version control | **Git-friendly** — IR is JSON/YAML, diffable in PRs |
-| Developers don't trust it | **Bidirectional** — code ↔ visual flow, always in sync |
-
-## Key Features
-
-- **Decompiler** — Paste any TypeScript → get an editable visual flow with confidence scoring
-- **AST Compiler** — Visual flow → syntactically correct TypeScript via ts-morph (not string concatenation)
-- **Zero-dependency output** — Generated code deploys directly to Vercel / AWS Lambda / Cloudflare
-- **Multi-platform** — Same flow compiles to Next.js, Express, or Cloudflare Workers
-- **Type Inference** — Auto-generates typed `FlowState` interface for cross-node data passing
-- **Auto Concurrency** — Topological sort detects independent nodes, generates `Promise.allSettled`
-- **Plugin System** — Extensible node types via per-instance plugin registry
-- **Expression Parser** — Recursive Descent Parser for `{{$input}}` / `{{$trigger}}` / `{{$node.path}}` syntax
-- **Source Map Tracing** — Runtime errors trace back to the exact canvas node
-- **Semantic Diff** — Structural comparison of two flow versions for PR reviews
-- **VS Code Extension** — Right-click decompile, compile, preview, and inline diagnostics
+That second line is an oversell bug a text diff buries in noise. Flow diff is
+robust to formatting, renames of generated IDs, and statement reordering —
+**a refactor that doesn't change the flow reports zero changes.**
 
 ## Quick Start
 
-### Install
-
 ```bash
-npm install @timo9378/flow2code
-```
-
-### Decompile: See any TypeScript as a visual flow
-
-```bash
-# Audit any TypeScript API route → visual FlowIR
+# Audit any route: flow graph + structural findings with line numbers
 npx @timo9378/flow2code audit src/app/api/users/route.ts
 
-# Open the visual editor to see and edit the flow
-npx @timo9378/flow2code dev
+# Semantic flow diff between two versions of a route
+npx @timo9378/flow2code diff old.ts new.ts            # terminal report
+npx @timo9378/flow2code diff old.ts new.ts --md       # PR-comment Markdown (with Mermaid graph)
+npx @timo9378/flow2code diff old.ts new.ts --json     # machine-readable
 ```
 
-### Compile: Visual flow → production TypeScript
+`audit` finds — with exact line numbers:
+- `await` calls with **no error handling**
+- `fetch` without `response.ok` checks
+- branches with no else / unhandled negative cases
+- every response path and its status code
+
+Works on real-world code: Next.js App Router routes, `pages/api` handlers,
+Express/Hono router registrations (`router.post("/orders", auth, handler)` —
+middleware skipped, route path extracted), and HOF-wrapped handlers
+(`withAuth(...)`, `wrapper({ handler })`) are all unwrapped automatically.
+Benchmarked on 389 production routes from open-source SaaS (papermark,
+formbricks, documenso): **0 crashes, 89% analyzable, 82% of extracted nodes
+carry real structure** (not opaque code blocks).
+
+## Why not difftastic / ast-grep?
+
+Both are excellent — and they answer a different question.
+
+| | difftastic / ast-grep | flow2code diff |
+|---|---|---|
+| Layer | Syntax tree (which *expressions* changed) | Control/data flow (which *logic paths* changed) |
+| Knows "this `catch` guarded that `await`" | No | Yes — it diffs the graph, not the tree |
+| Output | Aligned source text | "Error response path removed: Response 502" |
+| Scope | Any language, any file | TypeScript API routes, deliberately narrow |
+
+A syntax diff shows you a removed `try` keyword. A flow diff tells you the
+upstream call **lost its error handling and the 502 path is gone**. Use
+difftastic for everything; use flow2code when the file is an API route and
+the question is *"did this PR change what the route does?"*
+
+## GitHub Action: flow diff in every PR
+
+```yaml
+# .github/workflows/flow-diff.yml
+name: Route Flow Diff
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  flow-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: timo9378/flow2code@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # fail-on-warning: "true"   # block PRs that remove error handling
+```
+
+Every PR touching an API route gets **one auto-updated comment**: per-route
+flow changes ordered by severity, newly introduced audit warnings, and a
+Mermaid graph with added/modified nodes highlighted. Refactors that don't
+change the flow are skipped — no comment spam.
+
+> **Note on fork PRs:** on `pull_request` events from forks, GitHub hands the
+> workflow a read-only token, so the comment step is skipped (analysis still
+> runs and `fail-on-warning` still works). For public repos that want comments
+> on fork PRs, run the action from a `pull_request_target` workflow that
+> checks out the PR head — with the usual care that implies.
+
+## MCP Server: let your AI agent use it
 
 ```bash
-# Initialize flow2code in your project
-npx @timo9378/flow2code init
-
-# Compile a flow to TypeScript
-npx @timo9378/flow2code compile .flow2code/flows/hello.flow.json -o src/app/api/hello/route.ts
-
-# Watch mode — auto-compile on file change
-npx @timo9378/flow2code watch .flow2code/flows/
+# Claude Code
+claude mcp add flow2code -- npx -y @timo9378/flow2code mcp
 ```
 
-### Library Usage
+Exposes three tools over the Model Context Protocol:
 
-```ts
-import { compile, decompile, validate } from "@timo9378/flow2code";
+| Tool | What the agent gets |
+|------|---------------------|
+| `audit_route` | Flow graph summary + structural findings with line numbers |
+| `diff_routes` | Reviewer-level semantic diff between two route versions |
+| `flow_graph` | Mermaid flowchart of a route's control/data flow |
 
-// Decompile: TypeScript → FlowIR (code audit)
-const audit = decompile(tsCode);
-console.log(`Confidence: ${audit.confidence}`);
+Your agent stops re-deriving control flow from raw text on every review.
 
-// Compile: FlowIR → TypeScript
-const result = compile(audit.ir, { platform: "nextjs" });
+## Visual Playground
 
-// Validate: Check IR structure
-const check = validate(ir);
+The [live playground](https://flow2code.koimsurai.com) renders routes as an
+interactive canvas — paste code, see the DAG, click nodes to inspect. The same
+engine also **compiles flows back to TypeScript** (Next.js / Express /
+Cloudflare Workers, zero runtime dependencies), which powers the visual editor.
+
+## How it works
+
+```
+TypeScript ──► decompile() ──► FlowIR (JSON graph) ──► audit / diff / mermaid
+                                    │
+                                    └──► compile() ──► TypeScript (visual editor path)
 ```
 
-### More CLI Commands
+- **Decompiler** — ts-morph (TypeScript compiler API) pattern-matches real AST
+  structures: branches, loops, try/catch, fetches, queries, response paths.
+  Deterministic, runs locally, zero network calls.
+- **Node alignment** — diff matches nodes by content fingerprint, then fuzzy
+  similarity. Inserting a line at the top of a file does not light up the whole
+  graph.
+- **FlowIR** — a JSON intermediate representation. Diffable, versionable,
+  renderable (Mermaid / React Flow canvas).
 
-```bash
-# Source Map trace — find which canvas node generated a specific line
-npx @timo9378/flow2code trace src/app/api/hello/route.ts 15
+## CLI Commands
 
-# Semantic diff between two flow versions
-npx @timo9378/flow2code diff v1.flow.json v2.flow.json
-
-# Convert flow to Git-friendly YAML directory format
-npx @timo9378/flow2code split my-flow.flow.json
-
-# Check all environment variables are defined
-npx @timo9378/flow2code env-check .flow2code/flows/
-```
-
-## Node Types
-
-| Category | Node | Compiled Output |
-|----------|------|-----------------|
-| Trigger | HTTP Webhook | `export async function POST(req)` |
-| Trigger | Cron Job | Scheduled function |
-| Trigger | Manual | Exported async function |
-| Action | Fetch API | `await fetch(...)` with error handling |
-| Action | SQL Query | Drizzle / Prisma / Raw SQL |
-| Action | Redis Cache | Redis get/set/del with TTL |
-| Action | Custom Code | Inline TypeScript |
-| Action | Call Subflow | `await importedFunction(...)` |
-| Logic | If/Else | `if (...) { } else { }` |
-| Logic | For Loop | `for (const item of ...)` |
-| Logic | Try/Catch | `try { } catch (e) { }` |
-| Logic | Promise.all | `await Promise.allSettled([...])` |
-| Variable | Declare | `const x = ...` |
-| Variable | Transform | Expression transform |
-| Output | Return Response | Platform-specific Response |
-
-## Platform Support
-
-| Platform | Response Style | CLI Flag |
-|----------|---------------|----------|
-| **Next.js** (default) | `NextResponse.json()` | `--platform nextjs` |
-| **Express** | `res.status().json()` | `--platform express` |
-| **Cloudflare Workers** | `new Response()` | `--platform cloudflare` |
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Visual Canvas | Next.js 15 + React 19 + React Flow v12 |
-| State Management | Zustand 5 |
-| IR Specification | Custom JSON Schema + TypeScript Types |
-| AST Engine | ts-morph 27 (TypeScript Compiler API) |
-| Plugin System | Per-instance factory (`createPluginRegistry()`) |
-| CLI | Commander.js + Chokidar |
-| Testing | Vitest — 413 unit tests + 20 Playwright E2E tests |
+| Command | Purpose |
+|---------|---------|
+| `audit <file>` | Decompile + structural audit of any TypeScript route |
+| `diff <before> <after>` | Semantic flow diff (.ts ↔ .ts or .flow.json ↔ .flow.json) |
+| `mcp` | Start the MCP server (stdio) for AI agents |
+| `compile <flow>` | Compile FlowIR to TypeScript (Next.js / Express / Cloudflare) |
+| `trace <file> <line>` | Map a generated line back to its flow node |
+| `dev` | Launch the visual canvas locally |
+| `init` / `watch` / `split` / `merge` / `env-check` | Project tooling |
 
 ## Project Structure
 
 ```
 flow2code/
 ├── src/lib/
-│   ├── ir/                    # Intermediate Representation
-│   │   ├── types.ts           # IR schema + TypeScript types
-│   │   ├── validator.ts       # Validation + auto-migration
-│   │   └── topological-sort.ts
 │   ├── compiler/
-│   │   ├── compiler.ts        # AST compiler core
-│   │   ├── decompiler.ts      # TS → FlowIR reverse parser
-│   │   ├── expression-parser.ts
-│   │   ├── type-inference.ts
-│   │   ├── symbol-table.ts
-│   │   ├── plugins/           # Extensible plugin system
+│   │   ├── decompiler.ts      # TS → FlowIR (the read direction)
+│   │   ├── compiler.ts        # FlowIR → TS (the write direction)
 │   │   └── platforms/         # Next.js, Express, Cloudflare
-│   └── index.ts               # Public API
-├── src/cli/                   # CLI (10 commands)
-├── src/components/            # Visual canvas (React Flow)
-├── tests/                     # 413 unit + 20 E2E tests
-└── vscode-extension/          # VS Code companion
+│   ├── diff/
+│   │   ├── route-diff.ts      # node alignment + reviewer-level classification
+│   │   ├── semantic-diff.ts   # raw IR diff
+│   │   └── mermaid.ts         # FlowIR → Mermaid
+│   └── ir/                    # FlowIR types + validation
+├── src/mcp/                   # MCP server (audit_route / diff_routes / flow_graph)
+├── src/cli/                   # CLI
+├── scripts/pr-flow-diff.mjs   # GitHub Action worker
+├── action.yml                 # GitHub Action definition
+└── tests/                     # 450+ unit tests + Playwright E2E
 ```
-
-## VS Code Extension
-
-- **Right-click Decompile** — `.ts`/`.js` → visual FlowIR with confidence score
-- **Right-click Compile** — `.flow.json` → TypeScript with platform selection
-- **Flow Preview** — SVG DAG with pan, zoom, category coloring
-- **Auto-Validation** — Inline diagnostics on open/save
-- **Custom Editor** — Graphical view for `.flow.json` files
-
-See [vscode-extension/README.md](vscode-extension/README.md) for details.
 
 ## Development
 
@@ -213,10 +207,9 @@ See [vscode-extension/README.md](vscode-extension/README.md) for details.
 git clone https://github.com/timo9378/flow2code.git
 cd flow2code && pnpm install
 
-pnpm dev          # Start visual canvas (dev server)
-pnpm test:run     # Run 413 unit tests
-pnpm test:e2e     # Run 20 Playwright E2E tests
-pnpm build        # Build CLI + UI
+pnpm test:run     # unit tests
+pnpm build:cli    # build CLI + compiler + server bundles
+pnpm dev          # visual canvas dev server
 ```
 
 ## Contributing
