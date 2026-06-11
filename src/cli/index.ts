@@ -25,6 +25,7 @@ import { splitToFileSystem, mergeFromFileSystem } from "../lib/storage/split-sto
 import { loadFlowProject, loadFlowProjectAsync, saveFlowProject, migrateToSplit, detectFormat } from "../lib/storage/flow-project";
 import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib/compiler/env-validator";
 import { semanticDiff, formatDiff } from "../lib/diff/semantic-diff";
+import { diffRoutes, diffIRs, formatRouteDiffMarkdown } from "../lib/diff/route-diff";
 import type { FlowIR, InputPort, OutputPort } from "../lib/ir/types";
 
 const __cliFilename = fileURLToPath(import.meta.url);
@@ -584,8 +585,11 @@ program
 
 program
   .command("diff <before> <after>")
-  .description("Compare semantic differences between two .flow.json files")
-  .action((beforeFile: string, afterFile: string) => {
+  .description("Semantic flow diff: between two .flow.json files, or two TypeScript route versions")
+  .option("--md", "Output a Markdown report (PR comment format)")
+  .option("--json", "Output machine-readable JSON")
+  .option("--name <fileName>", "File name shown in the report header")
+  .action((beforeFile: string, afterFile: string, options: { md?: boolean; json?: boolean; name?: string }) => {
     const beforePath = resolve(beforeFile);
     const afterPath = resolve(afterFile);
 
@@ -598,6 +602,46 @@ program
       process.exit(1);
     }
 
+    const isTs = (p: string) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(p);
+
+    // TypeScript route diff: decompile both sides, align flows, report semantics
+    if (isTs(beforePath) || isTs(afterPath)) {
+      const reportName = options.name ?? afterFile;
+      const result = diffRoutes(
+        readFileSync(beforePath, "utf-8"),
+        readFileSync(afterPath, "utf-8"),
+        { fileName: reportName }
+      );
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else if (options.md) {
+        console.log(formatRouteDiffMarkdown(result, { fileName: reportName }));
+      } else {
+        if (!result.success) {
+          console.error(`❌ Analysis failed: ${(result.errors ?? []).join("; ")}`);
+          process.exit(1);
+        }
+        const { stats } = result;
+        console.log(
+          `📊 Flow diff: +${stats.added} added, -${stats.removed} removed, ✏️ ${stats.modified} modified, ${stats.unchanged} unchanged`
+        );
+        console.log("");
+        for (const change of result.changes) {
+          const icon = change.type === "added" ? "🟢" : change.type === "removed" ? "🔴" : "🟡";
+          console.log(`  ${icon} ${change.description}`);
+        }
+        for (const w of result.newWarnings) {
+          console.log(`  🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
+        }
+        for (const w of result.resolvedWarnings) {
+          console.log(`  ✅ resolved: ${w.message}`);
+        }
+      }
+      process.exitCode = result.success && result.changes.some((c) => c.severity === "warning") ? 2 : 0;
+      return;
+    }
+
     let beforeIR: FlowIR;
     let afterIR: FlowIR;
     try {
@@ -608,8 +652,27 @@ program
       process.exit(1);
     }
 
+    if (options.md) {
+      const result = diffIRs(beforeIR, afterIR);
+      console.log(formatRouteDiffMarkdown(result, { fileName: options.name ?? afterFile }));
+      return;
+    }
+
     const summary = semanticDiff(beforeIR, afterIR);
     console.log(formatDiff(summary));
+  });
+
+// ============================================================
+// mcp command — Model Context Protocol server (stdio)
+// ============================================================
+
+program
+  .command("mcp")
+  .description("Start the MCP server (stdio) exposing audit_route / diff_routes / flow_graph to AI agents")
+  .action(async () => {
+    // lazy import keeps MCP SDK out of the startup path for all other commands
+    const { startMcpServer } = await import("../mcp/server");
+    await startMcpServer();
   });
 
 // ============================================================
