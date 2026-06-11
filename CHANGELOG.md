@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] — 2026-06-11
+
+### Fixed
+- **`audit` now covers every route in the file** — it previously analyzed only the first entry point, silently skipping the rest of an Express router file (and any additional exported methods in a Next.js route file). Multi-route files get per-route sections; `--function` still pins a single handler; exit code 2 signals warning-level findings for CI gating. JSON output keeps the bare-IR shape for single-route files and emits one IR per route otherwise.
+
 ## [0.5.0] — 2026-06-11
 
 ### Added — Every route, the whole branch

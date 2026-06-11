@@ -39,7 +39,7 @@ const sourceInput = {
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
     name: "flow2code",
-    version: "0.5.0",
+    version: "0.5.1",
   });
 
   server.registerTool(

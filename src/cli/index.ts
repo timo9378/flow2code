@@ -156,7 +156,7 @@ program
   .option("--function <name>", "Target function name to decompile")
   .option("--no-audit-hints", "Disable audit hints")
   .action(async (file: string, options: { output?: string; format?: string; function?: string; auditHints?: boolean }) => {
-    const { decompile } = await import("../lib/compiler/decompiler.js");
+    const { decompile, decompileAll } = await import("../lib/compiler/decompiler.js");
     const filePath = resolve(file);
 
     if (!existsSync(filePath)) {
@@ -165,22 +165,38 @@ program
     }
 
     const code = readFileSync(filePath, "utf-8");
-    const result = decompile(code, {
-      fileName: filePath,
-      functionName: options.function,
-      audit: options.auditHints !== false,
-    });
+    const auditOpt = options.auditHints !== false;
 
-    if (!result.success) {
-      console.error("❌ Decompile failed:");
-      result.errors?.forEach((e) => console.error(`  ${e}`));
+    // --function pins a single handler; otherwise audit EVERY route in the file
+    const entries = options.function
+      ? (() => {
+          const single = decompile(code, { fileName: filePath, functionName: options.function, audit: auditOpt });
+          return single.success
+            ? [{ name: options.function!, method: undefined as string | undefined, routePath: undefined as string | undefined, result: single }]
+            : [];
+        })()
+      : (() => {
+          const all = decompileAll(code, { fileName: filePath, audit: auditOpt });
+          return all.entries.filter((e) => e.result.success);
+        })();
+
+    if (entries.length === 0) {
+      console.error("❌ Decompile failed: no analyzable handler found");
       process.exit(1);
     }
 
     const fmt = options.format ?? "summary";
+    const single = entries.length === 1;
 
     if (fmt === "json") {
-      const output = JSON.stringify(result.ir, null, 2);
+      // single entry keeps the historical bare-IR shape; multi emits one IR per route
+      const output = single
+        ? JSON.stringify(entries[0].result.ir, null, 2)
+        : JSON.stringify(
+            entries.map((e) => ({ name: e.name, method: e.method, routePath: e.routePath, ir: e.result.ir })),
+            null,
+            2
+          );
       if (options.output) {
         writeFileSync(resolve(options.output), output, "utf-8");
         console.log(`✅ IR written to: ${options.output}`);
@@ -188,7 +204,7 @@ program
         console.log(output);
       }
     } else if (fmt === "mermaid") {
-      const mermaidOutput = irToMermaid(result.ir!);
+      const mermaidOutput = entries.map((e) => irToMermaid(e.result.ir!)).join("\n\n");
       if (options.output) {
         writeFileSync(resolve(options.output), mermaidOutput, "utf-8");
         console.log(`✅ Mermaid diagram written to: ${options.output}`);
@@ -198,34 +214,46 @@ program
     } else {
       // summary (default)
       console.log(`\n🔍 Flow2Code Audit: ${filePath}`);
-      console.log(`   Confidence: ${(result.confidence * 100).toFixed(0)}%`);
-      console.log(`   Nodes: ${result.ir!.nodes.length}`);
-      console.log(`   Edges: ${result.ir!.edges.length}`);
-      console.log("");
+      if (!single) console.log(`   Routes: ${entries.length}`);
 
-      // Node summary
-      for (const node of result.ir!.nodes) {
-        const icon = getCategoryIcon(node.category);
-        console.log(`   ${icon} [${node.id}] ${node.label} (${node.nodeType})`);
-      }
+      let warningCount = 0;
+      for (const entry of entries) {
+        const result = entry.result;
+        const title = entry.routePath
+          ? `${entry.method ?? ""} ${entry.routePath}`.trim()
+          : entry.method ?? entry.name;
+        if (!single) console.log(`\n── ${title} ──`);
+        console.log(`   Confidence: ${(result.confidence * 100).toFixed(0)}%`);
+        console.log(`   Nodes: ${result.ir!.nodes.length}`);
+        console.log(`   Edges: ${result.ir!.edges.length}`);
+        console.log("");
 
-      // Audit hints
-      if (result.audit && result.audit.length > 0) {
-        console.log("\n📋 Audit Hints:");
-        for (const hint of result.audit) {
-          const icon = hint.severity === "error" ? "🔴" : hint.severity === "warning" ? "🟠" : "🔵";
-          const lineInfo = hint.line ? ` (line ${hint.line})` : "";
-          console.log(`   ${icon} [${hint.nodeId}]${lineInfo}: ${hint.message}`);
+        for (const node of result.ir!.nodes) {
+          const icon = getCategoryIcon(node.category);
+          console.log(`   ${icon} [${node.id}] ${node.label} (${node.nodeType})`);
+        }
+
+        if (result.audit && result.audit.length > 0) {
+          console.log("\n📋 Audit Hints:");
+          for (const hint of result.audit) {
+            if (hint.severity !== "info") warningCount++;
+            const icon = hint.severity === "error" ? "🔴" : hint.severity === "warning" ? "🟠" : "🔵";
+            const lineInfo = hint.line ? ` (line ${hint.line})` : "";
+            console.log(`   ${icon} [${hint.nodeId}]${lineInfo}: ${hint.message}`);
+          }
         }
       }
       console.log("");
 
       // Also save IR to file if -o is specified (regardless of display format)
       if (options.output) {
-        const irJson = JSON.stringify(result.ir, null, 2);
+        const irJson = single
+          ? JSON.stringify(entries[0].result.ir, null, 2)
+          : JSON.stringify(entries.map((e) => ({ name: e.name, method: e.method, routePath: e.routePath, ir: e.result.ir })), null, 2);
         writeFileSync(resolve(options.output), irJson, "utf-8");
         console.log(`✅ IR written to: ${options.output}`);
       }
+      process.exitCode = warningCount > 0 ? 2 : 0;
     }
   });
 
