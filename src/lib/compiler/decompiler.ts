@@ -33,7 +33,13 @@ import {
   type Node as TSNode,
   type FunctionDeclaration,
   type ArrowFunction,
+  type FunctionExpression,
   type MethodDeclaration,
+  type ObjectLiteralExpression,
+  type PropertyAssignment,
+  type ParenthesizedExpression,
+  type PropertyAccessExpression,
+  type StringLiteral,
   type Block,
   type Statement,
   type VariableStatement,
@@ -267,18 +273,203 @@ function createDecompileContext(): DecompileContext {
 // Function Discovery
 // ============================================================
 
+type HandlerFn = FunctionDeclaration | ArrowFunction | FunctionExpression | MethodDeclaration;
+
 interface TargetFunction {
   name: string | undefined;
-  fn: FunctionDeclaration | ArrowFunction | MethodDeclaration;
+  fn: HandlerFn;
   httpMethod?: string;
+  /** Route path when the source declares it (e.g. Express `router.post("/orders", …)`) */
+  routePath?: string;
   isExported: boolean;
+}
+
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+// ============================================================
+// HOF Unwrapping — find the real handler inside wrapper calls
+// e.g. `export const GET = withAuth(async (req) => {...})`
+//      `export const POST = withApiWrapper({ handler: async (req) => {...} })`
+//      `export default rateLimited(handler)`
+// ============================================================
+
+const MAX_UNWRAP_DEPTH = 4;
+const PREFERRED_HANDLER_PROPS = new Set([
+  "handler", "callback", "fn", "run", "execute",
+  "get", "post", "put", "patch", "delete",
+]);
+
+interface HandlerCandidate {
+  fn: HandlerFn;
+  score: number;
+}
+
+function isReqLikeParam(fn: HandlerFn): boolean {
+  const params = fn.getParameters();
+  if (params.length === 0) return false;
+  const name = params[0].getName().toLowerCase();
+  const typeText = params[0].getTypeNode()?.getText() ?? "";
+  return (
+    /^(req|request)$/.test(name) ||
+    /NextApiRequest|NextRequest|\bRequest\b/.test(typeText)
+  );
+}
+
+function scoreCandidate(fn: HandlerFn, propName?: string): number {
+  let score = 0;
+  if (propName && PREFERRED_HANDLER_PROPS.has(propName.toLowerCase())) score += 4;
+  if (isReqLikeParam(fn)) score += 3;
+  const body = fn.getBody();
+  if (body && body.getKind() === SyntaxKind.Block) {
+    score += 2;
+    if ((body as Block).getStatements().length > 1) score += 1;
+  }
+  return score;
+}
+
+function collectHandlerCandidates(
+  expr: TSNode,
+  depth: number,
+  propName: string | undefined,
+  out: HandlerCandidate[]
+): void {
+  if (depth > MAX_UNWRAP_DEPTH) return;
+  const kind = expr.getKind();
+
+  if (kind === SyntaxKind.ArrowFunction || kind === SyntaxKind.FunctionExpression) {
+    const fn = expr as ArrowFunction | FunctionExpression;
+    out.push({ fn, score: scoreCandidate(fn, propName) });
+    return;
+  }
+  if (kind === SyntaxKind.ParenthesizedExpression) {
+    collectHandlerCandidates(
+      (expr as ParenthesizedExpression).getExpression(), depth + 1, propName, out
+    );
+    return;
+  }
+  if (kind === SyntaxKind.Identifier) {
+    const sf = expr.getSourceFile();
+    const name = expr.getText();
+    const fnDecl = sf.getFunction(name);
+    if (fnDecl) {
+      out.push({ fn: fnDecl, score: scoreCandidate(fnDecl, propName) });
+      return;
+    }
+    const init = sf.getVariableDeclaration(name)?.getInitializer();
+    if (init) collectHandlerCandidates(init, depth + 1, propName, out);
+    return;
+  }
+  if (kind === SyntaxKind.CallExpression) {
+    for (const arg of (expr as CallExpression).getArguments()) {
+      collectHandlerCandidates(arg, depth + 1, propName, out);
+    }
+    return;
+  }
+  if (kind === SyntaxKind.ObjectLiteralExpression) {
+    for (const prop of (expr as ObjectLiteralExpression).getProperties()) {
+      if (prop.getKind() === SyntaxKind.PropertyAssignment) {
+        const pa = prop as PropertyAssignment;
+        const init = pa.getInitializer();
+        if (init) collectHandlerCandidates(init, depth + 1, pa.getName(), out);
+      } else if (prop.getKind() === SyntaxKind.MethodDeclaration) {
+        const m = prop as MethodDeclaration;
+        out.push({ fn: m, score: scoreCandidate(m, m.getName()) });
+      }
+    }
+  }
+}
+
+function unwrapHandlerExpression(expr: TSNode): HandlerFn | null {
+  const candidates: HandlerCandidate[] = [];
+  collectHandlerCandidates(expr, 0, undefined, candidates);
+  if (candidates.length === 0) return null;
+  // stable: ties resolve to the first-seen candidate
+  let best = candidates[0];
+  for (const c of candidates) if (c.score > best.score) best = c;
+  return best.fn;
+}
+
+const ROUTER_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
+
+/**
+ * Finds Express/Hono/Fastify-style route registrations:
+ * `router.post("/orders", middleware, async (req, res) => {...})`
+ *
+ * The handler is the last function argument — earlier function arguments are
+ * middleware by convention. Only the FIRST registration in the file is
+ * returned (the IR models a single trigger per flow).
+ */
+function findRouterRegistration(sourceFile: SourceFile): TargetFunction | null {
+  for (const stmt of sourceFile.getStatements()) {
+    if (stmt.getKind() !== SyntaxKind.ExpressionStatement) continue;
+    for (const call of stmt.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+      const callee = call.getExpression();
+      if (callee.getKind() !== SyntaxKind.PropertyAccessExpression) continue;
+      const methodName = (callee as PropertyAccessExpression).getName().toLowerCase();
+      if (!ROUTER_METHODS.has(methodName)) continue;
+
+      const args = call.getArguments();
+      if (args.length < 2) continue;
+      const pathArg = args[0];
+      const isPathLiteral =
+        pathArg.getKind() === SyntaxKind.StringLiteral ||
+        pathArg.getKind() === SyntaxKind.NoSubstitutionTemplateLiteral;
+      if (!isPathLiteral) continue;
+
+      for (let i = args.length - 1; i >= 1; i--) {
+        const candidates: HandlerCandidate[] = [];
+        collectHandlerCandidates(args[i], 0, undefined, candidates);
+        if (candidates.length > 0) {
+          return {
+            name: methodName.toUpperCase(),
+            fn: candidates[0].fn,
+            httpMethod: methodName.toUpperCase(),
+            routePath: (pathArg as StringLiteral).getLiteralValue(),
+            isExported: true,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Resolves a local declaration (function or const, possibly HOF-wrapped) to its handler. */
+function resolveLocalHandler(sourceFile: SourceFile, name: string): HandlerFn | null {
+  const fnDecl = sourceFile.getFunction(name);
+  if (fnDecl) return fnDecl;
+  const init = sourceFile.getVariableDeclaration(name)?.getInitializer();
+  return init ? unwrapHandlerExpression(init) : null;
+}
+
+/**
+ * Infers the HTTP method of a `(req, res)`-style handler from
+ * `req.method === "X"` comparisons in its body. Returns the first
+ * method mentioned when several are handled, since the IR currently
+ * models a single method per trigger.
+ */
+function inferMethodFromReqChecks(fn: HandlerFn): string | undefined {
+  const body = fn.getBody();
+  if (!body) return undefined;
+  const re = /req(?:uest)?\s*\.\s*method\s*(?:===|==|!==|!=)\s*["'`](GET|POST|PUT|PATCH|DELETE)["'`]/gi;
+  const m = re.exec(body.getText());
+  return m ? m[1].toUpperCase() : undefined;
+}
+
+/** Detects HTTP-ness of handlers without an HTTP-method export name (pages/api style). */
+function inferHttpMethodFromHandler(fn: HandlerFn): string | undefined {
+  if (!isReqLikeParam(fn)) return undefined;
+  const fromChecks = inferMethodFromReqChecks(fn);
+  if (fromChecks) return fromChecks;
+  const bodyText = fn.getBody()?.getText() ?? "";
+  return /\breq(?:uest)?\s*\.\s*body\b|\breq(?:uest)?\s*\.\s*json\s*\(/.test(bodyText) ? "POST" : "GET";
 }
 
 function findTargetFunction(
   sourceFile: SourceFile,
   targetName?: string
 ): TargetFunction | null {
-  const httpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+  const httpMethods: readonly string[] = HTTP_METHODS;
 
   // Priority 1: Explicit target function name (user override via --function flag)
   if (targetName) {
@@ -287,6 +478,16 @@ function findTargetFunction(
       const name = fn.getName();
       const httpMethod = name && httpMethods.includes(name.toUpperCase()) ? name.toUpperCase() : undefined;
       return { name: targetName, fn, httpMethod, isExported: fn.isExported() };
+    }
+    // The named target may be an exported const, possibly wrapped in a HOF
+    const decl = sourceFile.getVariableDeclaration(targetName);
+    const init = decl?.getInitializer();
+    const unwrapped = init ? unwrapHandlerExpression(init) : null;
+    if (unwrapped) {
+      const httpMethod = httpMethods.includes(targetName.toUpperCase())
+        ? targetName.toUpperCase()
+        : inferHttpMethodFromHandler(unwrapped);
+      return { name: targetName, fn: unwrapped, httpMethod, isExported: decl!.isExported() };
     }
   }
 
@@ -299,10 +500,66 @@ function findTargetFunction(
     }
   }
 
-  // Priority 3: Any exported function
+  // Priority 2b: Exported const matching HTTP method, direct or wrapped in a HOF
+  // e.g. `export const GET = async () => {...}`
+  //      `export const POST = withApiWrapper({ handler: async (req) => {...} })`
+  for (const stmt of sourceFile.getVariableStatements()) {
+    if (!stmt.isExported()) continue;
+    for (const decl of stmt.getDeclarations()) {
+      const name = decl.getName();
+      if (!httpMethods.includes(name.toUpperCase())) continue;
+      const init = decl.getInitializer();
+      const fn = init ? unwrapHandlerExpression(init) : null;
+      if (fn) {
+        return { name, fn, httpMethod: name.toUpperCase(), isExported: true };
+      }
+    }
+  }
+
+  // Priority 2c: `export default <expr>` wrapping a handler (pages/api + HOF style)
+  // e.g. `export default withAuth(handler)`
+  for (const ea of sourceFile.getExportAssignments()) {
+    if (ea.isExportEquals()) continue;
+    const fn = unwrapHandlerExpression(ea.getExpression());
+    if (fn) {
+      const fnName = fn.getKind() === SyntaxKind.FunctionDeclaration
+        ? (fn as FunctionDeclaration).getName()
+        : undefined;
+      return {
+        name: fnName ?? "default",
+        fn,
+        httpMethod: inferHttpMethodFromHandler(fn),
+        isExported: true,
+      };
+    }
+  }
+
+  // Priority 2d': Express/Hono/Fastify router registrations at top level
+  // e.g. `router.post("/orders", authMiddleware, async (req, res) => {...})`
+  // The handler is the LAST function argument (earlier ones are middleware).
+  {
+    const found = findRouterRegistration(sourceFile);
+    if (found) return found;
+  }
+
+  // Priority 2d: `export { GET, POST }` exporting local declarations by name
+  // e.g. `const GET = withWrapper({...}); export { GET };`
+  for (const ed of sourceFile.getExportDeclarations()) {
+    if (ed.getModuleSpecifier()) continue; // re-export from another file — unresolvable in single-file analysis
+    for (const named of ed.getNamedExports()) {
+      const name = named.getName();
+      if (!httpMethods.includes(name.toUpperCase())) continue;
+      const fn = resolveLocalHandler(sourceFile, name);
+      if (fn) {
+        return { name, fn, httpMethod: name.toUpperCase(), isExported: true };
+      }
+    }
+  }
+
+  // Priority 3: Any exported function (pages/api `export default function handler(req, res)`)
   for (const fn of sourceFile.getFunctions()) {
     if (fn.isExported()) {
-      return { name: fn.getName(), fn, isExported: true };
+      return { name: fn.getName(), fn, httpMethod: inferHttpMethodFromHandler(fn), isExported: true };
     }
   }
 
@@ -310,7 +567,7 @@ function findTargetFunction(
   const allFns = sourceFile.getFunctions();
   if (allFns.length > 0) {
     const fn = allFns[0];
-    return { name: fn.getName(), fn, isExported: fn.isExported() };
+    return { name: fn.getName(), fn, httpMethod: inferHttpMethodFromHandler(fn), isExported: fn.isExported() };
   }
 
   // Priority 5: Exported arrow function (const handler = async () => {...})
@@ -319,9 +576,11 @@ function findTargetFunction(
     for (const decl of stmt.getDeclarations()) {
       const init = decl.getInitializer();
       if (init && init.getKind() === SyntaxKind.ArrowFunction) {
+        const fn = init as ArrowFunction;
         return {
           name: decl.getName(),
-          fn: init as ArrowFunction,
+          fn,
+          httpMethod: inferHttpMethodFromHandler(fn),
           isExported: true,
         };
       }
@@ -343,7 +602,7 @@ function createTriggerFromFunction(
   const id = ctx.nextId("trigger");
 
   if (target.httpMethod) {
-    const routePath = inferRoutePath(sourceFile);
+    const routePath = target.routePath ?? inferRoutePath(sourceFile);
     const method = target.httpMethod as HttpWebhookParams["method"];
     const parseBody = method !== "GET";
 
