@@ -23,7 +23,7 @@
 
 ---
 
-![flow2code demo — paste TypeScript, decompile to a visual flow, audit it](docs/assets/demo.gif)
+![flow2code demo — a text diff that looks harmless, exposed by the flow diff as removed error handling and a weakened check](docs/assets/demo.gif)
 
 ## The Problem
 

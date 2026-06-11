@@ -1,0 +1,23 @@
+{
+  "name": "flow2code-demo-video",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Remotion source for the flow2code demo video — render with `pnpm render`",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Main out/flow2code-demo.mp4 --codec h264",
+    "still": "remotion still src/index.ts Main"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.290",
+    "@remotion/google-fonts": "^4.0.290",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.290"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.8.0"
+  }
+}
