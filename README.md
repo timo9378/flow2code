@@ -121,6 +121,10 @@ flow changes ordered by severity, newly introduced audit warnings, and a
 Mermaid graph with added/modified nodes highlighted. Refactors that don't
 change the flow are skipped — no comment spam.
 
+**[See it live on a real PR →](https://github.com/timo9378/flow2code/pull/1)** —
+an innocuous-looking "simplification" that the diff exposes as removed error
+handling plus a weakened stock check.
+
 > **Note on fork PRs:** on `pull_request` events from forks, GitHub hands the
 > workflow a read-only token, so the comment step is skipped (analysis still
 > runs and `fail-on-warning` still works). For public repos that want comments
