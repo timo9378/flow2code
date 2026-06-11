@@ -72,6 +72,14 @@ weakened branch conditions, and newly introduced audit warnings — each
 attributed to the commit (and commit message) that did it. Exit code 2 when
 findings exist.
 
+> **Treat findings as leads, not verdicts.** A flow change is not always a
+> regression — removing a `403` is intentional when a commit opens an
+> endpoint up, and a moved `try/catch` is fine. Relocation tolerance filters
+> the obvious refactors (an error path whose status code still exists
+> elsewhere isn't reported as removed), but `scan` can't read intent. It's
+> built for *your own* repo, where you have the context to judge each lead —
+> not for auditing code you don't own.
+
 ## Structural audit
 
 ```bash
