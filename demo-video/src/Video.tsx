@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Sequence } from "remotion";
+import { AbsoluteFill, Audio, Sequence, staticFile } from "remotion";
 import { C } from "./theme";
 import { CanvasHook } from "./scenes/CanvasHook";
 import { TextDiff } from "./scenes/TextDiff";
@@ -35,6 +35,7 @@ export const Main: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ background: C.bg }}>
+      <Audio src={staticFile("soundtrack.wav")} />
       <Sequence {...sHook}>
         <CanvasHook exitAt={HOOK} />
       </Sequence>
