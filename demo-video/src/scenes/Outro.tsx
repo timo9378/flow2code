@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Img, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { C, DotGrid, FONT, MONO } from "../theme";
 
 export const Outro: React.FC = () => {
@@ -15,7 +15,10 @@ export const Outro: React.FC = () => {
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", fontFamily: FONT }}>
         <div
           style={{
-            fontSize: 120,
+            display: "flex",
+            alignItems: "center",
+            gap: 30,
+            fontSize: 110,
             fontWeight: 800,
             color: C.text,
             letterSpacing: -3,
@@ -23,7 +26,8 @@ export const Outro: React.FC = () => {
             transform: `scale(${0.92 + logo * 0.08})`,
           }}
         >
-          <span style={{ color: C.accent }}>⌁</span> flow2code
+          <Img src={staticFile("logo.png")} style={{ width: 96, height: 96, imageRendering: "auto" }} />
+          Flow2Code
         </div>
         <div style={{ fontSize: 44, color: C.dim, marginTop: 26, fontWeight: 600, opacity: rest }}>
           X-ray vision for your API routes.

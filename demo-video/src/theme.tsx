@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { loadFont as loadInter } from "@remotion/google-fonts/Inter";
 import { loadFont as loadMono } from "@remotion/google-fonts/JetBrainsMono";
 
@@ -35,13 +35,16 @@ export const DotGrid: React.FC<{ opacity?: number }> = ({ opacity = 1 }) => (
   />
 );
 
-/** Small wordmark pinned to a corner. */
+/** Small wordmark pinned to a corner — uses the real product logo. */
 export const Wordmark: React.FC = () => (
   <div
     style={{
       position: "absolute",
       top: 44,
       left: 56,
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
       fontFamily: FONT,
       fontWeight: 800,
       fontSize: 30,
@@ -49,7 +52,8 @@ export const Wordmark: React.FC = () => (
       letterSpacing: -0.5,
     }}
   >
-    <span style={{ color: C.accent }}>⌁</span> flow2code
+    <Img src={staticFile("logo.png")} style={{ width: 30, height: 30 }} />
+    Flow2Code
   </div>
 );
 
