@@ -8,6 +8,7 @@ Practical recipes for every workflow. Quick reference:
 | Check my uncommitted route changes | `flow2code diff` |
 | Diff one route file against HEAD | `flow2code diff src/app/api/users/route.ts` |
 | Audit any route for structural issues | `flow2code audit route.ts` |
+| Hunt flow regressions in my repo's history | `flow2code scan --since "6 months ago"` |
 | Get flow diffs on every PR | GitHub Action (below) |
 | Let my AI agent do all of the above | `flow2code mcp` |
 
@@ -54,6 +55,22 @@ Multi-route files are handled per route: every Express/Hono registration
 GET/POST`) is matched by method+path and diffed individually.
 
 Exit code `2` signals warning-level findings — usable as a CI gate.
+
+## History scan
+
+```bash
+# Did any commit in the last six months quietly weaken a route?
+flow2code scan --since "6 months ago"
+
+flow2code scan --max-commits 200 --json     # machine-readable
+flow2code scan --all-changes                 # every flow change, not just warnings
+```
+
+Walks your git history commit by commit, diffing each route file against its
+parent at the flow level. Reports removed routes, removed error handling,
+weakened branch conditions, and newly introduced audit warnings — each
+attributed to the commit (and commit message) that did it. Exit code 2 when
+findings exist.
 
 ## Structural audit
 

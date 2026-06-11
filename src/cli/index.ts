@@ -871,6 +871,142 @@ program
   });
 
 // ============================================================
+// scan command — flow regressions across git history
+// ============================================================
+
+interface ScanFinding {
+  commit: string;
+  shortCommit: string;
+  date: string;
+  subject: string;
+  file: string;
+  route: string;
+  kind: "route-removed" | "flow-warning";
+  details: string[];
+}
+
+program
+  .command("scan")
+  .description(
+    "Scan git history for flow-level regressions in API routes — removed error " +
+    "handling, removed routes, weakened branches — commit by commit."
+  )
+  .option("--since <date>", "How far back to scan (git date)", "6 months ago")
+  .option("--max-commits <n>", "Maximum commits to analyze", "500")
+  .option("--paths <regex>", "Route file filter")
+  .option("--json", "Output machine-readable JSON")
+  .option("--all-changes", "Report every flow change, not just warning-level findings")
+  .action((options: { since: string; maxCommits: string; paths?: string; json?: boolean; allChanges?: boolean }) => {
+    let toplevel: string;
+    try {
+      toplevel = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
+    } catch {
+      console.error("❌ Not a git repository.");
+      process.exit(1);
+    }
+
+    const pathsRe = new RegExp(options.paths ?? ROUTE_PATHS_DEFAULT);
+    const maxCommits = Number(options.maxCommits) || 500;
+
+    // commit metadata + the route files each one modified
+    const log = execFileSync(
+      "git",
+      ["log", `--since=${options.since}`, "--no-merges", "--diff-filter=M",
+        "--name-only", "--format=%x01%H%x02%h%x02%cs%x02%s", `-n`, String(maxCommits * 4)],
+      { encoding: "utf-8", cwd: toplevel, maxBuffer: 256 * 1024 * 1024 }
+    );
+
+    const commits: { hash: string; short: string; date: string; subject: string; files: string[] }[] = [];
+    for (const block of log.split("").slice(1)) {
+      const [meta, ...rest] = block.split("\n");
+      const [hash, short, date, subject] = meta.split("");
+      const files = rest.map((l) => l.trim()).filter((f) => f && pathsRe.test(f));
+      if (files.length > 0) commits.push({ hash, short, date, subject: subject ?? "", files });
+      if (commits.length >= maxCommits) break;
+    }
+
+    if (commits.length === 0) {
+      console.log(`✅ No commits touching route files since ${options.since}.`);
+      return;
+    }
+
+    if (!options.json) {
+      console.error(`🔍 Scanning ${commits.length} commit(s) touching route files…`);
+    }
+
+    const gitShowAt = (ref: string, file: string): string | null => {
+      try {
+        return execFileSync("git", ["show", `${ref}:${file}`], {
+          encoding: "utf-8", cwd: toplevel, maxBuffer: 16 * 1024 * 1024,
+        });
+      } catch {
+        return null;
+      }
+    };
+
+    const findings: ScanFinding[] = [];
+    let pairs = 0;
+
+    for (const commit of commits) {
+      for (const file of commit.files.slice(0, 10)) {
+        const before = gitShowAt(`${commit.hash}^`, file);
+        const after = gitShowAt(commit.hash, file);
+        if (before === null || after === null) continue;
+        pairs++;
+
+        const diff = diffRouteFileVersions(before, after, { fileName: file });
+        if (!diff.success) continue;
+
+        for (const route of diff.routes) {
+          if (route.status === "removed") {
+            findings.push({
+              commit: commit.hash, shortCommit: commit.short, date: commit.date,
+              subject: commit.subject, file, route: route.key,
+              kind: "route-removed",
+              details: ["Route removed — every response path in it is gone"],
+            });
+          } else if (route.status === "modified" && route.diff) {
+            const warnings = route.diff.changes.filter((c) => c.severity === "warning");
+            const newWarnings = route.diff.newWarnings;
+            const interesting = options.allChanges
+              ? route.diff.changes
+              : warnings;
+            if (interesting.length === 0 && newWarnings.length === 0) continue;
+            findings.push({
+              commit: commit.hash, shortCommit: commit.short, date: commit.date,
+              subject: commit.subject, file, route: route.key,
+              kind: "flow-warning",
+              details: [
+                ...interesting.map((c) => c.description),
+                ...newWarnings.map((w) => `new warning: ${w.message}`),
+              ],
+            });
+          }
+        }
+      }
+    }
+
+    if (options.json) {
+      console.log(JSON.stringify({ commitsScanned: commits.length, filePairs: pairs, findings }, null, 2));
+      return;
+    }
+
+    console.log(`\n📊 Scanned ${commits.length} commit(s), ${pairs} route-file change(s) since ${options.since}.`);
+    if (findings.length === 0) {
+      console.log("✅ No flow-level regressions found.");
+      return;
+    }
+    console.log(`⚠️ ${findings.length} finding(s):\n`);
+    for (const f of findings) {
+      console.log(`  ${f.shortCommit} (${f.date}) ${f.file} — ${f.route}`);
+      if (f.subject) console.log(`     "${f.subject}"`);
+      for (const d of f.details) console.log(`     • ${d}`);
+      console.log("");
+    }
+    process.exitCode = 2;
+  });
+
+// ============================================================
 // mcp command — Model Context Protocol server (stdio)
 // ============================================================
 

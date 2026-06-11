@@ -65,6 +65,9 @@ npx @timo9378/flow2code diff                               # uncommitted route c
 npx @timo9378/flow2code diff src/app/api/users/route.ts    # one file vs HEAD
 npx @timo9378/flow2code diff old.ts new.ts                 # two files
 npx @timo9378/flow2code diff route.ts --md                 # PR-comment Markdown (Mermaid graph)
+
+# Hunt regressions your reviews missed — commit by commit
+npx @timo9378/flow2code scan --since "6 months ago"
 ```
 
 `audit` finds — with exact line numbers:
