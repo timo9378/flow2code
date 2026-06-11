@@ -13,7 +13,7 @@
 
 import type { FlowIR, FlowNode } from "../ir/types";
 import { NodeCategory, LogicType, OutputType } from "../ir/types";
-import { decompile, type AuditHint } from "../compiler/decompiler";
+import { decompile, decompileAll, type AuditHint } from "../compiler/decompiler";
 import { toMermaid } from "./mermaid";
 
 // ============================================================
@@ -354,6 +354,249 @@ export function diffIRs(
     afterIR,
     confidence: extras.confidence ?? 1,
   };
+}
+
+// ============================================================
+// Multi-route File Diff
+// ============================================================
+
+export type RouteEntryStatus = "added" | "removed" | "modified" | "unchanged";
+
+export interface RouteFileDiffEntry {
+  /** Route identity, e.g. `POST /orders` or `GET` */
+  key: string;
+  status: RouteEntryStatus;
+  /** Flow diff for matched routes */
+  diff?: RouteDiffResult;
+  /** Audit hints of an added route (its whole flow is new) */
+  audit?: AuditHint[];
+}
+
+export interface RouteFileDiffResult {
+  success: boolean;
+  errors?: string[];
+  routes: RouteFileDiffEntry[];
+  stats: { added: number; removed: number; modified: number; unchanged: number };
+  /** True when any change deserves reviewer attention at warning level */
+  hasWarnings: boolean;
+}
+
+function routeKey(entry: { name: string; method?: string; routePath?: string }, taken: Set<string>): string {
+  let base = entry.method ?? entry.name;
+  if (entry.routePath && entry.routePath !== "/api/handler") base += ` ${entry.routePath}`;
+  let key = base;
+  let i = 2;
+  while (taken.has(key)) key = `${base} #${i++}`;
+  taken.add(key);
+  return key;
+}
+
+/**
+ * Diffs two versions of a route FILE — every entry point individually.
+ * Routes are matched by method+path; unmatched routes are reported as
+ * added/removed (removing a route is itself a warning-level change).
+ */
+export function diffRouteFiles(
+  beforeCode: string,
+  afterCode: string,
+  options: RouteDiffOptions = {}
+): RouteFileDiffResult {
+  const fileName = options.fileName ?? "route.ts";
+  const before = decompileAll(beforeCode, { fileName, audit: true });
+  const after = decompileAll(afterCode, { fileName, audit: true });
+
+  if (!before.success || !after.success) {
+    return {
+      success: false,
+      errors: [
+        ...(before.success ? [] : [`before: ${(before.errors ?? ["decompile failed"]).join("; ")}`]),
+        ...(after.success ? [] : [`after: ${(after.errors ?? ["decompile failed"]).join("; ")}`]),
+      ],
+      routes: [],
+      stats: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+      hasWarnings: false,
+    };
+  }
+
+  const beforeKeys = new Set<string>();
+  const beforeMap = new Map(
+    before.entries.filter((e) => e.result.success).map((e) => [routeKey(e, beforeKeys), e])
+  );
+  const afterKeys = new Set<string>();
+  const afterMap = new Map(
+    after.entries.filter((e) => e.result.success).map((e) => [routeKey(e, afterKeys), e])
+  );
+
+  const routes: RouteFileDiffEntry[] = [];
+  const stats = { added: 0, removed: 0, modified: 0, unchanged: 0 };
+  let hasWarnings = false;
+
+  for (const [key, b] of beforeMap) {
+    const a = afterMap.get(key);
+    if (!a) {
+      stats.removed++;
+      hasWarnings = true; // removing a route is always reviewer-relevant
+      routes.push({ key, status: "removed" });
+      continue;
+    }
+    const diff = diffIRs(b.result.ir!, a.result.ir!, {
+      beforeAudit: b.result.audit ?? [],
+      afterAudit: a.result.audit ?? [],
+      confidence: Math.min(b.result.confidence, a.result.confidence),
+    });
+    if (diff.changes.length === 0 && diff.newWarnings.length === 0) {
+      stats.unchanged++;
+      routes.push({ key, status: "unchanged", diff });
+    } else {
+      stats.modified++;
+      if (diff.changes.some((c) => c.severity === "warning")) hasWarnings = true;
+      routes.push({ key, status: "modified", diff });
+    }
+  }
+
+  for (const [key, a] of afterMap) {
+    if (beforeMap.has(key)) continue;
+    stats.added++;
+    routes.push({ key, status: "added", audit: a.result.audit });
+  }
+
+  return { success: true, routes, stats, hasWarnings };
+}
+
+/**
+ * Diffs two versions of a route file where either side may not exist —
+ * a new file reports every route as added, a deleted file as removed.
+ */
+export function diffRouteFileVersions(
+  beforeCode: string | null,
+  afterCode: string | null,
+  options: RouteDiffOptions = {}
+): RouteFileDiffResult {
+  const fileName = options.fileName ?? "route.ts";
+
+  if (beforeCode !== null && afterCode !== null) {
+    return diffRouteFiles(beforeCode, afterCode, options);
+  }
+
+  const empty: RouteFileDiffResult = {
+    success: true,
+    routes: [],
+    stats: { added: 0, removed: 0, modified: 0, unchanged: 0 },
+    hasWarnings: false,
+  };
+  if (beforeCode === null && afterCode === null) return empty;
+
+  const side = decompileAll((beforeCode ?? afterCode)!, { fileName, audit: true });
+  if (!side.success) {
+    return { ...empty, success: false, errors: side.errors ?? ["decompile failed"] };
+  }
+
+  const keys = new Set<string>();
+  const result = { ...empty, routes: [] as RouteFileDiffEntry[] };
+  for (const entry of side.entries) {
+    if (!entry.result.success) continue;
+    const key = routeKey(entry, keys);
+    if (beforeCode === null) {
+      result.routes.push({ key, status: "added", audit: entry.result.audit });
+      result.stats.added++;
+    } else {
+      result.routes.push({ key, status: "removed" });
+      result.stats.removed++;
+      result.hasWarnings = true;
+    }
+  }
+  return result;
+}
+
+/** Formats a RouteFileDiffResult as a Markdown PR-comment section. */
+export function formatRouteFileDiffMarkdown(
+  result: RouteFileDiffResult,
+  options: { fileName?: string } = {}
+): string {
+  const file = options.fileName ?? "route";
+  const lines: string[] = [];
+
+  if (!result.success) {
+    lines.push(`#### \`${file}\``);
+    lines.push("");
+    lines.push(`> Could not analyze this file: ${(result.errors ?? []).join("; ")}`);
+    return lines.join("\n");
+  }
+
+  const { stats } = result;
+  const changedCount = stats.added + stats.removed + stats.modified;
+
+  lines.push(`#### \`${file}\``);
+  lines.push("");
+  if (changedCount === 0) {
+    lines.push("No flow-level changes (refactor only — structure is identical).");
+    return lines.join("\n");
+  }
+
+  const parts: string[] = [];
+  if (stats.modified) parts.push(`${stats.modified} route(s) changed`);
+  if (stats.added) parts.push(`${stats.added} added`);
+  if (stats.removed) parts.push(`${stats.removed} removed`);
+  if (stats.unchanged) parts.push(`${stats.unchanged} unchanged`);
+  lines.push(parts.join(" · "));
+  lines.push("");
+
+  const modifiedRoutes = result.routes.filter((r) => r.status === "modified");
+  const includeGraphs = modifiedRoutes.length <= 2; // keep PR comments lean
+
+  for (const route of result.routes) {
+    switch (route.status) {
+      case "removed":
+        lines.push(`- ⚠️ 🔴 **Route removed: \`${route.key}\`** — its entire flow (and every response path in it) is gone`);
+        break;
+      case "added": {
+        lines.push(`- 🟢 **New route: \`${route.key}\`**`);
+        for (const w of (route.audit ?? []).filter((h) => h.severity === "warning")) {
+          lines.push(`  - 🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
+        }
+        break;
+      }
+      case "modified": {
+        const d = route.diff!;
+        lines.push(`- **\`${route.key}\`** — ${d.stats.added} added · ${d.stats.removed} removed · ${d.stats.modified} modified (confidence ${(d.confidence * 100).toFixed(0)}%)`);
+        for (const change of d.changes) {
+          lines.push(`  - ${SEVERITY_ICON[change.severity]} ${TYPE_ICON[change.type]} ${change.description}`);
+        }
+        for (const w of d.newWarnings) {
+          lines.push(`  - 🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
+        }
+        for (const w of d.resolvedWarnings) {
+          lines.push(`  - ✅ resolved: ${w.message}`);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  if (includeGraphs) {
+    for (const route of modifiedRoutes) {
+      const d = route.diff!;
+      if (!d.afterIR) continue;
+      const mermaid = toMermaid(d.afterIR, {
+        addedNodeIds: new Set(d.changes.filter((c) => c.type === "added").map((c) => c.nodeId)),
+        modifiedNodeIds: new Set(d.changes.filter((c) => c.type === "modified").map((c) => c.nodeId)),
+      });
+      if (mermaid) {
+        lines.push("");
+        lines.push(`<details><summary>Flow graph: \`${route.key}\` (after — 🟢 added, 🟠 modified)</summary>`);
+        lines.push("");
+        lines.push("```mermaid");
+        lines.push(mermaid);
+        lines.push("```");
+        lines.push("");
+        lines.push("</details>");
+      }
+    }
+  }
+
+  return lines.join("\n");
 }
 
 // ============================================================

@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 
 import { decompile } from "../lib/compiler/decompiler";
-import { diffRoutes, formatRouteDiffMarkdown } from "../lib/diff/route-diff";
+import { diffRouteFiles, formatRouteFileDiffMarkdown } from "../lib/diff/route-diff";
 import { toMermaid } from "../lib/diff/mermaid";
 
 function readSource(args: { code?: string; file_path?: string }): { code: string; fileName: string } {
@@ -39,7 +39,7 @@ const sourceInput = {
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
     name: "flow2code",
-    version: "0.4.1",
+    version: "0.5.0",
   });
 
   server.registerTool(
@@ -109,8 +109,8 @@ export async function startMcpServer(): Promise<void> {
       const before = readSource({ code: args.before_code, file_path: args.before_path });
       const after = readSource({ code: args.after_code, file_path: args.after_path });
       const fileName = args.file_name ?? after.fileName;
-      const result = diffRoutes(before.code, after.code, { fileName });
-      const md = formatRouteDiffMarkdown(result, { fileName });
+      const result = diffRouteFiles(before.code, after.code, { fileName });
+      const md = formatRouteFileDiffMarkdown(result, { fileName });
       return {
         content: [{ type: "text", text: md }],
         isError: !result.success,

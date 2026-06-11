@@ -26,8 +26,8 @@ import { splitToFileSystem, mergeFromFileSystem } from "../lib/storage/split-sto
 import { loadFlowProject, loadFlowProjectAsync, saveFlowProject, migrateToSplit, detectFormat } from "../lib/storage/flow-project";
 import { validateEnvVars, parseEnvFile, formatEnvValidationReport } from "../lib/compiler/env-validator";
 import { semanticDiff, formatDiff } from "../lib/diff/semantic-diff";
-import { diffRoutes, diffIRs, formatRouteDiffMarkdown } from "../lib/diff/route-diff";
-import type { RouteDiffResult } from "../lib/diff/route-diff";
+import { diffRouteFiles, diffRouteFileVersions, diffIRs, formatRouteDiffMarkdown, formatRouteFileDiffMarkdown } from "../lib/diff/route-diff";
+import type { RouteFileDiffResult } from "../lib/diff/route-diff";
 import type { FlowIR, InputPort, OutputPort } from "../lib/ir/types";
 
 const __cliFilename = fileURLToPath(import.meta.url);
@@ -585,16 +585,16 @@ program
 // diff command — Semantic diff comparison
 // ============================================================
 
-/** Prints a RouteDiffResult in the requested format and sets the exit code. */
+/** Prints a RouteFileDiffResult in the requested format and sets the exit code. */
 function emitRouteDiff(
-  result: RouteDiffResult,
+  result: RouteFileDiffResult,
   reportName: string,
   options: { md?: boolean; json?: boolean }
 ): void {
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
   } else if (options.md) {
-    console.log(formatRouteDiffMarkdown(result, { fileName: reportName }));
+    console.log(formatRouteFileDiffMarkdown(result, { fileName: reportName }));
   } else {
     if (!result.success) {
       console.error(`❌ Analysis failed: ${(result.errors ?? []).join("; ")}`);
@@ -602,21 +602,34 @@ function emitRouteDiff(
     }
     const { stats } = result;
     console.log(
-      `📊 Flow diff: +${stats.added} added, -${stats.removed} removed, ✏️ ${stats.modified} modified, ${stats.unchanged} unchanged`
+      `📊 Flow diff: ${stats.modified} route(s) changed, ${stats.added} added, ${stats.removed} removed, ${stats.unchanged} unchanged`
     );
-    console.log("");
-    for (const change of result.changes) {
-      const icon = change.type === "added" ? "🟢" : change.type === "removed" ? "🔴" : "🟡";
-      console.log(`  ${icon} ${change.description}`);
-    }
-    for (const w of result.newWarnings) {
-      console.log(`  🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
-    }
-    for (const w of result.resolvedWarnings) {
-      console.log(`  ✅ resolved: ${w.message}`);
+    for (const route of result.routes) {
+      if (route.status === "unchanged") continue;
+      console.log("");
+      if (route.status === "removed") {
+        console.log(`  ⚠️ 🔴 Route removed: ${route.key}`);
+      } else if (route.status === "added") {
+        console.log(`  🟢 New route: ${route.key}`);
+        for (const w of (route.audit ?? []).filter((h) => h.severity === "warning")) {
+          console.log(`     🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
+        }
+      } else if (route.diff) {
+        console.log(`  ── ${route.key} ──`);
+        for (const change of route.diff.changes) {
+          const icon = change.type === "added" ? "🟢" : change.type === "removed" ? "🔴" : "🟡";
+          console.log(`  ${icon} ${change.description}`);
+        }
+        for (const w of route.diff.newWarnings) {
+          console.log(`  🆕 [${w.severity}] ${w.message}${w.line ? ` (line ${w.line})` : ""}`);
+        }
+        for (const w of route.diff.resolvedWarnings) {
+          console.log(`  ✅ resolved: ${w.message}`);
+        }
+      }
     }
   }
-  process.exitCode = result.success && result.changes.some((c) => c.severity === "warning") ? 2 : 0;
+  process.exitCode = result.success && result.hasWarnings ? 2 : 0;
 }
 
 /** Reads a file's content at a git ref, or null when it doesn't exist there. */
@@ -648,20 +661,109 @@ function isGitRef(ref: string, filePath: string): boolean {
   }
 }
 
+const ROUTE_PATHS_DEFAULT = String.raw`(^|/)route\.[tj]sx?$|/pages/api/.+\.[tj]sx?$|/api/.+\.[tj]sx?$`;
+
+/** Scans every changed route file between a git base and the working tree. */
+function branchDiffScan(
+  baseRef: string,
+  options: { md?: boolean; json?: boolean; paths?: string }
+): void {
+  let toplevel: string;
+  let mergeBase: string;
+  try {
+    toplevel = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
+    mergeBase = baseRef === "HEAD"
+      ? "HEAD"
+      : execFileSync("git", ["merge-base", baseRef, "HEAD"], { encoding: "utf-8" }).trim();
+  } catch {
+    console.error("❌ Not a git repository (or unknown ref). Branch scan needs git.");
+    process.exit(1);
+  }
+
+  const pathsRe = new RegExp(options.paths ?? ROUTE_PATHS_DEFAULT);
+  const changed = execFileSync(
+    "git", ["diff", "--name-only", "--diff-filter=ACMRD", mergeBase],
+    { encoding: "utf-8", cwd: toplevel, maxBuffer: 64 * 1024 * 1024 }
+  ).trim().split("\n").filter(Boolean).filter((f) => pathsRe.test(f));
+
+  if (changed.length === 0) {
+    console.log(`✅ No route files changed vs ${baseRef}.`);
+    return;
+  }
+
+  let anyWarnings = false;
+  const mdSections: string[] = [];
+  const jsonResults: { file: string; result: RouteFileDiffResult }[] = [];
+
+  for (const file of changed) {
+    const absPath = join(toplevel, file);
+    let before: string | null;
+    try {
+      before = execFileSync("git", ["show", `${mergeBase}:${file}`], {
+        encoding: "utf-8", cwd: toplevel, maxBuffer: 16 * 1024 * 1024,
+      });
+    } catch {
+      before = null; // added file
+    }
+    const after = existsSync(absPath) ? readFileSync(absPath, "utf-8") : null;
+
+    const result = diffRouteFileVersions(before, after, { fileName: file });
+    if (result.hasWarnings) anyWarnings = true;
+
+    if (options.json) {
+      jsonResults.push({ file, result });
+    } else if (options.md) {
+      mdSections.push(formatRouteFileDiffMarkdown(result, { fileName: file }));
+    } else {
+      const changedCount = result.stats.added + result.stats.removed + result.stats.modified;
+      if (!result.success) {
+        console.log(`\n📄 ${file} — ❓ could not analyze`);
+        continue;
+      }
+      if (changedCount === 0) {
+        console.log(`\n📄 ${file} — no flow-level changes`);
+        continue;
+      }
+      console.log(`\n📄 ${file}`);
+      emitRouteDiff(result, file, { md: false, json: false });
+    }
+  }
+
+  if (options.json) console.log(JSON.stringify(jsonResults, null, 2));
+  else if (options.md) console.log(mdSections.join("\n\n---\n\n"));
+  process.exitCode = anyWarnings ? 2 : 0;
+}
+
 program
-  .command("diff <before> [after]")
+  .command("diff [before] [after]")
   .description(
     "Semantic flow diff. Compare two files, a git ref against the working tree, " +
-    "or a route file against HEAD:\n" +
-    "  flow2code diff route.ts              # working tree vs HEAD\n" +
-    "  flow2code diff main route.ts         # working tree vs ref\n" +
+    "a route file against HEAD, or every changed route on the branch:\n" +
+    "  flow2code diff                       # all changed routes vs HEAD\n" +
+    "  flow2code diff main...               # all changed routes vs main\n" +
+    "  flow2code diff route.ts              # one file vs HEAD\n" +
+    "  flow2code diff main route.ts         # one file vs ref\n" +
     "  flow2code diff old.ts new.ts         # two files"
   )
   .option("--md", "Output a Markdown report (PR comment format)")
   .option("--json", "Output machine-readable JSON")
   .option("--name <fileName>", "File name shown in the report header")
-  .action((beforeFile: string, afterFile: string | undefined, options: { md?: boolean; json?: boolean; name?: string }) => {
+  .option("--paths <regex>", "Route file filter used by branch scans")
+  .action((beforeFile: string | undefined, afterFile: string | undefined, options: { md?: boolean; json?: boolean; name?: string; paths?: string }) => {
     const isTs = (p: string) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(p);
+
+    // ── branch scan modes ──
+    // `diff`            → every changed route file vs HEAD
+    // `diff main...`    → every changed route file vs merge-base with main
+    if (beforeFile === undefined) {
+      branchDiffScan("HEAD", options);
+      return;
+    }
+    const refArg = beforeFile.endsWith("...") ? beforeFile.slice(0, -3) : beforeFile;
+    if (afterFile === undefined && !existsSync(resolve(beforeFile)) && isGitRef(refArg, process.cwd() + "/x")) {
+      branchDiffScan(refArg, options);
+      return;
+    }
 
     // ── git modes ──
     // `diff route.ts`      → HEAD vs working tree
@@ -686,7 +788,7 @@ program
         process.exit(1);
       }
       const reportName = options.name ?? relative(process.cwd(), gitFile);
-      const result = diffRoutes(beforeContent, readFileSync(gitFile, "utf-8"), { fileName: reportName });
+      const result = diffRouteFiles(beforeContent, readFileSync(gitFile, "utf-8"), { fileName: reportName });
       emitRouteDiff(result, reportName, options);
       return;
     }
@@ -711,7 +813,7 @@ program
     // TypeScript route diff: decompile both sides, align flows, report semantics
     if (isTs(beforePath) || isTs(afterPath)) {
       const reportName = options.name ?? afterFile;
-      const result = diffRoutes(
+      const result = diffRouteFiles(
         readFileSync(beforePath, "utf-8"),
         readFileSync(afterPath, "utf-8"),
         { fileName: reportName }

@@ -96,10 +96,12 @@ export { parseExpression } from "./compiler/expression-parser";
 export { inferFlowStateTypes } from "./compiler/type-inference";
 
 // ── Decompiler (TS → IR) ──
-export { decompile } from "./compiler/decompiler";
+export { decompile, decompileAll } from "./compiler/decompiler";
 export type {
   DecompileResult,
   DecompileOptions,
+  DecompileAllResult,
+  RouteEntry,
   AuditHint,
 } from "./compiler/decompiler";
 
@@ -127,13 +129,22 @@ export { semanticDiff, formatDiff } from "./diff/semantic-diff";
 export type { DiffSummary, SemanticChange, FieldDiff } from "./diff/semantic-diff";
 
 // ── Route Diff (TS ↔ TS semantic flow diff) ──
-export { diffRoutes, diffIRs, formatRouteDiffMarkdown } from "./diff/route-diff";
+export {
+  diffRoutes,
+  diffRouteFiles,
+  diffIRs,
+  formatRouteDiffMarkdown,
+  formatRouteFileDiffMarkdown,
+} from "./diff/route-diff";
 export type {
   RouteDiffResult,
   RouteDiffOptions,
   RouteChange,
   RouteChangeType,
   RouteChangeSeverity,
+  RouteFileDiffResult,
+  RouteFileDiffEntry,
+  RouteEntryStatus,
 } from "./diff/route-diff";
 export { toMermaid } from "./diff/mermaid";
 export type { MermaidOptions } from "./diff/mermaid";
