@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, Sequence } from "remotion";
 import { C } from "./theme";
-import { Hook } from "./scenes/Hook";
+import { CanvasHook } from "./scenes/CanvasHook";
 import { TextDiff } from "./scenes/TextDiff";
 import { FlowDiff } from "./scenes/FlowDiff";
 import { PrComment } from "./scenes/PrComment";
@@ -9,14 +9,14 @@ import { Pillars } from "./scenes/Pillars";
 import { Outro } from "./scenes/Outro";
 
 // scene lengths (frames @ 30fps)
-const HOOK = 120;
-const TEXT_DIFF = 220;
-const FLOW_DIFF = 330;
-const PR = 270;
-const PILLARS = 200;
-const OUTRO = 150;
+const HOOK = 165;
+const TEXT_DIFF = 190;
+const FLOW_DIFF = 320;
+const PR = 245;
+const PILLARS = 175;
+const OUTRO = 140;
 
-export const TOTAL_FRAMES = HOOK + TEXT_DIFF + FLOW_DIFF + PR + PILLARS + OUTRO; // 1290 = 43s
+export const TOTAL_FRAMES = HOOK + TEXT_DIFF + FLOW_DIFF + PR + PILLARS + OUTRO; // 1235 ≈ 41s
 
 export const Main: React.FC = () => {
   let at = 0;
@@ -36,7 +36,7 @@ export const Main: React.FC = () => {
   return (
     <AbsoluteFill style={{ background: C.bg }}>
       <Sequence {...sHook}>
-        <Hook exitAt={HOOK} />
+        <CanvasHook exitAt={HOOK} />
       </Sequence>
       <Sequence {...sText}>
         <TextDiff exitAt={TEXT_DIFF} />
