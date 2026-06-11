@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] — 2026-06-11
+
+### Added
+- **`flow2code scan`** — walks git history commit by commit and reports flow-level regressions in route files (removed routes, removed error handling, weakened conditions, new audit warnings), each attributed to the commit that made it. `--since`, `--max-commits`, `--paths`, `--json`, `--all-changes`. Built for auditing *your own* repo, where you have the context to tell an intentional change from a regression.
+
+### Changed — Diff precision (relocation tolerance)
+- The node-alignment pass now tolerates refactors that move or rephrase nodes. A response whose status code still exists elsewhere in the route is matched as *modified*, not reported as a removed error path; a `try/catch` that was only reindented or wrapped is no longer reported as removed error handling (the signal fires only when the try/catch count actually drops). This removes the dominant false positive — verified against full git-history scans of four production OSS repos (papermark, formbricks, documenso, dub), where it cut spurious "error path removed" findings without losing genuine removals. Improves `diff`, the GitHub Action, `scan`, and the MCP `diff_routes` tool alike.
+
 ## [0.5.1] — 2026-06-11
 
 ### Fixed
