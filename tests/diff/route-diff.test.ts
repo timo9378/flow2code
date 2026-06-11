@@ -146,6 +146,119 @@ export async function GET(req: Request) {
   });
 });
 
+describe("diffRoutes: relocation tolerance (refactor false-positive guard)", () => {
+  it("does not report a removed error path when the status code moved to another branch", () => {
+    const before = `
+export async function POST(req: Request) {
+  const body = await req.json();
+  if (!body.id) {
+    return Response.json({ error: "id required" }, { status: 400 });
+  }
+  return Response.json({ ok: true }, { status: 201 });
+}
+`;
+    // same 400, but relocated under a different guard and rephrased
+    const after = `
+export async function POST(req: Request) {
+  const body = await req.json();
+  if (!body.id || !body.name) {
+    return Response.json({ error: "id and name are required" }, { status: 400 });
+  }
+  return Response.json({ ok: true }, { status: 201 });
+}
+`;
+    const result = diffRoutes(before, after);
+    expect(result.success).toBe(true);
+    const removedError = result.changes.find(
+      (c) => c.type === "removed" && c.description.includes("400")
+    );
+    expect(removedError).toBeUndefined();
+  });
+
+  it("still reports a genuinely removed error path (status code gone entirely)", () => {
+    const before = `
+export async function POST(req: Request) {
+  const body = await req.json();
+  if (!body.id) {
+    return Response.json({ error: "id required" }, { status: 400 });
+  }
+  return Response.json({ ok: true }, { status: 201 });
+}
+`;
+    const after = `
+export async function POST(req: Request) {
+  const body = await req.json();
+  return Response.json({ ok: true }, { status: 201 });
+}
+`;
+    const result = diffRoutes(before, after);
+    expect(result.success).toBe(true);
+    const removedError = result.changes.find(
+      (c) => c.type === "removed" && c.description.includes("400")
+    );
+    expect(removedError).toBeDefined();
+  });
+
+  it("does not report removed error handling when try/catch was only reindented", () => {
+    const before = `
+export async function GET(req: Request) {
+  try {
+    const r = await fetch("https://api.example.com");
+    return Response.json(await r.json());
+  } catch (err) {
+    return Response.json({ error: "upstream" }, { status: 502 });
+  }
+}
+`;
+    // same try/catch, wrapped in an extra guard (reindented, restructured)
+    const after = `
+export async function GET(req: Request) {
+  const flag = req.headers.get("x-flag");
+  if (flag) {
+    try {
+      const r = await fetch("https://api.example.com");
+      return Response.json(await r.json());
+    } catch (err) {
+      return Response.json({ error: "upstream" }, { status: 502 });
+    }
+  }
+  return Response.json({ ok: true });
+}
+`;
+    const result = diffRoutes(before, after);
+    expect(result.success).toBe(true);
+    const removedTry = result.changes.find(
+      (c) => c.type === "removed" && c.nodeType === "try_catch"
+    );
+    expect(removedTry).toBeUndefined();
+  });
+
+  it("still reports try/catch removal when the count actually drops", () => {
+    const before = `
+export async function GET(req: Request) {
+  try {
+    const r = await fetch("https://api.example.com");
+    return Response.json(await r.json());
+  } catch (err) {
+    return Response.json({ error: "upstream" }, { status: 502 });
+  }
+}
+`;
+    const after = `
+export async function GET(req: Request) {
+  const r = await fetch("https://api.example.com");
+  return Response.json(await r.json());
+}
+`;
+    const result = diffRoutes(before, after);
+    expect(result.success).toBe(true);
+    const removedTry = result.changes.find(
+      (c) => c.type === "removed" && c.nodeType === "try_catch"
+    );
+    expect(removedTry).toBeDefined();
+  });
+});
+
 describe("diffRoutes: failure handling", () => {
   it("fails gracefully when one side has no analyzable handler", () => {
     const result = diffRoutes(`export { GET } from "./other";`, BASE_ROUTE);

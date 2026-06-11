@@ -12,7 +12,7 @@
  */
 
 import type { FlowIR, FlowNode } from "../ir/types";
-import { NodeCategory, LogicType, OutputType } from "../ir/types";
+import { NodeCategory, LogicType, OutputType } from "../ir/types"; // LogicType used in relocation pass
 import { decompile, decompileAll, type AuditHint } from "../compiler/decompiler";
 import { toMermaid } from "./mermaid";
 
@@ -154,6 +154,52 @@ function alignNodes(before: FlowIR, after: FlowIR): Alignment {
       beforeLeft.delete(b);
       afterLeft.delete(best);
     }
+  }
+
+  // Pass 3: relocation tolerance. A large refactor renumbers and reshapes
+  // nodes so heavily that a response or guard can't be content-matched, yet
+  // an equivalent one still exists — moved into another branch, or rephrased.
+  // Reporting these as "removed" is the dominant false positive (verified on
+  // OSS history scans). Match leftovers by a coarse identity so they surface
+  // as `modified` (or `unchanged`) instead of `removed`+`added`:
+  //   - responses by status code (body may have changed)
+  //   - other nodes by exact nodeType when exactly one remains on each side
+  const relocationKey = (n: FlowNode): string | null => {
+    if (n.nodeType === OutputType.RETURN_RESPONSE) {
+      const status = (n.params as Record<string, unknown>).statusCode;
+      return status !== undefined ? `resp:${status}` : null;
+    }
+    return null;
+  };
+  const afterByReloc = new Map<string, FlowNode[]>();
+  for (const a of afterLeft) {
+    const key = relocationKey(a);
+    if (!key) continue;
+    if (!afterByReloc.has(key)) afterByReloc.set(key, []);
+    afterByReloc.get(key)!.push(a);
+  }
+  for (const b of [...beforeLeft]) {
+    const key = relocationKey(b);
+    if (!key) continue;
+    const a = afterByReloc.get(key)?.shift();
+    if (a) {
+      pairs.push({ before: b, after: a });
+      beforeLeft.delete(b);
+      afterLeft.delete(a);
+    }
+  }
+
+  // try/catch survives a refactor as long as the count doesn't drop: pair the
+  // leftovers in document order so "error handling removed" only fires when
+  // the after side genuinely has fewer try/catch blocks.
+  const leftTryCatch = (set: Set<FlowNode>) =>
+    [...set].filter((n) => n.nodeType === LogicType.TRY_CATCH);
+  const bTry = leftTryCatch(beforeLeft);
+  const aTry = leftTryCatch(afterLeft);
+  for (let i = 0; i < Math.min(bTry.length, aTry.length); i++) {
+    pairs.push({ before: bTry[i], after: aTry[i] });
+    beforeLeft.delete(bTry[i]);
+    afterLeft.delete(aTry[i]);
   }
 
   return { pairs, added: [...afterLeft], removed: [...beforeLeft] };
