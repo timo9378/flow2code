@@ -38,6 +38,7 @@
   "exclude": [
     "node_modules",
     "vscode-extension",
-    "examples"
+    "examples",
+    "demo-video"
   ]
 }
