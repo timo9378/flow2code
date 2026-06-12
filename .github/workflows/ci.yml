@@ -34,3 +34,50 @@ jobs:
 
       - name: Build CLI & Compiler
         run: pnpm build:cli
+
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test:run
+
+      - name: Build CLI & Compiler
+        run: pnpm build:cli
+
+      # The CLI paths most likely to break on Windows: git-aware diff
+      # (backslash path → repo-relative git show) and route inference.
+      - name: Smoke test CLI (git-aware diff on Windows paths)
+        shell: pwsh
+        run: |
+          $work = Join-Path $env:TEMP "f2c-win-smoke"
+          New-Item -ItemType Directory -Force $work | Out-Null
+          Set-Location $work
+          git init -q .
+          git config user.email "ci@flow2code"
+          git config user.name "ci"
+          New-Item -ItemType Directory -Force "api\orders" | Out-Null
+          Copy-Item "${{ github.workspace }}\examples\api\orders\route.ts" "api\orders\route.ts"
+          git add .
+          git commit -qm "init"
+          (Get-Content "api\orders\route.ts") -replace [regex]::Escape('!product || product.stock < quantity'), '!product' | Set-Content "api\orders\route.ts"
+
+          $audit = node "${{ github.workspace }}\dist\cli.js" audit "api\orders\route.ts" | Out-String
+          if ($audit -notmatch "POST /api/orders") { Write-Error "audit failed to infer route on Windows: $audit"; exit 1 }
+
+          $diff = node "${{ github.workspace }}\dist\cli.js" diff "api\orders\route.ts" | Out-String
+          if ($diff -notmatch "Branch condition changed") { Write-Error "git-aware diff failed on Windows: $diff"; exit 1 }
+
+          Write-Host "Windows smoke OK"
+          exit 0
