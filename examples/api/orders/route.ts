@@ -16,12 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const body = await req.json();
 
   const parsed = CreateOrderSchema.safeParse(body);
   if (!parsed.success) {
@@ -34,7 +29,7 @@ export async function POST(req: Request) {
   const { productId, quantity, couponCode } = parsed.data;
 
   const product = await db.product.findUnique({ where: { id: productId } });
-  if (!product || product.stock < quantity) {
+  if (!product) {
     return NextResponse.json({ error: "Out of stock" }, { status: 409 });
   }
 
